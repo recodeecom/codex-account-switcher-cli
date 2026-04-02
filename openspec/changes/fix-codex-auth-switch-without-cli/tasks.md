@@ -1,0 +1,5 @@
+- [x] Add backend fallback switch implementation when `codex-auth` command is unavailable.
+- [x] Add/adjust unit and integration tests for fallback switching behavior.
+- [x] Update dev docker-compose `.codex` mount to allow switch writes.
+- [x] Run lint/typecheck/tests for touched areas.
+- [x] Validate specs with `openspec validate --specs`.

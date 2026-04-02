@@ -100,7 +100,7 @@ describe("dashboard flow integration", () => {
     });
   });
 
-  it("allows use button for active account with quota and surfaces snapshot errors on click", async () => {
+  it("routes to account details when local snapshot is missing", async () => {
     const user = userEvent.setup({ delay: null });
 
     server.use(
@@ -151,6 +151,8 @@ describe("dashboard flow integration", () => {
     expect(useButton).toBeEnabled();
 
     await user.click(useButton);
-    expect(await screen.findByText("No codex-auth snapshot found for this account.")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Accounts" })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/accounts");
+    expect(window.location.search).toContain("selected=acc_no_snapshot");
   });
 });

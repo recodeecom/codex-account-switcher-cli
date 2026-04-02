@@ -1,0 +1,4 @@
+- [x] Update account list row subtitle to include snapshot label beside plan type.
+- [x] Show explicit `No snapshot` label when a row has no mapped snapshot.
+- [x] Add frontend tests covering both mapped and missing snapshot subtitle rendering.
+- [x] Validate specs with `openspec validate --specs`.

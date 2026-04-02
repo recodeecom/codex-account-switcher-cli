@@ -18,6 +18,15 @@ export type AccountListItemProps = {
   useLocalBusy: boolean;
 };
 
+function formatPlanWithSnapshot(planType: string, snapshotName?: string | null): string {
+  const planLabel = formatSlug(planType);
+  const normalizedSnapshotName = snapshotName?.trim();
+  if (!normalizedSnapshotName) {
+    return `${planLabel} · No snapshot`;
+  }
+  return `${planLabel} · ${normalizedSnapshotName}`;
+}
+
 function MiniQuotaBar({ percent }: { percent: number | null }) {
   if (percent === null) {
     return <div data-testid="mini-quota-track" className="h-1 flex-1 overflow-hidden rounded-full bg-muted" />;
@@ -49,7 +58,7 @@ export function AccountListItem({
   const emailSubtitle = account.displayName && account.displayName !== account.email
     ? account.email
     : null;
-  const baseSubtitle = emailSubtitle ?? formatSlug(account.planType);
+  const baseSubtitle = emailSubtitle ?? formatPlanWithSnapshot(account.planType, account.codexAuth?.snapshotName);
   const idSuffix = showAccountId ? ` | ID ${formatCompactAccountId(account.accountId)}` : "";
   const secondary = account.usage?.secondaryRemainingPercent ?? null;
   const primaryRemaining = account.usage?.primaryRemainingPercent;

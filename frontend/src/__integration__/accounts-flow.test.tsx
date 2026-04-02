@@ -1,8 +1,11 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
 import App from "@/App";
+import { createAccountSummary } from "@/test/mocks/factories";
+import { server } from "@/test/mocks/server";
 import { renderWithProviders } from "@/test/utils";
 
 describe("accounts flow integration", () => {
@@ -46,5 +49,60 @@ describe("accounts flow integration", () => {
 
     await user.click(enabledButton!);
     expect(await screen.findByText(/Switched to/i)).toBeInTheDocument();
+  });
+
+  it("selects account details when local snapshot is missing on accounts page", async () => {
+    const user = userEvent.setup({ delay: null });
+
+    server.use(
+      http.get("/api/accounts", () =>
+        HttpResponse.json({
+          accounts: [
+            createAccountSummary({
+              accountId: "acc_no_snapshot",
+              email: "nosnapshot@example.com",
+              displayName: "nosnapshot@example.com",
+              status: "active",
+              usage: {
+                primaryRemainingPercent: 44,
+                secondaryRemainingPercent: 73,
+              },
+              codexAuth: {
+                hasSnapshot: false,
+                snapshotName: null,
+                activeSnapshotName: null,
+                isActiveSnapshot: false,
+              },
+            }),
+          ],
+        }),
+      ),
+      http.post("/api/accounts/:accountId/use-local", () =>
+        HttpResponse.json(
+          {
+            error: {
+              code: "codex_auth_snapshot_not_found",
+              message: "No codex-auth snapshot found for this account.",
+            },
+          },
+          { status: 400 },
+        ),
+      ),
+    );
+
+    window.history.pushState({}, "", "/accounts");
+    renderWithProviders(<App />);
+
+    expect(await screen.findByRole("heading", { name: "Accounts" })).toBeInTheDocument();
+    const useButtons = await screen.findAllByRole("button", { name: "Use this" });
+    if (useButtons.length === 0) {
+      throw new Error("Expected at least one use button");
+    }
+    await user.click(useButtons[0]!);
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe("/accounts");
+      expect(window.location.search).toContain("selected=acc_no_snapshot");
+    });
   });
 });

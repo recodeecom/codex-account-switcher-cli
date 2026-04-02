@@ -81,7 +81,41 @@ def test_select_snapshot_name_prefers_active() -> None:
     assert selected == "beta"
 
 
-def test_switch_snapshot_raises_when_codex_auth_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_switch_snapshot_falls_back_without_codex_auth(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    accounts_dir = tmp_path / "accounts"
+    accounts_dir.mkdir()
+    _write_auth_snapshot(accounts_dir / "main.json", email="main@example.com", account_id="acc-main")
+    current_path = tmp_path / "current"
+    auth_path = tmp_path / "auth.json"
+
+    monkeypatch.setenv("CODEX_AUTH_ACCOUNTS_DIR", str(accounts_dir))
+    monkeypatch.setenv("CODEX_AUTH_CURRENT_PATH", str(current_path))
+    monkeypatch.setenv("CODEX_AUTH_JSON_PATH", str(auth_path))
+
+    def _raise_missing(*_args, **_kwargs):
+        raise FileNotFoundError
+
+    monkeypatch.setattr(subprocess, "run", _raise_missing)
+
+    switch_snapshot("main")
+
+    assert current_path.read_text(encoding="utf-8").strip() == "main"
+    assert auth_path.exists()
+    assert auth_path.is_symlink()
+    assert auth_path.resolve() == (accounts_dir / "main.json").resolve()
+
+
+def test_switch_snapshot_raises_when_codex_auth_missing_and_fallback_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    accounts_dir = tmp_path / "accounts"
+    accounts_dir.mkdir()
+    monkeypatch.setenv("CODEX_AUTH_ACCOUNTS_DIR", str(accounts_dir))
+    monkeypatch.setenv("CODEX_AUTH_CURRENT_PATH", str(tmp_path / "current"))
+    monkeypatch.setenv("CODEX_AUTH_JSON_PATH", str(tmp_path / "auth.json"))
+
     def _raise_missing(*_args, **_kwargs):
         raise FileNotFoundError
 

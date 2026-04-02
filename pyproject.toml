@@ -113,6 +113,7 @@ codex-lb = "app.cli:main"
 codex-lb-db = "app.db.migrate:main"
 codex-lb-switch = "app.tools.codex_auth_switch:main"
 codex-lb-sync-all = "app.tools.codex_auth_sync_all:main"
+codex-lb-runtime = "app.tools.codex_auth_multi_runtime:main"
 
 [build-system]
 requires = ["hatchling>=1.27.0"]

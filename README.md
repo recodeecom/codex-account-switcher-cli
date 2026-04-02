@@ -94,6 +94,35 @@ Environment variable shortcuts are also supported:
 
 `codex-lb-switch` runs `codex-auth use <name>`, then imports `~/.codex/accounts/<name>.json` into codex-lb.
 
+### Multi-runtime switching (different accounts in different terminals)
+
+Use `codex-lb-runtime` when you want separate terminal sessions to keep different active accounts at the same time.
+
+Each runtime stores its own:
+
+- `CODEX_AUTH_CURRENT_PATH` (runtime-local current pointer)
+- `CODEX_AUTH_JSON_PATH` (runtime-local active auth file)
+
+while reusing shared snapshots from `~/.codex/accounts` by default.
+
+```bash
+# print export lines for a runtime profile
+uv run codex-lb-runtime env terminal-a
+
+# switch runtime profile to snapshot "work"
+uv run codex-lb-runtime use terminal-a work
+
+# run codex (or any command) inside that runtime profile
+uv run codex-lb-runtime run terminal-a -- codex --help
+
+# optional: switch runtime and sync selected snapshot into codex-lb dashboard
+uv run codex-lb-runtime use terminal-a work \
+  --sync-dashboard \
+  --password "$CODEX_LB_DASHBOARD_PASSWORD"
+```
+
+To run two accounts concurrently, use two runtime names in different terminals (for example `terminal-a` and `terminal-b`).
+
 Bulk sync every saved snapshot in one shot:
 
 ```bash

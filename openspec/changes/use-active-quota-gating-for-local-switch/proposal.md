@@ -9,13 +9,14 @@ Operators asked for availability to follow runtime readiness (active + quota), w
 
 - Update account switch button gating in dashboard and accounts views to enable only when:
   - account status is active, and
-  - 5h remaining quota is greater than 0.
+  - 5h remaining quota is at least 1%.
 - Remove codex-auth snapshot availability from pre-click enable/disable gating.
 - Keep existing backend switch behavior unchanged (`POST /api/accounts/{id}/use-local`), including snapshot-not-found errors.
-- Align frontend tests with the new gating rule and error-path behavior.
+- On snapshot-not-found errors, route users to account details (`/accounts?selected=<accountId>`) for remediation.
+- Align frontend tests with the new gating rule and snapshot-missing remediation path.
 
 ## Impact
 
 - Buttons are consistently available for ready-to-use accounts based on status and quota.
 - Snapshot issues are surfaced as explicit action-time errors instead of silent pre-disable state.
-- No API contract changes and no routing behavior changes.
+- No API contract changes.

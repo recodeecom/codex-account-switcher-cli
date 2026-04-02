@@ -1,0 +1,6 @@
+- [ ] 1. Add OpenSpec delta for runtime-scoped codex auth switching.
+- [ ] 2. Implement `codex-lb-runtime` CLI with `env`, `current`, `use`, and `run` commands.
+- [ ] 3. Add optional dashboard sync on runtime `use` (reusing existing dashboard auth + import flow).
+- [ ] 4. Add unit tests for runtime path/env resolution and runtime-scoped switching behavior.
+- [ ] 5. Update README usage docs with multi-runtime examples.
+- [ ] 6. Run lint, typecheck, unit tests, and `openspec validate --specs`.

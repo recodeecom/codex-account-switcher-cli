@@ -114,6 +114,28 @@ def select_snapshot_name(snapshot_names: list[str], active_snapshot_name: str | 
     return snapshot_names[0]
 
 
+def _switch_snapshot_without_cli(snapshot_name: str) -> None:
+    accounts_dir = _resolve_accounts_dir()
+    snapshot_path = accounts_dir / f"{snapshot_name}.json"
+    if not snapshot_path.exists():
+        raise CodexAuthSwitchFailedError(
+            f"codex-auth snapshot {snapshot_name!r} was not found at {snapshot_path}"
+        )
+
+    current_path = _resolve_current_path()
+    current_path.parent.mkdir(parents=True, exist_ok=True)
+    current_path.write_text(f"{snapshot_name}\n", encoding="utf-8")
+
+    active_auth_path = _resolve_active_auth_path()
+    active_auth_path.parent.mkdir(parents=True, exist_ok=True)
+    if active_auth_path.is_symlink() or active_auth_path.exists():
+        active_auth_path.unlink()
+    try:
+        active_auth_path.symlink_to(snapshot_path)
+    except OSError:
+        active_auth_path.write_bytes(snapshot_path.read_bytes())
+
+
 def switch_snapshot(snapshot_name: str) -> None:
     try:
         completed = subprocess.run(
@@ -122,8 +144,14 @@ def switch_snapshot(snapshot_name: str) -> None:
             capture_output=True,
             text=True,
         )
-    except FileNotFoundError as exc:
-        raise CodexAuthNotInstalledError("codex-auth is not installed. Install with: npm i -g codex-auth") from exc
+    except FileNotFoundError:
+        try:
+            _switch_snapshot_without_cli(snapshot_name)
+            return
+        except Exception as fallback_exc:
+            raise CodexAuthNotInstalledError(
+                "codex-auth is not installed. Install with: npm i -g codex-auth"
+            ) from fallback_exc
 
     if completed.returncode == 0:
         return

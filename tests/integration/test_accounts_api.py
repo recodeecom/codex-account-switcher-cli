@@ -259,7 +259,7 @@ async def test_use_account_locally_requires_snapshot(async_client, monkeypatch: 
 
 
 @pytest.mark.asyncio
-async def test_use_account_locally_handles_missing_codex_auth(
+async def test_use_account_locally_falls_back_when_codex_auth_missing(
     async_client, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
     email = "local-not-installed@example.com"
@@ -295,5 +295,8 @@ async def test_use_account_locally_handles_missing_codex_auth(
     monkeypatch.setattr(subprocess, "run", _raise_missing)
 
     use_response = await async_client.post(f"/api/accounts/{expected_account_id}/use-local")
-    assert use_response.status_code == 400
-    assert use_response.json()["error"]["code"] == "codex_auth_not_installed"
+    assert use_response.status_code == 200
+    assert use_response.json()["status"] == "switched"
+    assert use_response.json()["snapshotName"] == "work"
+    assert (tmp_path / "current").read_text(encoding="utf-8").strip() == "work"
+    assert (tmp_path / "auth.json").resolve() == (accounts_dir / "work.json").resolve()

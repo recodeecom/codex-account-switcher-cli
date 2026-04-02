@@ -129,6 +129,54 @@ describe("AccountListItem", () => {
     expect(screen.getByRole("button", { name: "Use this" })).toBeEnabled();
   });
 
+  it("shows plan type with snapshot name in subtitle", () => {
+    const account = createAccountSummary({
+      planType: "team",
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "deadpool",
+        activeSnapshotName: "deadpool",
+        isActiveSnapshot: true,
+      },
+    });
+
+    render(
+      <AccountListItem
+        account={account}
+        selected={false}
+        onSelect={vi.fn()}
+        onUseLocal={vi.fn()}
+        useLocalBusy={false}
+      />,
+    );
+
+    expect(screen.getByText("Team · deadpool")).toBeInTheDocument();
+  });
+
+  it("shows no snapshot in subtitle when missing", () => {
+    const account = createAccountSummary({
+      planType: "team",
+      codexAuth: {
+        hasSnapshot: false,
+        snapshotName: null,
+        activeSnapshotName: null,
+        isActiveSnapshot: false,
+      },
+    });
+
+    render(
+      <AccountListItem
+        account={account}
+        selected={false}
+        onSelect={vi.fn()}
+        onUseLocal={vi.fn()}
+        useLocalBusy={false}
+      />,
+    );
+
+    expect(screen.getByText("Team · No snapshot")).toBeInTheDocument();
+  });
+
   it("disables use button when account status is not active", () => {
     const account = createAccountSummary({
       status: "deactivated",

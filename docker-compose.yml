@@ -17,7 +17,7 @@ services:
       - "2455"
       - --reload
     volumes:
-      - ${HOME}/.codex:/home/app/.codex:ro
+      - ${HOME}/.codex:/home/app/.codex
       - codex-lb-data:/var/lib/codex-lb
     develop:
       watch:
