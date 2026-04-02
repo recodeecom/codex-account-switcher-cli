@@ -1,0 +1,255 @@
+from __future__ import annotations
+
+from fastapi import APIRouter, Body, Depends, Request, Response
+
+from app.core.audit.service import AuditService
+from app.core.auth.dependencies import set_dashboard_error_format, validate_dashboard_session
+from app.core.exceptions import DashboardBadRequestError, DashboardNotFoundError
+from app.dependencies import ApiKeysContext, get_api_keys_context
+from app.modules.api_keys.schemas import (
+    ApiKeyCreateRequest,
+    ApiKeyCreateResponse,
+    ApiKeyResponse,
+    ApiKeyTrendsResponse,
+    ApiKeyUpdateRequest,
+    ApiKeyUsage7DayResponse,
+    ApiKeyUsageSummaryResponse,
+    LimitRuleResponse,
+)
+from app.modules.api_keys.service import (
+    ApiKeyCreateData,
+    ApiKeyData,
+    ApiKeyNotFoundError,
+    ApiKeyUpdateData,
+    LimitRuleInput,
+)
+
+router = APIRouter(
+    prefix="/api/api-keys",
+    tags=["dashboard"],
+    dependencies=[Depends(validate_dashboard_session), Depends(set_dashboard_error_format)],
+)
+
+
+def _to_response(row: ApiKeyData) -> ApiKeyResponse:
+    return ApiKeyResponse(
+        id=row.id,
+        name=row.name,
+        key_prefix=row.key_prefix,
+        allowed_models=row.allowed_models,
+        enforced_model=row.enforced_model,
+        enforced_reasoning_effort=row.enforced_reasoning_effort,
+        enforced_service_tier=row.enforced_service_tier,
+        expires_at=row.expires_at,
+        is_active=row.is_active,
+        created_at=row.created_at,
+        last_used_at=row.last_used_at,
+        limits=[
+            LimitRuleResponse(
+                id=li.id,
+                limit_type=li.limit_type,
+                limit_window=li.limit_window,
+                max_value=li.max_value,
+                current_value=li.current_value,
+                model_filter=li.model_filter,
+                reset_at=li.reset_at,
+            )
+            for li in row.limits
+        ],
+        usage_summary=(
+            ApiKeyUsageSummaryResponse(
+                request_count=row.usage_summary.request_count,
+                total_tokens=row.usage_summary.total_tokens,
+                cached_input_tokens=row.usage_summary.cached_input_tokens,
+                total_cost_usd=row.usage_summary.total_cost_usd,
+            )
+            if row.usage_summary is not None
+            else None
+        ),
+    )
+
+
+def _build_limit_inputs(payload: ApiKeyCreateRequest | ApiKeyUpdateRequest) -> list[LimitRuleInput]:
+    limit_inputs: list[LimitRuleInput] = []
+
+    if hasattr(payload, "limits") and payload.limits is not None:
+        for lr in payload.limits:
+            limit_inputs.append(
+                LimitRuleInput(
+                    limit_type=lr.limit_type,
+                    limit_window=lr.limit_window,
+                    max_value=lr.max_value,
+                    model_filter=lr.model_filter,
+                )
+            )
+    elif (
+        hasattr(payload, "weekly_token_limit")
+        and "weekly_token_limit" in payload.model_fields_set
+        and payload.weekly_token_limit is not None
+    ):
+        # Legacy: convert weeklyTokenLimit to a limit rule
+        limit_inputs.append(
+            LimitRuleInput(
+                limit_type="total_tokens",
+                limit_window="weekly",
+                max_value=payload.weekly_token_limit,
+            )
+        )
+
+    return limit_inputs
+
+
+@router.post("/", response_model=ApiKeyCreateResponse)
+async def create_api_key(
+    request: Request,
+    payload: ApiKeyCreateRequest = Body(...),
+    context: ApiKeysContext = Depends(get_api_keys_context),
+) -> ApiKeyCreateResponse:
+    limit_inputs = _build_limit_inputs(payload)
+
+    try:
+        created = await context.service.create_key(
+            ApiKeyCreateData(
+                name=payload.name,
+                allowed_models=payload.allowed_models,
+                enforced_model=payload.enforced_model,
+                enforced_reasoning_effort=payload.enforced_reasoning_effort,
+                enforced_service_tier=payload.enforced_service_tier,
+                expires_at=payload.expires_at,
+                limits=limit_inputs,
+            )
+        )
+    except ValueError as exc:
+        raise DashboardBadRequestError(str(exc), code="invalid_api_key_payload") from exc
+    resp = _to_response(created)
+    AuditService.log_async(
+        "api_key_created",
+        actor_ip=request.client.host if request.client else None,
+        details={"key_id": created.id},
+    )
+    return ApiKeyCreateResponse(
+        **resp.model_dump(),
+        key=created.key,
+    )
+
+
+@router.get("/", response_model=list[ApiKeyResponse])
+async def list_api_keys(
+    context: ApiKeysContext = Depends(get_api_keys_context),
+) -> list[ApiKeyResponse]:
+    rows = await context.service.list_keys()
+    return [_to_response(row) for row in rows]
+
+
+@router.patch("/{key_id}", response_model=ApiKeyResponse)
+async def update_api_key(
+    request: Request,
+    key_id: str,
+    payload: ApiKeyUpdateRequest = Body(...),
+    context: ApiKeysContext = Depends(get_api_keys_context),
+) -> ApiKeyResponse:
+    fields = payload.model_fields_set
+
+    limits_set = "limits" in fields or "weekly_token_limit" in fields
+    limit_inputs = _build_limit_inputs(payload) if limits_set else None
+
+    update = ApiKeyUpdateData(
+        name=payload.name,
+        name_set="name" in fields,
+        allowed_models=payload.allowed_models,
+        allowed_models_set="allowed_models" in fields,
+        enforced_model=payload.enforced_model,
+        enforced_model_set="enforced_model" in fields,
+        enforced_reasoning_effort=payload.enforced_reasoning_effort,
+        enforced_reasoning_effort_set="enforced_reasoning_effort" in fields,
+        enforced_service_tier=payload.enforced_service_tier,
+        enforced_service_tier_set="enforced_service_tier" in fields,
+        expires_at=payload.expires_at,
+        expires_at_set="expires_at" in fields,
+        is_active=payload.is_active,
+        is_active_set="is_active" in fields,
+        limits=limit_inputs,
+        limits_set=limits_set,
+        reset_usage=bool(payload.reset_usage),
+    )
+    try:
+        row = await context.service.update_key(key_id, update)
+    except ApiKeyNotFoundError as exc:
+        raise DashboardNotFoundError(str(exc)) from exc
+    except ValueError as exc:
+        raise DashboardBadRequestError(str(exc), code="invalid_api_key_payload") from exc
+    if "is_active" in fields and payload.is_active is False and row.is_active is False:
+        AuditService.log_async(
+            "api_key_revoked",
+            actor_ip=request.client.host if request.client else None,
+            details={"key_id": row.id},
+        )
+    return _to_response(row)
+
+
+@router.delete("/{key_id}")
+async def delete_api_key(
+    request: Request,
+    key_id: str,
+    context: ApiKeysContext = Depends(get_api_keys_context),
+) -> Response:
+    try:
+        await context.service.delete_key(key_id)
+    except ApiKeyNotFoundError as exc:
+        raise DashboardNotFoundError(str(exc)) from exc
+    AuditService.log_async(
+        "api_key_revoked",
+        actor_ip=request.client.host if request.client else None,
+        details={"key_id": key_id},
+    )
+    return Response(status_code=204)
+
+
+@router.post("/{key_id}/regenerate", response_model=ApiKeyCreateResponse)
+async def regenerate_api_key(
+    key_id: str,
+    context: ApiKeysContext = Depends(get_api_keys_context),
+) -> ApiKeyCreateResponse:
+    try:
+        row = await context.service.regenerate_key(key_id)
+    except ApiKeyNotFoundError as exc:
+        raise DashboardNotFoundError(str(exc)) from exc
+    resp = _to_response(row)
+    return ApiKeyCreateResponse(
+        **resp.model_dump(),
+        key=row.key,
+    )
+
+
+@router.get("/{key_id}/trends", response_model=ApiKeyTrendsResponse)
+async def get_api_key_trends(
+    key_id: str,
+    context: ApiKeysContext = Depends(get_api_keys_context),
+) -> ApiKeyTrendsResponse:
+    from app.modules.api_keys.schemas import ApiKeyTrendPoint
+
+    result = await context.service.get_key_trends(key_id)
+    if result is None:
+        raise DashboardNotFoundError(f"API key not found: {key_id}")
+    return ApiKeyTrendsResponse(
+        key_id=result.key_id,
+        cost=[ApiKeyTrendPoint(t=p.t, v=p.v) for p in result.cost],
+        tokens=[ApiKeyTrendPoint(t=p.t, v=p.v) for p in result.tokens],
+    )
+
+
+@router.get("/{key_id}/usage-7d", response_model=ApiKeyUsage7DayResponse)
+async def get_api_key_usage_7d(
+    key_id: str,
+    context: ApiKeysContext = Depends(get_api_keys_context),
+) -> ApiKeyUsage7DayResponse:
+    result = await context.service.get_key_usage_7d(key_id)
+    if result is None:
+        raise DashboardNotFoundError(f"API key not found: {key_id}")
+    return ApiKeyUsage7DayResponse(
+        key_id=result.key_id,
+        total_tokens=result.total_tokens,
+        total_cost_usd=result.total_cost_usd,
+        total_requests=result.total_requests,
+        cached_input_tokens=result.cached_input_tokens,
+    )

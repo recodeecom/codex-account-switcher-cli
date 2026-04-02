@@ -1,0 +1,115 @@
+from __future__ import annotations
+
+import logging
+import time
+from asyncio import Semaphore
+
+from starlette.types import ASGIApp, Receive, Scope, Send
+
+from app.core.resilience.memory_monitor import is_memory_pressure, is_memory_warning
+
+logger = logging.getLogger(__name__)
+
+_MEMORY_WARNING_LOG_INTERVAL = 30.0
+_last_memory_warning_log: float = 0.0
+
+
+async def _reject_websocket(receive: Receive, send: Send, *, reason: str) -> None:
+    try:
+        event = await receive()
+        if event.get("type") != "websocket.connect":
+            return
+    except Exception:
+        return
+    await send({"type": "websocket.close", "code": 1013, "reason": reason})
+
+
+class BulkheadSemaphore:
+    def __init__(self, proxy_limit: int = 200, dashboard_limit: int = 50, background_limit: int = 10) -> None:
+        self._proxy = Semaphore(proxy_limit) if proxy_limit > 0 else None
+        self._dashboard = Semaphore(dashboard_limit) if dashboard_limit > 0 else None
+        self._background = Semaphore(background_limit) if background_limit > 0 else None
+
+    def get_semaphore(self, path: str) -> Semaphore | None:
+        if path.startswith("/v1/") or path.startswith("/backend-api/"):
+            return self._proxy
+        return self._dashboard
+
+
+class BulkheadMiddleware:
+    def __init__(self, app: ASGIApp, *, bulkhead: BulkheadSemaphore) -> None:
+        self.app = app
+        self._bulkhead = bulkhead
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] not in ("http", "websocket"):
+            await self.app(scope, receive, send)
+            return
+
+        path = scope.get("path", "")
+
+        if path.startswith("/health"):
+            await self.app(scope, receive, send)
+            return
+
+        if is_memory_warning():
+            global _last_memory_warning_log
+            now = time.monotonic()
+            if now - _last_memory_warning_log >= _MEMORY_WARNING_LOG_INTERVAL:
+                _last_memory_warning_log = now
+                logger.warning("Memory warning threshold exceeded")
+
+        if is_memory_pressure():
+            if scope["type"] == "websocket":
+                await _reject_websocket(receive, send, reason="Service temporarily unavailable (memory pressure)")
+                return
+            body = b'{"detail":"Service temporarily unavailable (memory pressure)"}'
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 503,
+                    "headers": [(b"retry-after", b"5"), (b"content-type", b"application/json")],
+                }
+            )
+            await send({"type": "http.response.body", "body": body})
+            return
+
+        sem = self._bulkhead.get_semaphore(path)
+        if sem is None:
+            await self.app(scope, receive, send)
+            return
+
+        if sem._value <= 0:
+            if scope["type"] == "websocket":
+                await _reject_websocket(receive, send, reason="Service temporarily unavailable (bulkhead full)")
+                return
+            body = b'{"detail":"Service temporarily unavailable (bulkhead full)"}'
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 503,
+                    "headers": [(b"retry-after", b"5"), (b"content-type", b"application/json")],
+                }
+            )
+            await send({"type": "http.response.body", "body": body})
+            return
+
+        await sem.acquire()
+
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            sem.release()
+
+
+_bulkhead: BulkheadSemaphore | None = None
+
+
+def get_bulkhead(proxy_limit: int = 200, dashboard_limit: int = 50) -> BulkheadSemaphore:
+    global _bulkhead
+    if _bulkhead is None:
+        _bulkhead = BulkheadSemaphore(proxy_limit=proxy_limit, dashboard_limit=dashboard_limit)
+    return _bulkhead
+
+
+__all__ = ["BulkheadMiddleware", "BulkheadSemaphore", "get_bulkhead"]

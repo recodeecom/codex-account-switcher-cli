@@ -1,0 +1,55 @@
+# Project-specific
+refs/
+poc/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Env/config
+.env
+.env.*
+!.env.example
+.python-version
+
+# Build artifacts
+build/
+dist/
+app/static/
+deploy/helm/*/charts/
+
+# Node
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/
+
+# Editors/OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Local
+.local/
+.worktrees/
+certs/
+
+.codex-lb/
+.sisyphus/
+
+.specstory/
+
+.agents/hooks/state/
+.agents/.personality_migration
+.agents/version.json
+.agents/log/
+.venv
+
+.omx/
