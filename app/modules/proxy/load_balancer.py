@@ -632,22 +632,16 @@ class LoadBalancer:
         if existing:
             pinned = next((state for state in states if state.account_id == existing), None)
             if pinned is not None:
-                # Check if pinned account has insufficient budget (< 5% remaining)
-                # or rate limit is far away (reset_at more than 10 minutes away)
+                # Keep existing pinned mappings stable; only explicit
+                # long rate-limit waits trigger a temporary fallback.
                 now = time.time()
-                budget_exhausted = (
-                    sticky_kind == StickySessionKind.PROMPT_CACHE
-                    and pinned.status != AccountStatus.RATE_LIMITED
-                    and pinned.used_percent is not None
-                    and pinned.used_percent > budget_threshold_pct
-                )
                 rate_limit_far_away = (
                     sticky_kind == StickySessionKind.PROMPT_CACHE
                     and pinned.status == AccountStatus.RATE_LIMITED
                     and pinned.reset_at is not None
                     and pinned.reset_at - now >= 600  # 10 minutes
                 )
-                if not (budget_exhausted or rate_limit_far_away):
+                if not rate_limit_far_away:
                     pinned_result = select_account(
                         [pinned],
                         prefer_earlier_reset=prefer_earlier_reset_accounts,
@@ -659,41 +653,10 @@ class LoadBalancer:
                             await sticky_repo.upsert(sticky_key, pinned.account_id, kind=sticky_kind)
                         return pinned_result
                 else:
-                    # Before reallocating, check whether the pool has a
-                    # meaningfully better candidate.  When every account
-                    # is above the budget threshold, reallocating just
-                    # wastes DB writes and destroys prompt-cache locality
-                    # (thrashing).
-                    if budget_exhausted:
-                        pool_best = select_account(
-                            states,
-                            prefer_earlier_reset=prefer_earlier_reset_accounts,
-                            routing_strategy=routing_strategy,
-                            deterministic_probe=True,
-                        )
-                        pool_also_exhausted = pool_best.account is not None and (
-                            pool_best.account.account_id == pinned.account_id
-                            or (
-                                pool_best.account.used_percent is not None
-                                and pool_best.account.used_percent > budget_threshold_pct
-                            )
-                        )
-                        if pool_also_exhausted:
-                            pinned_result = select_account(
-                                [pinned],
-                                prefer_earlier_reset=prefer_earlier_reset_accounts,
-                                routing_strategy=routing_strategy,
-                                allow_backoff_fallback=False,
-                            )
-                            if pinned_result.account is not None:
-                                if sticky_max_age_seconds is not None:
-                                    await sticky_repo.upsert(
-                                        sticky_key,
-                                        pinned.account_id,
-                                        kind=sticky_kind,
-                                    )
-                                return pinned_result
-                    reallocate_sticky = True
+                    # Existing prompt-cache mappings stay stable even when
+                    # budget is low; low-budget steering applies to creating
+                    # new mappings, not to rewriting active ones.
+                    reallocate_sticky = False
                 # Grace period: if the pinned account is rate-limited with a
                 # known reset time within a short window, retry selection
                 # with a small time advance to preserve prompt cache.
@@ -731,8 +694,20 @@ class LoadBalancer:
             else:
                 await sticky_repo.delete(sticky_key, kind=sticky_kind)
 
+        selection_pool = states
+        if existing is None and sticky_kind == StickySessionKind.PROMPT_CACHE:
+            # New prompt-cache mappings should avoid low-budget accounts.
+            # Existing mappings are handled above and remain pinned.
+            eligible_pool = [
+                state
+                for state in states
+                if state.used_percent is None or state.used_percent <= budget_threshold_pct
+            ]
+            if eligible_pool:
+                selection_pool = eligible_pool
+
         chosen = select_account(
-            states,
+            selection_pool,
             prefer_earlier_reset=prefer_earlier_reset_accounts,
             routing_strategy=routing_strategy,
         )

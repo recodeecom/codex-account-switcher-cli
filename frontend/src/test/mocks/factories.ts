@@ -306,6 +306,7 @@ export function createDashboardSettings(
 		preferEarlierResetAccounts: false,
 		routingStrategy: "usage_weighted",
 		openaiCacheAffinityMaxAgeSeconds: 300,
+		stickyReallocationBudgetThresholdPct: 95,
 		importWithoutOverwrite: false,
 		totpRequiredOnLogin: false,
 		totpConfigured: true,

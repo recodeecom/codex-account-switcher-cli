@@ -145,7 +145,7 @@ def test_model_class_extraction_for_all_model_types():
 
 
 @pytest.mark.asyncio
-async def test_prompt_cache_reallocates_when_usage_exceeds_configured_budget_threshold(async_client, monkeypatch):
+async def test_prompt_cache_threshold_avoids_low_budget_for_new_keys_only(async_client, monkeypatch):
     settings_response = await async_client.put(
         "/api/settings",
         json={
@@ -186,15 +186,15 @@ async def test_prompt_cache_reallocates_when_usage_exceeds_configured_budget_thr
 
     monkeypatch.setattr(proxy_module, "core_stream_responses", fake_stream)
 
-    payload = {
+    existing_payload = {
         "model": "gpt-5.1",
         "instructions": "hi",
         "input": [],
         "stream": True,
-        "prompt_cache_key": "budget-threshold-key",
+        "prompt_cache_key": "budget-threshold-existing",
     }
 
-    first = await async_client.post("/backend-api/codex/responses", json=payload)
+    first = await async_client.post("/backend-api/codex/responses", json=existing_payload)
     assert first.status_code == 200
     assert seen == ["acc_budget_a"]
 
@@ -215,9 +215,22 @@ async def test_prompt_cache_reallocates_when_usage_exceeds_configured_budget_thr
             window_minutes=300,
         )
 
-    second = await async_client.post("/backend-api/codex/responses", json=payload)
+    second = await async_client.post("/backend-api/codex/responses", json=existing_payload)
     assert second.status_code == 200
-    assert seen == ["acc_budget_a", "acc_budget_b"]
+    # Existing prompt-cache mapping remains pinned.
+    assert seen == ["acc_budget_a", "acc_budget_a"]
+
+    new_payload = {
+        "model": "gpt-5.1",
+        "instructions": "hi",
+        "input": [],
+        "stream": True,
+        "prompt_cache_key": "budget-threshold-new",
+    }
+    third = await async_client.post("/backend-api/codex/responses", json=new_payload)
+    assert third.status_code == 200
+    # New prompt-cache mapping avoids low-budget account acc_budget_a.
+    assert seen == ["acc_budget_a", "acc_budget_a", "acc_budget_b"]
 
 
 def test_owner_mismatch_raises_409_for_retry() -> None:

@@ -153,6 +153,8 @@ async def update_settings(
             "prefer_earlier_reset_accounts",
             "routing_strategy",
             "openai_cache_affinity_max_age_seconds",
+            "http_responses_session_bridge_prompt_cache_idle_ttl_seconds",
+            "sticky_reallocation_budget_threshold_pct",
             "import_without_overwrite",
             "totp_required_on_login",
             "api_key_auth_enabled",

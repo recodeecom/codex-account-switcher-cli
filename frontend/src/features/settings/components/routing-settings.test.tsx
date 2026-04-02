@@ -11,6 +11,7 @@ const BASE_SETTINGS: DashboardSettings = {
   preferEarlierResetAccounts: true,
   routingStrategy: "usage_weighted",
   openaiCacheAffinityMaxAgeSeconds: 300,
+  stickyReallocationBudgetThresholdPct: 95,
   importWithoutOverwrite: false,
   totpRequiredOnLogin: false,
   totpConfigured: false,
@@ -25,7 +26,7 @@ describe("RoutingSettings", () => {
       <RoutingSettings settings={BASE_SETTINGS} busy={false} onSave={onSave} />,
     );
 
-    const ttlInput = screen.getByRole("spinbutton");
+    const ttlInput = screen.getByRole("spinbutton", { name: "Prompt-cache affinity TTL seconds" });
     await user.clear(ttlInput);
     await user.type(ttlInput, "180");
     await user.click(screen.getByRole("button", { name: "Save TTL" }));
@@ -36,6 +37,7 @@ describe("RoutingSettings", () => {
       preferEarlierResetAccounts: true,
       routingStrategy: "usage_weighted",
       openaiCacheAffinityMaxAgeSeconds: 180,
+      stickyReallocationBudgetThresholdPct: 95,
       importWithoutOverwrite: false,
       totpRequiredOnLogin: false,
       apiKeyAuthEnabled: true,
@@ -49,8 +51,8 @@ describe("RoutingSettings", () => {
       />,
     );
 
-    await user.clear(screen.getByRole("spinbutton"));
-    await user.type(screen.getByRole("spinbutton"), "240{Enter}");
+    await user.clear(screen.getByRole("spinbutton", { name: "Prompt-cache affinity TTL seconds" }));
+    await user.type(screen.getByRole("spinbutton", { name: "Prompt-cache affinity TTL seconds" }), "240{Enter}");
 
     expect(onSave).toHaveBeenLastCalledWith({
       stickyThreadsEnabled: false,
@@ -58,6 +60,7 @@ describe("RoutingSettings", () => {
       preferEarlierResetAccounts: true,
       routingStrategy: "usage_weighted",
       openaiCacheAffinityMaxAgeSeconds: 240,
+      stickyReallocationBudgetThresholdPct: 95,
       importWithoutOverwrite: false,
       totpRequiredOnLogin: false,
       apiKeyAuthEnabled: true,
@@ -69,7 +72,7 @@ describe("RoutingSettings", () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     render(<RoutingSettings settings={BASE_SETTINGS} busy={false} onSave={onSave} />);
 
-    const ttlInput = screen.getByRole("spinbutton");
+    const ttlInput = screen.getByRole("spinbutton", { name: "Prompt-cache affinity TTL seconds" });
     const saveButton = screen.getByRole("button", { name: "Save TTL" });
     expect(saveButton).toBeDisabled();
 
@@ -85,6 +88,55 @@ describe("RoutingSettings", () => {
       preferEarlierResetAccounts: true,
       routingStrategy: "usage_weighted",
       openaiCacheAffinityMaxAgeSeconds: 300,
+      stickyReallocationBudgetThresholdPct: 95,
+      importWithoutOverwrite: false,
+      totpRequiredOnLogin: false,
+      apiKeyAuthEnabled: true,
+    });
+  });
+
+  it("saves low-budget switch threshold from button and Enter key", async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const { rerender } = render(
+      <RoutingSettings settings={BASE_SETTINGS} busy={false} onSave={onSave} />,
+    );
+
+    const thresholdInput = screen.getByRole("spinbutton", { name: "Low-budget switch threshold percent" });
+    await user.clear(thresholdInput);
+    await user.type(thresholdInput, "85.5");
+    await user.click(screen.getByRole("button", { name: "Save Threshold" }));
+
+    expect(onSave).toHaveBeenCalledWith({
+      stickyThreadsEnabled: false,
+      upstreamStreamTransport: "default",
+      preferEarlierResetAccounts: true,
+      routingStrategy: "usage_weighted",
+      openaiCacheAffinityMaxAgeSeconds: 300,
+      stickyReallocationBudgetThresholdPct: 85.5,
+      importWithoutOverwrite: false,
+      totpRequiredOnLogin: false,
+      apiKeyAuthEnabled: true,
+    });
+
+    rerender(
+      <RoutingSettings
+        settings={{ ...BASE_SETTINGS, stickyReallocationBudgetThresholdPct: 85.5 }}
+        busy={false}
+        onSave={onSave}
+      />,
+    );
+
+    await user.clear(screen.getByRole("spinbutton", { name: "Low-budget switch threshold percent" }));
+    await user.type(screen.getByRole("spinbutton", { name: "Low-budget switch threshold percent" }), "70{Enter}");
+
+    expect(onSave).toHaveBeenLastCalledWith({
+      stickyThreadsEnabled: false,
+      upstreamStreamTransport: "default",
+      preferEarlierResetAccounts: true,
+      routingStrategy: "usage_weighted",
+      openaiCacheAffinityMaxAgeSeconds: 300,
+      stickyReallocationBudgetThresholdPct: 70,
       importWithoutOverwrite: false,
       totpRequiredOnLogin: false,
       apiKeyAuthEnabled: true,

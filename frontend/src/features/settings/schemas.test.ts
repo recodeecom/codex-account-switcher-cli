@@ -13,6 +13,7 @@ describe("DashboardSettingsSchema", () => {
       preferEarlierResetAccounts: false,
       routingStrategy: "round_robin",
       openaiCacheAffinityMaxAgeSeconds: 300,
+      stickyReallocationBudgetThresholdPct: 95,
       importWithoutOverwrite: true,
       totpRequiredOnLogin: true,
       totpConfigured: false,
@@ -23,6 +24,7 @@ describe("DashboardSettingsSchema", () => {
     expect(parsed.upstreamStreamTransport).toBe("default");
     expect(parsed.routingStrategy).toBe("round_robin");
     expect(parsed.openaiCacheAffinityMaxAgeSeconds).toBe(300);
+    expect(parsed.stickyReallocationBudgetThresholdPct).toBe(95);
     expect(parsed.importWithoutOverwrite).toBe(true);
     expect(parsed.apiKeyAuthEnabled).toBe(true);
   });
@@ -36,12 +38,14 @@ describe("SettingsUpdateRequestSchema", () => {
       preferEarlierResetAccounts: true,
       routingStrategy: "usage_weighted",
       openaiCacheAffinityMaxAgeSeconds: 120,
+      stickyReallocationBudgetThresholdPct: 88.5,
       importWithoutOverwrite: true,
       totpRequiredOnLogin: true,
       apiKeyAuthEnabled: false,
     });
 
     expect(parsed.openaiCacheAffinityMaxAgeSeconds).toBe(120);
+    expect(parsed.stickyReallocationBudgetThresholdPct).toBe(88.5);
     expect(parsed.upstreamStreamTransport).toBe("websocket");
     expect(parsed.importWithoutOverwrite).toBe(true);
     expect(parsed.routingStrategy).toBe("usage_weighted");
@@ -60,6 +64,7 @@ describe("SettingsUpdateRequestSchema", () => {
     expect(parsed.totpRequiredOnLogin).toBeUndefined();
     expect(parsed.apiKeyAuthEnabled).toBeUndefined();
     expect(parsed.openaiCacheAffinityMaxAgeSeconds).toBeUndefined();
+    expect(parsed.stickyReallocationBudgetThresholdPct).toBeUndefined();
   });
 
   it("rejects invalid types", () => {

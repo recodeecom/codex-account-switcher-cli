@@ -241,7 +241,7 @@ async def test_all_accounts_exhausted_keeps_pinned_no_thrashing():
 
 
 @pytest.mark.asyncio
-async def test_pool_exhausted_but_better_candidate_exists_reallocates():
+async def test_pool_exhausted_but_better_candidate_keeps_existing_mapping():
     acc_a = _active("a", used_percent=96.0)
     acc_b = _active("b", used_percent=50.0)
     acc_c = _active("c", used_percent=97.0)
@@ -255,9 +255,9 @@ async def test_pool_exhausted_but_better_candidate_exists_reallocates():
     )
 
     assert result.account is not None
-    assert result.account.account_id == "b"
-    repo.delete.assert_called_once_with("key1", kind=StickySessionKind.PROMPT_CACHE)
-    repo.upsert.assert_called_once_with("key1", "b", kind=StickySessionKind.PROMPT_CACHE)
+    assert result.account.account_id == "a"
+    repo.delete.assert_not_called()
+    repo.upsert.assert_called_once_with("key1", "a", kind=StickySessionKind.PROMPT_CACHE)
 
 
 @pytest.mark.asyncio
@@ -363,7 +363,7 @@ async def test_pool_exhausted_with_custom_threshold():
 
 
 @pytest.mark.asyncio
-async def test_pool_exhausted_candidate_with_none_usage_triggers_reallocation():
+async def test_pool_exhausted_candidate_with_none_usage_keeps_existing_mapping():
     acc_a = _active("a", used_percent=96.0)
     acc_b = AccountState("b", AccountStatus.ACTIVE, used_percent=None)
     repo = _make_sticky_repo(existing_account_id="a")
@@ -376,9 +376,9 @@ async def test_pool_exhausted_candidate_with_none_usage_triggers_reallocation():
     )
 
     assert result.account is not None
-    assert result.account.account_id == "b"
-    repo.delete.assert_called_once_with("key1", kind=StickySessionKind.PROMPT_CACHE)
-    repo.upsert.assert_called_once_with("key1", "b", kind=StickySessionKind.PROMPT_CACHE)
+    assert result.account.account_id == "a"
+    repo.delete.assert_not_called()
+    repo.upsert.assert_called_once_with("key1", "a", kind=StickySessionKind.PROMPT_CACHE)
 
 
 @pytest.mark.asyncio
@@ -393,6 +393,45 @@ async def test_first_request_creates_sticky_mapping():
         "key1",
         repo,
         reallocate_sticky=False,
+    )
+
+    assert result.account is not None
+    assert result.account.account_id == "a"
+    repo.upsert.assert_called_once_with("key1", "a", kind=StickySessionKind.PROMPT_CACHE)
+
+
+@pytest.mark.asyncio
+async def test_first_request_avoids_low_budget_accounts_using_threshold():
+    acc_a = _active("a", used_percent=80.0)
+    acc_b = _active("b", used_percent=40.0)
+    repo = _make_sticky_repo(existing_account_id=None)
+
+    result = await _invoke_stickiness(
+        [acc_a, acc_b],
+        "key1",
+        repo,
+        reallocate_sticky=False,
+        budget_threshold_pct=50.0,
+        routing_strategy="round_robin",
+    )
+
+    assert result.account is not None
+    assert result.account.account_id == "b"
+    repo.upsert.assert_called_once_with("key1", "b", kind=StickySessionKind.PROMPT_CACHE)
+
+
+@pytest.mark.asyncio
+async def test_first_request_falls_back_to_full_pool_when_all_above_threshold():
+    acc_a = _active("a", used_percent=20.0)
+    acc_b = _active("b", used_percent=30.0)
+    repo = _make_sticky_repo(existing_account_id=None)
+
+    result = await _invoke_stickiness(
+        [acc_a, acc_b],
+        "key1",
+        repo,
+        reallocate_sticky=False,
+        budget_threshold_pct=10.0,
     )
 
     assert result.account is not None
@@ -678,9 +717,8 @@ async def test_rate_limit_far_away_without_fallback_preserves_codex_session_affi
 
 
 @pytest.mark.asyncio
-async def test_budget_exhaustion_triggers_reallocation():
-    """When the pinned account has < 5% budget remaining (used_percent >= 95%),
-    it should be reallocated to a different account."""
+async def test_budget_exhaustion_keeps_existing_mapping_pinned():
+    """Low-budget handling applies to new mappings, not active mappings."""
     acc_a = _active("a", used_percent=96.0)  # 96% used = < 4% remaining
     acc_b = _active("b", used_percent=50.0)
     repo = _make_sticky_repo(existing_account_id="a")
@@ -693,13 +731,13 @@ async def test_budget_exhaustion_triggers_reallocation():
     )
 
     assert result.account is not None
-    assert result.account.account_id == "b"
-    repo.delete.assert_called_once_with("key1", kind=StickySessionKind.PROMPT_CACHE)
-    repo.upsert.assert_called_once_with("key1", "b", kind=StickySessionKind.PROMPT_CACHE)
+    assert result.account.account_id == "a"
+    repo.delete.assert_not_called()
+    repo.upsert.assert_called_once_with("key1", "a", kind=StickySessionKind.PROMPT_CACHE)
 
 
 @pytest.mark.asyncio
-async def test_budget_threshold_80_triggers_at_85_percent():
+async def test_budget_threshold_80_keeps_existing_mapping_at_85_percent():
     acc_a = _active("a", used_percent=85.0)
     acc_b = _active("b", used_percent=50.0)
     repo = _make_sticky_repo(existing_account_id="a")
@@ -713,9 +751,9 @@ async def test_budget_threshold_80_triggers_at_85_percent():
     )
 
     assert result.account is not None
-    assert result.account.account_id == "b"
-    repo.delete.assert_called_once_with("key1", kind=StickySessionKind.PROMPT_CACHE)
-    repo.upsert.assert_called_once_with("key1", "b", kind=StickySessionKind.PROMPT_CACHE)
+    assert result.account.account_id == "a"
+    repo.delete.assert_not_called()
+    repo.upsert.assert_called_once_with("key1", "a", kind=StickySessionKind.PROMPT_CACHE)
 
 
 @pytest.mark.asyncio
@@ -761,9 +799,9 @@ async def test_budget_threshold_does_not_reallocate_codex_session_affinity():
 
 
 @pytest.mark.asyncio
-async def test_rate_limit_far_away_triggers_reallocation():
-    """When the pinned account's rate limit reset is more than 10 minutes away,
-    it should be reallocated to avoid waiting."""
+async def test_rate_limit_far_away_uses_fallback_without_rewriting_mapping():
+    """When the pinned account's rate limit reset is far away, use fallback
+    account for this request but keep prompt-cache mapping unchanged."""
     now = time.time()
     acc_a = _rate_limited("a", reset_at=now + 900)  # resets in 15 minutes > 10 min threshold
     acc_b = _active("b")
@@ -778,5 +816,5 @@ async def test_rate_limit_far_away_triggers_reallocation():
 
     assert result.account is not None
     assert result.account.account_id == "b"
-    repo.delete.assert_called_once_with("key1", kind=StickySessionKind.PROMPT_CACHE)
-    repo.upsert.assert_called_once_with("key1", "b", kind=StickySessionKind.PROMPT_CACHE)
+    repo.delete.assert_not_called()
+    repo.upsert.assert_not_called()

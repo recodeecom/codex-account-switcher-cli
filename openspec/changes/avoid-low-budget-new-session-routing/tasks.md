@@ -1,0 +1,4 @@
+- [x] 1. Update sticky-selection logic so prompt-cache budget threshold is enforced for new mappings only.
+- [x] 2. Add/adjust integration coverage for "existing mapping stays pinned" and "new mapping avoids low-budget account" behavior.
+- [x] 3. Expose `stickyReallocationBudgetThresholdPct` in frontend settings schemas, payload builder, and Routing settings UI controls.
+- [x] 4. Add/update frontend tests for schema parsing, routing settings saves, and payload composition with the threshold field.

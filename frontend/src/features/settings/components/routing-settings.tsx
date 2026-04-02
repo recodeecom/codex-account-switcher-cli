@@ -24,6 +24,9 @@ export function RoutingSettings({ settings, busy, onSave }: RoutingSettingsProps
   const [cacheAffinityTtl, setCacheAffinityTtl] = useState(
     String(settings.openaiCacheAffinityMaxAgeSeconds),
   );
+  const [budgetThreshold, setBudgetThreshold] = useState(
+    String(settings.stickyReallocationBudgetThresholdPct),
+  );
 
   const save = (patch: Partial<SettingsUpdateRequest>) =>
     void onSave(buildSettingsUpdateRequest(settings, patch));
@@ -32,6 +35,12 @@ export function RoutingSettings({ settings, busy, onSave }: RoutingSettingsProps
   const cacheAffinityTtlValid = Number.isInteger(parsedCacheAffinityTtl) && parsedCacheAffinityTtl > 0;
   const cacheAffinityTtlChanged =
     cacheAffinityTtlValid && parsedCacheAffinityTtl !== settings.openaiCacheAffinityMaxAgeSeconds;
+  const parsedBudgetThreshold = Number.parseFloat(budgetThreshold);
+  const budgetThresholdValid = Number.isFinite(parsedBudgetThreshold)
+    && parsedBudgetThreshold >= 0
+    && parsedBudgetThreshold <= 100;
+  const budgetThresholdChanged =
+    budgetThresholdValid && parsedBudgetThreshold !== settings.stickyReallocationBudgetThresholdPct;
 
   return (
     <section className="rounded-xl border bg-card p-5">
@@ -131,6 +140,7 @@ export function RoutingSettings({ settings, busy, onSave }: RoutingSettingsProps
                 min={1}
                 step={1}
                 inputMode="numeric"
+                aria-label="Prompt-cache affinity TTL seconds"
                 value={cacheAffinityTtl}
                 disabled={busy}
                 onChange={(event) => setCacheAffinityTtl(event.target.value)}
@@ -150,6 +160,44 @@ export function RoutingSettings({ settings, busy, onSave }: RoutingSettingsProps
                 onClick={() => void save({ openaiCacheAffinityMaxAgeSeconds: parsedCacheAffinityTtl })}
               >
                 Save TTL
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-medium">Low-budget switch threshold (%)</p>
+              <p className="text-xs text-muted-foreground">
+                For new prompt-cache sessions, avoid accounts above this used-percent threshold.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                min={0}
+                max={100}
+                step={0.1}
+                inputMode="decimal"
+                aria-label="Low-budget switch threshold percent"
+                value={budgetThreshold}
+                disabled={busy}
+                onChange={(event) => setBudgetThreshold(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && budgetThresholdChanged) {
+                    void save({ stickyReallocationBudgetThresholdPct: parsedBudgetThreshold });
+                  }
+                }}
+                className="h-8 w-28 text-xs"
+              />
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8 text-xs"
+                disabled={busy || !budgetThresholdChanged}
+                onClick={() => void save({ stickyReallocationBudgetThresholdPct: parsedBudgetThreshold })}
+              >
+                Save Threshold
               </Button>
             </div>
           </div>
