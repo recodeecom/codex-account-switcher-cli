@@ -50,6 +50,13 @@ const FirewallIpCreatePayloadSchema = z
 	})
 	.passthrough();
 
+const DeviceCreatePayloadSchema = z
+	.object({
+		name: z.string().optional(),
+		ipAddress: z.string().optional(),
+	})
+	.passthrough();
+
 const ApiKeyUpdatePayloadSchema = z
 	.object({
 		name: z.string().optional(),
@@ -108,6 +115,13 @@ type MockState = {
 	settings: DashboardSettings;
 	apiKeys: ApiKey[];
 	firewallEntries: Array<{ ipAddress: string; createdAt: string }>;
+	devices: Array<{
+		id: string;
+		name: string;
+		ipAddress: string;
+		createdAt: string;
+		updatedAt: string;
+	}>;
 	stickySessions: Array<{
 		key: string;
 		displayName: string;
@@ -127,6 +141,7 @@ function createInitialState(): MockState {
 		settings: createDashboardSettings(),
 		apiKeys: createDefaultApiKeys(),
 		firewallEntries: [],
+		devices: [],
 		stickySessions: [],
 	};
 }
@@ -460,6 +475,90 @@ export const handlers = [
 		state.firewallEntries = state.firewallEntries.filter(
 			(entry) => entry.ipAddress !== ipAddress,
 		);
+		return HttpResponse.json({ status: "deleted" });
+	}),
+
+	http.get("/api/devices", () => {
+		return HttpResponse.json({ entries: state.devices });
+	}),
+
+	http.post("/api/devices", async ({ request }) => {
+		const payload = await parseJsonBody(request, DeviceCreatePayloadSchema);
+		const name = String(payload?.name || "").trim();
+		const ipAddress = String(payload?.ipAddress || "").trim();
+
+		if (!name) {
+			return HttpResponse.json(
+				{
+					error: {
+						code: "invalid_device_name",
+						message: "Device name is required",
+					},
+				},
+				{ status: 400 },
+			);
+		}
+		if (!ipAddress) {
+			return HttpResponse.json(
+				{
+					error: {
+						code: "invalid_ip",
+						message: "IP address is required",
+					},
+				},
+				{ status: 400 },
+			);
+		}
+		if (state.devices.some((entry) => entry.name === name)) {
+			return HttpResponse.json(
+				{
+					error: {
+						code: "device_name_exists",
+						message: "Device name already exists",
+					},
+				},
+				{ status: 409 },
+			);
+		}
+		if (state.devices.some((entry) => entry.ipAddress === ipAddress)) {
+			return HttpResponse.json(
+				{
+					error: {
+						code: "device_ip_exists",
+						message: "Device IP address already exists",
+					},
+				},
+				{ status: 409 },
+			);
+		}
+
+		const now = new Date().toISOString();
+		const created = {
+			id: `device_${state.devices.length + 1}`,
+			name,
+			ipAddress,
+			createdAt: now,
+			updatedAt: now,
+		};
+		state.devices = [...state.devices, created];
+		return HttpResponse.json(created);
+	}),
+
+	http.delete("/api/devices/:deviceId", ({ params }) => {
+		const deviceId = String(params.deviceId);
+		const exists = state.devices.some((entry) => entry.id === deviceId);
+		if (!exists) {
+			return HttpResponse.json(
+				{
+					error: {
+						code: "device_not_found",
+						message: "Device not found",
+					},
+				},
+				{ status: 404 },
+			);
+		}
+		state.devices = state.devices.filter((entry) => entry.id !== deviceId);
 		return HttpResponse.json({ status: "deleted" });
 	}),
 

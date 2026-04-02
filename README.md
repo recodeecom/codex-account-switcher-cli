@@ -65,6 +65,44 @@ Open [localhost:2455](http://localhost:2455) → Add account → Done.
 > If you explicitly want browser callback flow on host `1455`, add `-p 1455:1455` to `docker run`
 > (or add the same mapping in your compose file), but it will conflict with `codex login`.
 
+## Fast account switching (`codex-auth` + codex-lb)
+
+If you already use [`codex-auth`](https://www.npmjs.com/package/codex-auth), you can switch and sync in one command:
+
+```bash
+# install project CLI entrypoint once in your venv
+uv sync
+
+# switch local codex-auth snapshot + import into codex-lb
+uv run codex-lb-switch work \
+  --password "$CODEX_LB_DASHBOARD_PASSWORD"
+
+# if TOTP is enforced
+uv run codex-lb-switch work \
+  --password "$CODEX_LB_DASHBOARD_PASSWORD" \
+  --totp-code "123456"
+```
+
+Environment variable shortcuts are also supported:
+
+- `CODEX_LB_URL` (default: `http://127.0.0.1:2455`)
+- `CODEX_LB_DASHBOARD_PASSWORD`
+- `CODEX_LB_DASHBOARD_TOTP_CODE`
+- `CODEX_LB_DASHBOARD_TOTP_COMMAND` (command that prints a code)
+
+`codex-lb-switch` runs `codex-auth use <name>`, then imports `~/.codex/accounts/<name>.json` into codex-lb.
+
+Bulk sync every saved snapshot in one shot:
+
+```bash
+uv run codex-lb-sync-all --password "$CODEX_LB_DASHBOARD_PASSWORD"
+
+# continue through failures and show summary
+uv run codex-lb-sync-all \
+  --password "$CODEX_LB_DASHBOARD_PASSWORD" \
+  --continue-on-error
+```
+
 ## Client Setup
 
 Point any OpenAI-compatible client at codex-lb. If [API key auth](#api-key-authentication) is enabled, pass a key from the dashboard as a Bearer token.

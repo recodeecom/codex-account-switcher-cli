@@ -111,6 +111,8 @@ python-version = "3.13"
 [project.scripts]
 codex-lb = "app.cli:main"
 codex-lb-db = "app.db.migrate:main"
+codex-lb-switch = "app.tools.codex_auth_switch:main"
+codex-lb-sync-all = "app.tools.codex_auth_sync_all:main"
 
 [build-system]
 requires = ["hatchling>=1.27.0"]

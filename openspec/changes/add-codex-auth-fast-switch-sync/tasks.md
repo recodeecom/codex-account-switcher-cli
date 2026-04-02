@@ -1,0 +1,6 @@
+- [x] 1. Add OpenSpec requirement updates for one-command codex-auth switch + codex-lb sync.
+- [x] 2. Implement a CLI command that executes `codex-auth use <name>` and imports the selected snapshot into codex-lb.
+- [x] 3. Support dashboard password/TOTP login flow for protected dashboards.
+- [x] 4. Add unit tests for command utility logic.
+- [x] 5. Document the fast-switch workflow for operators.
+- [x] 6. Add a bulk sync command to import all codex-auth snapshots in one run.

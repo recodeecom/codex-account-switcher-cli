@@ -23,6 +23,8 @@ from app.modules.dashboard_auth.service import (
     DashboardAuthService,
     get_dashboard_session_store,
 )
+from app.modules.devices.repository import DevicesRepository
+from app.modules.devices.service import DevicesRepositoryPort, DevicesService
 from app.modules.firewall.repository import FirewallRepository
 from app.modules.firewall.service import FirewallRepositoryPort, FirewallService
 from app.modules.oauth.service import OauthService
@@ -109,6 +111,13 @@ class FirewallContext:
     session: AsyncSession
     repository: FirewallRepository
     service: FirewallService
+
+
+@dataclass(slots=True)
+class DevicesContext:
+    session: AsyncSession
+    repository: DevicesRepository
+    service: DevicesService
 
 
 @dataclass(slots=True)
@@ -250,6 +259,14 @@ def get_firewall_context(
     repository = FirewallRepository(session)
     service = FirewallService(cast(FirewallRepositoryPort, repository))
     return FirewallContext(session=session, repository=repository, service=service)
+
+
+def get_devices_context(
+    session: AsyncSession = Depends(get_session),
+) -> DevicesContext:
+    repository = DevicesRepository(session)
+    service = DevicesService(cast(DevicesRepositoryPort, repository))
+    return DevicesContext(session=session, repository=repository, service=service)
 
 
 def get_sticky_sessions_context(

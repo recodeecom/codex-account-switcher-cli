@@ -1,0 +1,36 @@
+import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it } from "vitest";
+
+import App from "@/App";
+import { renderWithProviders } from "@/test/utils";
+
+describe("devices flow integration", () => {
+  it("loads devices page and supports add/delete", async () => {
+    const user = userEvent.setup({ delay: null });
+
+    window.history.pushState({}, "", "/devices");
+    renderWithProviders(<App />);
+
+    expect(await screen.findByRole("heading", { name: "Devices" })).toBeInTheDocument();
+
+    await user.type(
+      screen.getByPlaceholderText("Device name (e.g. ksskringdistance03)"),
+      "ksskringdistance03",
+    );
+    await user.type(screen.getByPlaceholderText("IP address (e.g. 192.168.0.1)"), "192.168.0.1");
+
+    await user.click(screen.getByRole("button", { name: "Add device" }));
+    expect(await screen.findByText("ksskringdistance03")).toBeInTheDocument();
+    expect(screen.getByText("192.168.0.1")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+
+    const dialog = await screen.findByRole("alertdialog");
+    await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("ksskringdistance03")).not.toBeInTheDocument();
+    });
+  });
+});
