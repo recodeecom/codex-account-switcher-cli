@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -139,3 +140,35 @@ def test_switch_snapshot_raises_with_command_error(monkeypatch: pytest.MonkeyPat
 
     with pytest.raises(CodexAuthSwitchFailedError, match="failed"):
         switch_snapshot("main")
+
+
+def test_switch_snapshot_repairs_broken_pointer_after_cli_success(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    accounts_dir = tmp_path / "accounts"
+    accounts_dir.mkdir()
+    _write_auth_snapshot(accounts_dir / "main.json", email="main@example.com", account_id="acc-main")
+    current_path = tmp_path / "current"
+    auth_path = tmp_path / "auth.json"
+    auth_path.symlink_to(Path("/home/app/.codex/accounts/main.json"))
+
+    monkeypatch.setenv("CODEX_AUTH_ACCOUNTS_DIR", str(accounts_dir))
+    monkeypatch.setenv("CODEX_AUTH_CURRENT_PATH", str(current_path))
+    monkeypatch.setenv("CODEX_AUTH_JSON_PATH", str(auth_path))
+
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            args=["codex-auth", "use", "main"],
+            returncode=0,
+            stdout="",
+            stderr="",
+        ),
+    )
+
+    switch_snapshot("main")
+
+    assert current_path.read_text(encoding="utf-8").strip() == "main"
+    assert auth_path.resolve() == (accounts_dir / "main.json").resolve()
+    assert not os.readlink(auth_path).startswith("/")

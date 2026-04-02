@@ -4,6 +4,45 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT_DIR"
 
+MODE="turbo"
+TARGET_SERVICES=("server" "frontend")
+
+usage() {
+  cat <<'EOF'
+Usage: ./redeploy.sh [--turbo|--full] [service...]
+
+Modes:
+  --turbo  Build in parallel and restart only selected services (default, faster)
+  --full   Bring stack down and recreate everything (slower, clean reset)
+
+Examples:
+  ./redeploy.sh
+  ./redeploy.sh --turbo server frontend
+  ./redeploy.sh --full
+EOF
+}
+
+while (($#)); do
+  case "$1" in
+    --turbo)
+      MODE="turbo"
+      shift
+      ;;
+    --full)
+      MODE="full"
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      TARGET_SERVICES=("$@")
+      break
+      ;;
+  esac
+done
+
 if ! command -v docker >/dev/null 2>&1; then
   echo "Error: docker is not installed or not in PATH." >&2
   exit 1
@@ -45,9 +84,17 @@ PY
 )"
 
 echo "Bumped frontend version to ${NEW_VERSION}"
-echo "Redeploying docker compose stack..."
+echo "Redeploying docker compose stack in ${MODE} mode..."
 
-docker compose down
-docker compose up -d --build
+if [[ "$MODE" == "full" ]]; then
+  docker compose down
+  docker compose up -d --build "${TARGET_SERVICES[@]}"
+else
+  if ! docker compose build --parallel "${TARGET_SERVICES[@]}"; then
+    echo "Parallel build failed or not supported, falling back to standard build..."
+    docker compose build "${TARGET_SERVICES[@]}"
+  fi
+  docker compose up -d --no-deps "${TARGET_SERVICES[@]}"
+fi
 
 echo "Redeploy complete. Current frontend version: ${NEW_VERSION}"

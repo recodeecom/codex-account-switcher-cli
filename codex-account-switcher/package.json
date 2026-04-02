@@ -1,0 +1,54 @@
+{
+  "name": "codex-auth",
+  "version": "0.1.2",
+  "description": "A command-line tool that lets you manage and switch between multiple Codex accounts instantly, no more constant logins and logouts.",
+  "license": "MIT",
+  "bin": {
+    "codex-auth": "dist/index.js"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepublishOnly": "npm run build"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "codex",
+    "cli",
+    "auth",
+    "accounts",
+    "switch",
+    "tokens"
+  ],
+  "preferGlobal": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Sls0n/codex-account-switcher.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Sls0n/codex-account-switcher/issues"
+  },
+  "homepage": "https://github.com/Sls0n/codex-account-switcher#readme",
+  "author": "Sls0n",
+  "dependencies": {
+    "@oclif/core": "^3.0.0",
+    "prompts": "^2.4.2",
+    "tslib": "^2.8.1"
+  },
+  "devDependencies": {
+    "@types/prompts": "^2.4.9",
+    "typescript": "^5.6.3"
+  },
+  "oclif": {
+    "bin": "codex-auth",
+    "commands": "./dist/commands"
+  }
+}

@@ -128,12 +128,41 @@ def _switch_snapshot_without_cli(snapshot_name: str) -> None:
 
     active_auth_path = _resolve_active_auth_path()
     active_auth_path.parent.mkdir(parents=True, exist_ok=True)
+    _replace_auth_pointer(active_auth_path, snapshot_path)
+
+
+def _replace_auth_pointer(active_auth_path: Path, snapshot_path: Path) -> None:
     if active_auth_path.is_symlink() or active_auth_path.exists():
         active_auth_path.unlink()
     try:
-        active_auth_path.symlink_to(snapshot_path)
-    except OSError:
+        relative_target = Path(os.path.relpath(snapshot_path, start=active_auth_path.parent))
+        active_auth_path.symlink_to(relative_target)
+    except (OSError, ValueError):
         active_auth_path.write_bytes(snapshot_path.read_bytes())
+
+
+def _auth_pointer_is_aligned(snapshot_name: str) -> bool:
+    accounts_dir = _resolve_accounts_dir()
+    expected_snapshot_path = (accounts_dir / f"{snapshot_name}.json").resolve()
+    active_auth_path = _resolve_active_auth_path()
+
+    if not expected_snapshot_path.exists():
+        return False
+
+    if not active_auth_path.exists() and not active_auth_path.is_symlink():
+        return False
+
+    if active_auth_path.is_symlink():
+        try:
+            resolved_target = active_auth_path.resolve()
+        except OSError:
+            return False
+        return resolved_target.exists() and resolved_target == expected_snapshot_path
+
+    try:
+        return active_auth_path.read_bytes() == expected_snapshot_path.read_bytes()
+    except OSError:
+        return False
 
 
 def switch_snapshot(snapshot_name: str) -> None:
@@ -154,6 +183,13 @@ def switch_snapshot(snapshot_name: str) -> None:
             ) from fallback_exc
 
     if completed.returncode == 0:
+        if not _auth_pointer_is_aligned(snapshot_name):
+            try:
+                _switch_snapshot_without_cli(snapshot_name)
+            except Exception as repair_exc:
+                raise CodexAuthSwitchFailedError(
+                    f"codex-auth use {snapshot_name!r} succeeded but auth pointer repair failed: {repair_exc}"
+                ) from repair_exc
         return
 
     detail = (completed.stderr or completed.stdout).strip()

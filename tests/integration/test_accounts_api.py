@@ -207,8 +207,11 @@ async def test_use_account_locally_switches_snapshot(async_client, monkeypatch: 
     accounts_dir.mkdir()
     _write_auth_snapshot(accounts_dir / "work.json", email=email, account_id=raw_account_id)
     monkeypatch.setenv("CODEX_AUTH_ACCOUNTS_DIR", str(accounts_dir))
-    monkeypatch.setenv("CODEX_AUTH_CURRENT_PATH", str(tmp_path / "current"))
-    monkeypatch.setenv("CODEX_AUTH_JSON_PATH", str(tmp_path / "auth.json"))
+    current_path = tmp_path / "current"
+    auth_path = tmp_path / "auth.json"
+    auth_path.symlink_to(Path("/home/app/.codex/accounts/work.json"))
+    monkeypatch.setenv("CODEX_AUTH_CURRENT_PATH", str(current_path))
+    monkeypatch.setenv("CODEX_AUTH_JSON_PATH", str(auth_path))
 
     calls: list[list[str]] = []
 
@@ -223,6 +226,8 @@ async def test_use_account_locally_switches_snapshot(async_client, monkeypatch: 
     assert use_response.json()["status"] == "switched"
     assert use_response.json()["snapshotName"] == "work"
     assert calls == [["codex-auth", "use", "work"]]
+    assert current_path.read_text(encoding="utf-8").strip() == "work"
+    assert auth_path.resolve() == (accounts_dir / "work.json").resolve()
 
 
 @pytest.mark.asyncio
