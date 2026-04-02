@@ -13,6 +13,7 @@ import { useAccounts } from "@/features/accounts/hooks/use-accounts";
 import { useOauth } from "@/features/accounts/hooks/use-oauth";
 import { buildDuplicateAccountIdSet } from "@/utils/account-identifiers";
 import { getErrorMessageOrNull } from "@/utils/errors";
+import { isCodexAuthSnapshotMissingError } from "@/utils/use-local-account";
 
 const OauthDialog = lazy(() =>
   import("@/features/accounts/components/oauth-dialog").then((m) => ({ default: m.OauthDialog })),
@@ -43,6 +44,22 @@ export function AccountsPage() {
     nextSearchParams.set("selected", accountId);
     setSearchParams(nextSearchParams);
   }, [searchParams, setSearchParams]);
+
+  const handleUseLocal = useCallback(
+    (accountId: string) => {
+      useLocalMutation.mutate(accountId, {
+        onError: (error) => {
+          if (!isCodexAuthSnapshotMissingError(error)) {
+            return;
+          }
+          const nextSearchParams = new URLSearchParams(searchParams);
+          nextSearchParams.set("selected", accountId);
+          setSearchParams(nextSearchParams);
+        },
+      });
+    },
+    [searchParams, setSearchParams, useLocalMutation],
+  );
 
   const resolvedSelectedAccountId = useMemo(() => {
     if (accounts.length === 0) {
@@ -97,7 +114,7 @@ export function AccountsPage() {
               accounts={accounts}
               selectedAccountId={resolvedSelectedAccountId}
               onSelect={handleSelectAccount}
-              onUseLocal={(accountId) => void useLocalMutation.mutateAsync(accountId)}
+              onUseLocal={handleUseLocal}
               useLocalBusy={useLocalMutation.isPending}
               onOpenImport={() => importDialog.show()}
               onOpenOauth={() => oauthDialog.show()}
@@ -108,10 +125,10 @@ export function AccountsPage() {
             account={selectedAccount}
             showAccountId={selectedAccount ? duplicateAccountIds.has(selectedAccount.accountId) : false}
             busy={mutationBusy}
-            onPause={(accountId) => void pauseMutation.mutateAsync(accountId)}
-            onResume={(accountId) => void resumeMutation.mutateAsync(accountId)}
+            onPause={(accountId) => pauseMutation.mutate(accountId)}
+            onResume={(accountId) => resumeMutation.mutate(accountId)}
             onDelete={(accountId) => deleteDialog.show(accountId)}
-            onUseLocal={(accountId) => void useLocalMutation.mutateAsync(accountId)}
+            onUseLocal={handleUseLocal}
             useLocalBusy={useLocalMutation.isPending}
             onReauth={() => oauthDialog.show()}
           />
@@ -158,8 +175,10 @@ export function AccountsPage() {
           if (!deleteDialog.data) {
             return;
           }
-          void deleteMutation.mutateAsync(deleteDialog.data).finally(() => {
-            deleteDialog.hide();
+          deleteMutation.mutate(deleteDialog.data, {
+            onSettled: () => {
+              deleteDialog.hide();
+            },
           });
         }}
       />

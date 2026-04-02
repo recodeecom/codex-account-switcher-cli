@@ -101,4 +101,53 @@ describe("AccountListItem", () => {
 
     expect(screen.getByRole("button", { name: "Use this" })).toBeEnabled();
   });
+
+  it("enables use button when snapshot is unavailable but account is active with quota", () => {
+    const account = createAccountSummary({
+      usage: {
+        primaryRemainingPercent: 44,
+        secondaryRemainingPercent: 73,
+      },
+      codexAuth: {
+        hasSnapshot: false,
+        snapshotName: null,
+        activeSnapshotName: null,
+        isActiveSnapshot: false,
+      },
+    });
+
+    render(
+      <AccountListItem
+        account={account}
+        selected={false}
+        onSelect={vi.fn()}
+        onUseLocal={vi.fn()}
+        useLocalBusy={false}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Use this" })).toBeEnabled();
+  });
+
+  it("disables use button when account status is not active", () => {
+    const account = createAccountSummary({
+      status: "deactivated",
+      usage: {
+        primaryRemainingPercent: 44,
+        secondaryRemainingPercent: 73,
+      },
+    });
+
+    render(
+      <AccountListItem
+        account={account}
+        selected={false}
+        onSelect={vi.fn()}
+        onUseLocal={vi.fn()}
+        useLocalBusy={false}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Use this" })).toBeDisabled();
+  });
 });

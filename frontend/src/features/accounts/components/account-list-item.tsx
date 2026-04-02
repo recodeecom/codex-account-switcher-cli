@@ -7,6 +7,7 @@ import type { AccountSummary } from "@/features/accounts/schemas";
 import { normalizeStatus, quotaBarColor, quotaBarTrack } from "@/utils/account-status";
 import { formatCompactAccountId } from "@/utils/account-identifiers";
 import { formatSlug } from "@/utils/formatters";
+import { canUseLocalAccount, getUseLocalAccountDisabledReason } from "@/utils/use-local-account";
 
 export type AccountListItemProps = {
   account: AccountSummary;
@@ -51,15 +52,15 @@ export function AccountListItem({
   const baseSubtitle = emailSubtitle ?? formatSlug(account.planType);
   const idSuffix = showAccountId ? ` | ID ${formatCompactAccountId(account.accountId)}` : "";
   const secondary = account.usage?.secondaryRemainingPercent ?? null;
-  const hasFiveHourQuota = typeof account.usage?.primaryRemainingPercent === "number"
-    && account.usage.primaryRemainingPercent > 0;
-  const hasSnapshot = account.codexAuth?.hasSnapshot ?? false;
-  const canUseLocally = hasFiveHourQuota && hasSnapshot;
-  const disabledReason = !hasFiveHourQuota
-    ? "No 5h quota remaining."
-    : !hasSnapshot
-      ? "No codex-auth snapshot found for this account."
-      : null;
+  const primaryRemaining = account.usage?.primaryRemainingPercent;
+  const canUseLocally = canUseLocalAccount({
+    status: account.status,
+    primaryRemainingPercent: primaryRemaining,
+  });
+  const disabledReason = getUseLocalAccountDisabledReason({
+    status: account.status,
+    primaryRemainingPercent: primaryRemaining,
+  });
 
   return (
     <div

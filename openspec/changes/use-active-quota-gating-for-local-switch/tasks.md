@@ -1,0 +1,5 @@
+- [x] 1. Add OpenSpec delta for active+quota based local-switch gating in account UI surfaces.
+- [x] 2. Implement shared frontend gating logic for dashboard and accounts views.
+- [x] 3. Remove snapshot-based pre-disable logic from local-switch buttons.
+- [x] 4. Add/update unit and integration tests for active/quota gating and snapshot-missing error path.
+- [x] 5. Bump frontend patch version and run lint/typecheck/tests.

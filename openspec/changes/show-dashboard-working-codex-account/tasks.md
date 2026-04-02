@@ -1,0 +1,5 @@
+- [x] Extend dashboard overview backend payloads to include per-account `codexAuth` snapshot status.
+- [x] Add dashboard account-card `Working now` indicator when `codexAuth.isActiveSnapshot` is true.
+- [x] Invalidate dashboard overview query after `Use this account` succeeds.
+- [x] Add/extend backend and frontend tests for indicator visibility and switch refresh behavior.
+- [x] Validate specs with `openspec validate --specs`.

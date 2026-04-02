@@ -120,8 +120,10 @@ async def test_dashboard_overview_auto_imports_codex_auth_snapshots(
     accounts_dir = tmp_path / "accounts"
     accounts_dir.mkdir()
     _write_auth_snapshot(accounts_dir / "tokio.json", email="tokio@example.com", account_id="acc_tokio")
+    (tmp_path / "current").write_text("tokio")
     monkeypatch.setenv("CODEX_LB_CODEX_AUTH_AUTO_IMPORT_ON_ACCOUNTS_LIST", "true")
     monkeypatch.setenv("CODEX_AUTH_ACCOUNTS_DIR", str(accounts_dir))
+    monkeypatch.setenv("CODEX_AUTH_CURRENT_PATH", str(tmp_path / "current"))
     monkeypatch.setenv("CODEX_AUTH_JSON_PATH", str(tmp_path / "missing-auth.json"))
     from app.core.config.settings import get_settings
 
@@ -134,6 +136,11 @@ async def test_dashboard_overview_auto_imports_codex_auth_snapshots(
 
     account_ids = [account["accountId"] for account in payload["accounts"]]
     assert expected_account_id in account_ids
+    matching_account = next(account for account in payload["accounts"] if account["accountId"] == expected_account_id)
+    assert matching_account["codexAuth"]["hasSnapshot"] is True
+    assert matching_account["codexAuth"]["snapshotName"] == "tokio"
+    assert matching_account["codexAuth"]["activeSnapshotName"] == "tokio"
+    assert matching_account["codexAuth"]["isActiveSnapshot"] is True
 
 
 @pytest.mark.asyncio

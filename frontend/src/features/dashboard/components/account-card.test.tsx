@@ -93,7 +93,7 @@ describe("AccountCard", () => {
     expect(screen.getByRole("button", { name: "Use this account" })).toBeDisabled();
   });
 
-  it("disables use this account button when codex-auth snapshot is unavailable", () => {
+  it("enables use this account button when codex-auth snapshot is unavailable but account is active with quota", () => {
     const account = createAccountSummary({
       usage: {
         primaryRemainingPercent: 44,
@@ -104,6 +104,26 @@ describe("AccountCard", () => {
         snapshotName: null,
         activeSnapshotName: null,
         isActiveSnapshot: false,
+      },
+    });
+
+    render(<AccountCard account={account} />);
+
+    expect(screen.getByRole("button", { name: "Use this account" })).toBeEnabled();
+  });
+
+  it("disables use this account button when account status is not active", () => {
+    const account = createAccountSummary({
+      status: "deactivated",
+      usage: {
+        primaryRemainingPercent: 44,
+        secondaryRemainingPercent: 73,
+      },
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
       },
     });
 
@@ -122,5 +142,35 @@ describe("AccountCard", () => {
     await user.click(screen.getByRole("button", { name: "Use this account" }));
 
     expect(onAction).toHaveBeenCalledWith(account, "useLocal");
+  });
+
+  it("shows working indicator when account snapshot is active", () => {
+    const account = createAccountSummary({
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
+      },
+    });
+
+    render(<AccountCard account={account} />);
+
+    expect(screen.getByText("Working now")).toBeInTheDocument();
+  });
+
+  it("hides working indicator when account snapshot is not active", () => {
+    const account = createAccountSummary({
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "secondary",
+        activeSnapshotName: "main",
+        isActiveSnapshot: false,
+      },
+    });
+
+    render(<AccountCard account={account} />);
+
+    expect(screen.queryByText("Working now")).not.toBeInTheDocument();
   });
 });

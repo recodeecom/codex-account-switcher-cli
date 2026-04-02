@@ -1,10 +1,11 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
 import App from "@/App";
 import {
+  createAccountSummary,
   createDashboardOverview,
   createDefaultRequestLogs,
   createRequestLogFilterOptions,
@@ -82,10 +83,74 @@ describe("dashboard flow integration", () => {
     expect(await screen.findByRole("heading", { name: "Dashboard" })).toBeInTheDocument();
 
     const useButtons = await screen.findAllByRole("button", { name: "Use this account" });
-    const enabledButton = useButtons.find((button) => !button.hasAttribute("disabled"));
-    expect(enabledButton).toBeDefined();
+    const targetButton = useButtons.find((button) => !button.hasAttribute("disabled"));
+    if (!targetButton) {
+      throw new Error("Expected an enabled account switch target");
+    }
+    const targetCard = targetButton.closest(".card-hover");
+    if (!(targetCard instanceof HTMLElement)) {
+      throw new Error("Expected target account card");
+    }
 
-    await user.click(enabledButton!);
+    await user.click(targetButton);
     expect(await screen.findByText(/Switched to/i)).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(within(targetCard).getByText("Working now")).toBeInTheDocument();
+    });
+  });
+
+  it("allows use button for active account with quota and surfaces snapshot errors on click", async () => {
+    const user = userEvent.setup({ delay: null });
+
+    server.use(
+      http.get("/api/dashboard/overview", () =>
+        HttpResponse.json(
+          createDashboardOverview({
+            accounts: [
+              createAccountSummary({
+                accountId: "acc_no_snapshot",
+                status: "active",
+                usage: {
+                  primaryRemainingPercent: 44,
+                  secondaryRemainingPercent: 73,
+                },
+                codexAuth: {
+                  hasSnapshot: false,
+                  snapshotName: null,
+                  activeSnapshotName: null,
+                  isActiveSnapshot: false,
+                },
+              }),
+            ],
+          }),
+        ),
+      ),
+      http.post("/api/accounts/:accountId/use-local", ({ params }) => {
+        if (params.accountId === "acc_no_snapshot") {
+          return HttpResponse.json(
+            {
+              error: {
+                code: "codex_auth_snapshot_not_found",
+                message: "No codex-auth snapshot found for this account.",
+              },
+            },
+            { status: 400 },
+          );
+        }
+        return HttpResponse.json({ status: "switched", accountId: String(params.accountId), snapshotName: "main" });
+      }),
+    );
+
+    window.history.pushState({}, "", "/dashboard");
+    renderWithProviders(<App />);
+
+    expect(await screen.findByRole("heading", { name: "Dashboard" })).toBeInTheDocument();
+
+    const useButton = await screen.findByRole("button", { name: "Use this account" }) as HTMLButtonElement;
+    expect(useButton).toBeEnabled();
+
+    await user.click(useButton);
+    expect(await screen.findByText("No codex-auth snapshot found for this account.")).toBeInTheDocument();
   });
 });

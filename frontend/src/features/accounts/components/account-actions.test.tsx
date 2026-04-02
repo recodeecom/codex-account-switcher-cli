@@ -1,0 +1,65 @@
+import { render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+
+import { AccountActions } from "@/features/accounts/components/account-actions";
+import { createAccountSummary } from "@/test/mocks/factories";
+
+function renderAccountActions(accountOverrides: Parameters<typeof createAccountSummary>[0] = {}) {
+  const account = createAccountSummary(accountOverrides);
+  render(
+    <AccountActions
+      account={account}
+      busy={false}
+      useLocalBusy={false}
+      onPause={vi.fn()}
+      onResume={vi.fn()}
+      onDelete={vi.fn()}
+      onUseLocal={vi.fn()}
+      onReauth={vi.fn()}
+    />,
+  );
+}
+
+describe("AccountActions", () => {
+  it("enables Use this when account is active with 5h quota even without snapshot", () => {
+    renderAccountActions({
+      status: "active",
+      usage: {
+        primaryRemainingPercent: 44,
+        secondaryRemainingPercent: 73,
+      },
+      codexAuth: {
+        hasSnapshot: false,
+        snapshotName: null,
+        activeSnapshotName: null,
+        isActiveSnapshot: false,
+      },
+    });
+
+    expect(screen.getByRole("button", { name: "Use this" })).toBeEnabled();
+  });
+
+  it("disables Use this when account is not active", () => {
+    renderAccountActions({
+      status: "deactivated",
+      usage: {
+        primaryRemainingPercent: 44,
+        secondaryRemainingPercent: 73,
+      },
+    });
+
+    expect(screen.getByRole("button", { name: "Use this" })).toBeDisabled();
+  });
+
+  it("disables Use this when 5h quota is unavailable", () => {
+    renderAccountActions({
+      status: "active",
+      usage: {
+        primaryRemainingPercent: 0,
+        secondaryRemainingPercent: 73,
+      },
+    });
+
+    expect(screen.getByRole("button", { name: "Use this" })).toBeDisabled();
+  });
+});

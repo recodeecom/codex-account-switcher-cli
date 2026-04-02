@@ -1,6 +1,7 @@
 import { Clock, ExternalLink, Play, RotateCcw } from "lucide-react";
 
 import { usePrivacyStore } from "@/hooks/use-privacy";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/status-badge";
 import { cn } from "@/lib/utils";
@@ -12,6 +13,7 @@ import {
   quotaBarTrack,
 } from "@/utils/account-status";
 import { formatPercentNullable, formatQuotaResetLabel, formatSlug } from "@/utils/formatters";
+import { canUseLocalAccount, getUseLocalAccountDisabledReason } from "@/utils/use-local-account";
 
 type AccountAction = "details" | "resume" | "reauth" | "useLocal";
 
@@ -71,14 +73,16 @@ export function AccountCard({ account, showAccountId = false, useLocalBusy = fal
   const status = normalizeStatus(account.status);
   const primaryRemaining = account.usage?.primaryRemainingPercent ?? null;
   const secondaryRemaining = account.usage?.secondaryRemainingPercent ?? null;
+  const isWorkingNow = account.codexAuth?.isActiveSnapshot ?? false;
   const weeklyOnly = account.windowMinutesPrimary == null && account.windowMinutesSecondary != null;
-  const hasSnapshot = account.codexAuth?.hasSnapshot ?? false;
-  const canUseLocally = typeof primaryRemaining === "number" && primaryRemaining > 0 && hasSnapshot;
-  const useLocalDisabledReason = typeof primaryRemaining !== "number" || primaryRemaining <= 0
-    ? "No 5h quota remaining."
-    : !hasSnapshot
-      ? "No codex-auth snapshot found for this account."
-      : null;
+  const canUseLocally = canUseLocalAccount({
+    status: account.status,
+    primaryRemainingPercent: primaryRemaining,
+  });
+  const useLocalDisabledReason = getUseLocalAccountDisabledReason({
+    status: account.status,
+    primaryRemainingPercent: primaryRemaining,
+  });
 
   const primaryReset = formatQuotaResetLabel(account.resetAtPrimary ?? null);
   const secondaryReset = formatQuotaResetLabel(account.resetAtSecondary ?? null);
@@ -112,7 +116,18 @@ export function AccountCard({ account, showAccountId = false, useLocalBusy = fal
             </p>
           ) : null}
         </div>
-        <StatusBadge status={status} />
+        <div className="flex items-center gap-1.5">
+          <StatusBadge status={status} />
+          {isWorkingNow ? (
+            <Badge
+              variant="outline"
+              className="gap-1.5 border-cyan-500/25 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300"
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden />
+              Working now
+            </Badge>
+          ) : null}
+        </div>
       </div>
 
       {/* Quota bars */}

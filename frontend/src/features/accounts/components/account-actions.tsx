@@ -2,6 +2,7 @@ import { Pause, Play, RefreshCw, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import type { AccountSummary } from "@/features/accounts/schemas";
+import { canUseLocalAccount, getUseLocalAccountDisabledReason } from "@/utils/use-local-account";
 
 export type AccountActionsProps = {
   account: AccountSummary;
@@ -24,15 +25,14 @@ export function AccountActions({
   onUseLocal,
   onReauth,
 }: AccountActionsProps) {
-  const hasFiveHourQuota = typeof account.usage?.primaryRemainingPercent === "number"
-    && account.usage.primaryRemainingPercent > 0;
-  const hasSnapshot = account.codexAuth?.hasSnapshot ?? false;
-  const canUseLocally = hasFiveHourQuota && hasSnapshot;
-  const disabledReason = !hasFiveHourQuota
-    ? "No 5h quota remaining."
-    : !hasSnapshot
-      ? "No codex-auth snapshot found for this account."
-      : null;
+  const canUseLocally = canUseLocalAccount({
+    status: account.status,
+    primaryRemainingPercent: account.usage?.primaryRemainingPercent,
+  });
+  const disabledReason = getUseLocalAccountDisabledReason({
+    status: account.status,
+    primaryRemainingPercent: account.usage?.primaryRemainingPercent,
+  });
 
   return (
     <div className="flex flex-wrap gap-2 border-t pt-4">

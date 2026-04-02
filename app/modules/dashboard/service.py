@@ -8,7 +8,13 @@ from app.core.usage.types import UsageWindowRow
 from app.core.utils.time import utcnow
 from app.db.models import UsageHistory
 from app.modules.accounts.codex_auth_auto_import import sync_local_codex_auth_snapshots
+from app.modules.accounts.codex_auth_switcher import (
+    CodexAuthSnapshotIndex,
+    build_snapshot_index,
+    select_snapshot_name,
+)
 from app.modules.accounts.mappers import build_account_summaries
+from app.modules.accounts.schemas import AccountCodexAuthStatus
 from app.modules.dashboard.repository import DashboardRepository
 from app.modules.dashboard.schemas import (
     DashboardOverviewResponse,
@@ -37,11 +43,17 @@ class DashboardService:
         accounts = await self._repo.list_accounts()
         primary_usage = await self._repo.latest_usage_by_account("primary")
         secondary_usage = await self._repo.latest_usage_by_account("secondary")
+        snapshot_index = build_snapshot_index()
+        codex_auth_by_account = {
+            account.id: _build_codex_auth_status(account_id=account.id, snapshot_index=snapshot_index)
+            for account in accounts
+        }
 
         account_summaries = build_account_summaries(
             accounts=accounts,
             primary_usage=primary_usage,
             secondary_usage=secondary_usage,
+            codex_auth_by_account=codex_auth_by_account,
             encryptor=self._encryptor,
             include_auth=False,
         )
@@ -282,3 +294,15 @@ def _latest_recorded_at(
     if additional_ts is not None:
         timestamps.append(additional_ts)
     return max(timestamps) if timestamps else None
+
+
+def _build_codex_auth_status(*, account_id: str, snapshot_index: CodexAuthSnapshotIndex) -> AccountCodexAuthStatus:
+    snapshot_names = snapshot_index.snapshots_by_account_id.get(account_id, [])
+    selected_snapshot_name = select_snapshot_name(snapshot_names, snapshot_index.active_snapshot_name)
+    active_snapshot_name = snapshot_index.active_snapshot_name
+    return AccountCodexAuthStatus(
+        has_snapshot=bool(snapshot_names),
+        snapshot_name=selected_snapshot_name,
+        active_snapshot_name=active_snapshot_name,
+        is_active_snapshot=bool(active_snapshot_name and active_snapshot_name in snapshot_names),
+    )

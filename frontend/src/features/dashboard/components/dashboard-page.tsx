@@ -17,6 +17,7 @@ import type { AccountSummary } from "@/features/dashboard/schemas";
 import { useThemeStore } from "@/hooks/use-theme";
 import { REQUEST_STATUS_LABELS } from "@/utils/constants";
 import { formatModelLabel, formatSlug } from "@/utils/formatters";
+import { isCodexAuthSnapshotMissingError } from "@/utils/use-local-account";
 
 const MODEL_OPTION_DELIMITER = ":::";
 
@@ -41,13 +42,19 @@ export function DashboardPage() {
           navigate(`/accounts?selected=${account.accountId}`);
           break;
         case "resume":
-          void resumeMutation.mutateAsync(account.accountId);
+          resumeMutation.mutate(account.accountId);
           break;
         case "reauth":
           navigate(`/accounts?selected=${account.accountId}`);
           break;
         case "useLocal":
-          void useLocalMutation.mutateAsync(account.accountId);
+          useLocalMutation.mutate(account.accountId, {
+            onError: (error) => {
+              if (isCodexAuthSnapshotMissingError(error)) {
+                navigate(`/accounts?selected=${account.accountId}`);
+              }
+            },
+          });
           break;
       }
     },

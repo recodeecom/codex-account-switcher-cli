@@ -72,7 +72,7 @@ export function useAccountMutations() {
     mutationFn: useAccountLocally,
     onSuccess: (response) => {
       toast.success(`Switched to ${response.snapshotName}`);
-      void queryClient.invalidateQueries({ queryKey: ["accounts", "list"] });
+      invalidateAccountRelatedQueries(queryClient);
     },
     onError: (error: Error) => {
       toast.error(error.message || "Switch failed");
