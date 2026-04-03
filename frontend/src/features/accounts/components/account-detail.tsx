@@ -21,7 +21,7 @@ export type AccountDetailProps = {
   onDelete: (accountId: string) => void;
   onUseLocal: (accountId: string) => void;
   onRepairSnapshot: (accountId: string, mode: "readd" | "rename") => void;
-  onReauth: () => void;
+  onReauth: (accountId: string) => void;
 };
 
 export function AccountDetail({

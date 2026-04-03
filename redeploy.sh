@@ -11,6 +11,8 @@ BUMP_FRONTEND_VERSION="${CODEX_LB_BUMP_FRONTEND_VERSION:-true}"
 FORCE_CODEX_AUTH_INSTALL="false"
 FORCE_SERIAL_BUILD="${CODEX_LB_FORCE_SERIAL_BUILD:-false}"
 FORCE_PARALLEL_BUILD="${CODEX_LB_FORCE_PARALLEL_BUILD:-false}"
+PRUNE_DOCKER_IMAGES="${CODEX_LB_PRUNE_DOCKER_IMAGES:-true}"
+PRUNE_DOCKER_BUILD_CACHE="${CODEX_LB_PRUNE_DOCKER_BUILD_CACHE:-false}"
 PARALLEL_BUILD_MIN_MEM_MB="${CODEX_LB_PARALLEL_BUILD_MIN_MEM_MB:-4096}"
 MIN_AVAILABLE_MEM_MB="${CODEX_LB_MIN_AVAILABLE_MEM_MB:-1024}"
 MIN_AVAILABLE_SWAP_MB="${CODEX_LB_MIN_AVAILABLE_SWAP_MB:-512}"
@@ -18,7 +20,7 @@ MEMINFO_PATH="${CODEX_LB_MEMINFO_PATH:-/proc/meminfo}"
 
 usage() {
   cat <<'EOF'
-Usage: ./redeploy.sh [--turbo|--full] [--skip-codex-auth-install] [--force-codex-auth-install] [--bump-frontend-version|--no-bump-frontend-version] [--serial-build|--parallel-build] [service...]
+Usage: ./redeploy.sh [--turbo|--full] [--skip-codex-auth-install] [--force-codex-auth-install] [--bump-frontend-version|--no-bump-frontend-version] [--serial-build|--parallel-build] [--docker-prune|--skip-docker-prune] [--docker-builder-prune|--skip-docker-builder-prune] [service...]
 
 Modes:
   --turbo  Build in parallel and restart only selected services (default, faster)
@@ -31,12 +33,18 @@ Flags:
   --no-bump-frontend-version Keep frontend/package.json version unchanged
   --serial-build             Build services sequentially (safer for low-memory hosts)
   --parallel-build           Force parallel docker builds
+  --docker-prune             Prune unused docker images after redeploy (default: on)
+  --skip-docker-prune        Skip unused docker image pruning
+  --docker-builder-prune     Prune docker builder cache after redeploy
+  --skip-docker-builder-prune Skip docker builder cache pruning (default)
 
 Env:
   CODEX_LB_INSTALL_CODEX_AUTH=true|false (default: true)
   CODEX_LB_BUMP_FRONTEND_VERSION=true|false (default: true)
   CODEX_LB_FORCE_SERIAL_BUILD=true|false (default: false)
   CODEX_LB_FORCE_PARALLEL_BUILD=true|false (default: false)
+  CODEX_LB_PRUNE_DOCKER_IMAGES=true|false (default: true)
+  CODEX_LB_PRUNE_DOCKER_BUILD_CACHE=true|false (default: false)
   CODEX_LB_PARALLEL_BUILD_MIN_MEM_MB=4096 (auto-switch to serial below this MemAvailable)
   CODEX_LB_MIN_AVAILABLE_MEM_MB=1024 (abort when both mem/swap are too low)
   CODEX_LB_MIN_AVAILABLE_SWAP_MB=512
@@ -90,6 +98,22 @@ while (($#)); do
       FORCE_SERIAL_BUILD="false"
       shift
       ;;
+    --docker-prune)
+      PRUNE_DOCKER_IMAGES="true"
+      shift
+      ;;
+    --skip-docker-prune)
+      PRUNE_DOCKER_IMAGES="false"
+      shift
+      ;;
+    --docker-builder-prune)
+      PRUNE_DOCKER_BUILD_CACHE="true"
+      shift
+      ;;
+    --skip-docker-builder-prune)
+      PRUNE_DOCKER_BUILD_CACHE="false"
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -127,6 +151,8 @@ BUMP_FRONTEND_VERSION="$(normalize_bool "$BUMP_FRONTEND_VERSION")"
 FORCE_CODEX_AUTH_INSTALL="$(normalize_bool "$FORCE_CODEX_AUTH_INSTALL")"
 FORCE_SERIAL_BUILD="$(normalize_bool "$FORCE_SERIAL_BUILD")"
 FORCE_PARALLEL_BUILD="$(normalize_bool "$FORCE_PARALLEL_BUILD")"
+PRUNE_DOCKER_IMAGES="$(normalize_bool "$PRUNE_DOCKER_IMAGES")"
+PRUNE_DOCKER_BUILD_CACHE="$(normalize_bool "$PRUNE_DOCKER_BUILD_CACHE")"
 PARALLEL_BUILD_MIN_MEM_MB="$(normalize_positive_int "$PARALLEL_BUILD_MIN_MEM_MB")"
 MIN_AVAILABLE_MEM_MB="$(normalize_positive_int "$MIN_AVAILABLE_MEM_MB")"
 MIN_AVAILABLE_SWAP_MB="$(normalize_positive_int "$MIN_AVAILABLE_SWAP_MB")"
@@ -242,6 +268,30 @@ build_selected_services() {
   else
     build_services_serial
   fi
+}
+
+prune_unused_docker_images() {
+  if [[ "$PRUNE_DOCKER_IMAGES" != "true" ]]; then
+    echo "Skipping docker image prune (disabled)."
+    return
+  fi
+
+  echo "Pruning unused docker images..."
+  docker image prune -af >/dev/null || {
+    echo "Warning: docker image prune failed." >&2
+  }
+}
+
+prune_docker_builder_cache() {
+  if [[ "$PRUNE_DOCKER_BUILD_CACHE" != "true" ]]; then
+    echo "Skipping docker builder prune (disabled)."
+    return
+  fi
+
+  echo "Pruning docker builder cache..."
+  docker builder prune -af >/dev/null || {
+    echo "Warning: docker builder prune failed." >&2
+  }
 }
 
 install_codex_auth() {
@@ -398,5 +448,8 @@ else
   require_resource_headroom "up"
   docker_compose up -d --no-deps "${TARGET_SERVICES[@]}"
 fi
+
+prune_unused_docker_images
+prune_docker_builder_cache
 
 echo "Redeploy complete. Current frontend version: ${NEW_VERSION}"

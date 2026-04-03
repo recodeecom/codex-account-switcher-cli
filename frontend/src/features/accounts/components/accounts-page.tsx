@@ -137,7 +137,13 @@ export function AccountsPage() {
             }
             useLocalBusy={useLocalMutation.isPending}
             repairSnapshotBusy={repairSnapshotMutation.isPending}
-            onReauth={() => oauthDialog.show()}
+            onReauth={(accountId) => {
+              useLocalMutation.mutate(accountId, {
+                onError: () => {
+                  oauthDialog.show();
+                },
+              });
+            }}
           />
         </div>
       )}

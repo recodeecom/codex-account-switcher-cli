@@ -52,12 +52,16 @@ export function UsageDonuts({
 				items={primaryChartItems}
 				total={primaryTotal}
 				safeLine={safeLinePrimary}
+				legendCollapsible
+				legendDefaultCollapsed
 			/>
 			<DonutChart
 				title="Weekly Remaining"
 				items={secondaryChartItems}
 				total={secondaryTotal}
 				safeLine={safeLineSecondary}
+				legendCollapsible
+				legendDefaultCollapsed
 			/>
 		</div>
 	);

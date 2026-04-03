@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { Cell, Pie, PieChart } from "recharts";
 
 import { buildDonutPalette } from "@/utils/colors";
@@ -30,6 +32,8 @@ export type DonutChartProps = {
   legendValueFormatter?: (item: DonutChartItem) => string;
   legendSecondaryFormatter?: (item: DonutChartItem) => string | null;
   safeLine?: { safePercent: number; riskLevel: "safe" | "warning" | "danger" | "critical" } | null;
+  legendCollapsible?: boolean;
+  legendDefaultCollapsed?: boolean;
 };
 
 function SafeLineTick({
@@ -92,6 +96,8 @@ export function DonutChart({
   legendValueFormatter,
   legendSecondaryFormatter,
   safeLine,
+  legendCollapsible = false,
+  legendDefaultCollapsed = false,
 }: DonutChartProps) {
   const isDark = useThemeStore((s) => s.theme === "dark");
   const blurred = usePrivacyStore((s) => s.blurred);
@@ -120,6 +126,10 @@ export function DonutChart({
   ];
 
   const hasData = chartData.some((d) => d.value > 0);
+  const [legendCollapsed, setLegendCollapsed] = useState(
+    legendCollapsible ? legendDefaultCollapsed : false,
+  );
+
   if (!hasData) {
     chartData.length = 0;
     chartData.push({ name: "__empty__", value: 1, fill: consumedColor });
@@ -178,43 +188,60 @@ export function DonutChart({
           </div>
         </div>
 
-        <div className="flex-1 space-y-2 overflow-hidden">
-          {normalizedItems.map((item, i) => {
-            const secondaryValue = legendSecondaryFormatter
-              ? legendSecondaryFormatter(item)
-              : null;
+        <div className="flex-1 overflow-hidden">
+          {legendCollapsible ? (
+            <button
+              type="button"
+              className="flex w-full items-center justify-between rounded-md border border-border/60 bg-background/30 px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground hover:bg-background/50"
+              aria-expanded={!legendCollapsed}
+              aria-label={`${title} accounts`}
+              onClick={() => setLegendCollapsed((value) => !value)}
+            >
+              <span>Accounts ({normalizedItems.length})</span>
+              {legendCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            </button>
+          ) : null}
 
-            return (
-              <div
-                key={item.id ?? item.label}
-                className="animate-fade-in-up flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-background/35 px-2.5 py-1.5 text-xs"
-                style={{ animationDelay: `${i * 75}ms` }}
-              >
-                <div className="flex min-w-0 items-center gap-2">
-                  <span
-                    aria-hidden
-                    className="h-2.5 w-2.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: item.color }}
-                  />
-                  <span className="truncate font-medium">
-                    {item.isEmail && blurred
-                      ? <><span className="privacy-blur">{item.label}</span>{item.labelSuffix}</>
-                      : <>{item.label}{item.labelSuffix}</>}
-                  </span>
-                </div>
-                <div className="flex items-baseline gap-2 tabular-nums">
-                  <span className="font-semibold text-foreground/90">
-                    {legendValueFormatter ? legendValueFormatter(item) : formatCompactNumber(item.value)}
-                  </span>
-                  {secondaryValue ? (
-                    <span className="text-[10px] text-muted-foreground/85">
-                      {secondaryValue}
-                    </span>
-                  ) : null}
-                </div>
-              </div>
-            );
-          })}
+          {!legendCollapsed ? (
+            <div className={legendCollapsible ? "mt-2 space-y-2" : "space-y-2"}>
+              {normalizedItems.map((item, i) => {
+                const secondaryValue = legendSecondaryFormatter
+                  ? legendSecondaryFormatter(item)
+                  : null;
+
+                return (
+                  <div
+                    key={item.id ?? item.label}
+                    className="animate-fade-in-up flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-background/35 px-2.5 py-1.5 text-xs"
+                    style={{ animationDelay: `${i * 75}ms` }}
+                  >
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span
+                        aria-hidden
+                        className="h-2.5 w-2.5 shrink-0 rounded-full"
+                        style={{ backgroundColor: item.color }}
+                      />
+                      <span className="truncate font-medium">
+                        {item.isEmail && blurred
+                          ? <><span className="privacy-blur">{item.label}</span>{item.labelSuffix}</>
+                          : <>{item.label}{item.labelSuffix}</>}
+                      </span>
+                    </div>
+                    <div className="flex items-baseline gap-2 tabular-nums">
+                      <span className="font-semibold text-foreground/90">
+                        {legendValueFormatter ? legendValueFormatter(item) : formatCompactNumber(item.value)}
+                      </span>
+                      {secondaryValue ? (
+                        <span className="text-[10px] text-muted-foreground/85">
+                          {secondaryValue}
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

@@ -1,0 +1,4 @@
+- [x] Update dashboard re-auth action to attempt local snapshot switch before navigating to account details.
+- [x] Update accounts-page re-auth action to attempt local snapshot switch before opening OAuth dialog.
+- [x] Add regression tests for dashboard re-auth success and fallback behavior.
+- [x] Add regression test that re-auth action targets the selected account id in account actions.

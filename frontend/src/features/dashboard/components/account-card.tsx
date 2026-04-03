@@ -109,11 +109,11 @@ function QuotaBar({
     "h-full rounded-full transition-[width,opacity] duration-500 ease-out",
     isLive && "duration-300",
     tone === "healthy" &&
-      "bg-gradient-to-r from-emerald-500 via-emerald-400 to-cyan-400 shadow-[0_0_12px_rgba(16,185,129,0.35)]",
+      "bg-gradient-to-r from-emerald-500 via-emerald-400 to-cyan-400",
     tone === "warning" &&
-      "bg-gradient-to-r from-amber-500 via-orange-400 to-yellow-300 shadow-[0_0_12px_rgba(245,158,11,0.32)]",
+      "bg-gradient-to-r from-amber-500 via-orange-400 to-yellow-300",
     tone === "critical" &&
-      "bg-gradient-to-r from-rose-600 via-red-500 to-orange-400 shadow-[0_0_12px_rgba(239,68,68,0.32)]",
+      "bg-gradient-to-r from-rose-600 via-red-500 to-orange-400",
     tone === "deactivated" &&
       "bg-gradient-to-r from-zinc-500/80 via-zinc-400/70 to-zinc-300/65 shadow-none",
     tone === "unknown" && "bg-muted-foreground/45",
@@ -122,15 +122,15 @@ function QuotaBar({
   return (
     <div
       className={cn(
-        "space-y-2 px-2.5 py-2.5",
+        "space-y-2 rounded-lg border border-border/55 bg-background/20 px-2.5 py-2.5",
       )}
     >
       <div className="flex items-center justify-between gap-2 text-xs">
-        <span className="font-medium text-muted-foreground">{label}</span>
+        <span className="font-semibold text-muted-foreground">{label}</span>
         <div className="flex items-center gap-1.5">
           {isLive && !deactivated ? (
             <span className="inline-flex items-center gap-1 rounded-md border border-cyan-500/30 bg-cyan-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-cyan-700 dark:text-cyan-300">
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
+              <span className="h-1.5 w-1.5 rounded-full bg-current" />
               Live
             </span>
           ) : null}
@@ -146,9 +146,6 @@ function QuotaBar({
         )}
       >
         <div className={fillClass} style={{ width: `${clamped}%` }} />
-        {isLive && !deactivated ? (
-          <div className="absolute inset-y-0 right-0 w-2 animate-pulse bg-white/45" />
-        ) : null}
       </div>
       <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
         <Clock className="h-3 w-3 shrink-0" />
@@ -156,7 +153,7 @@ function QuotaBar({
       </div>
       {isLive && !deactivated ? (
         <div className="flex items-center gap-1.5 text-[11px] font-medium text-cyan-700 dark:text-cyan-300">
-          <Activity className="h-3 w-3 animate-pulse" />
+          <Activity className="h-3 w-3" />
           <span>Live token status</span>
         </div>
       ) : null}
@@ -327,12 +324,12 @@ export function AccountCard({
         </div>
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-2.5 rounded-lg border border-border/60 bg-background/35 px-2.5 py-2">
+      <div className="mt-3 grid grid-cols-2 gap-2.5 rounded-lg border border-border/60 bg-background/35 px-2.5 py-2.5">
         <div>
-          <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+          <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
             Tokens used
           </p>
-          <p className="mt-0.5 flex items-center gap-1.5 text-xs font-semibold tabular-nums">
+          <p className="mt-0.5 flex items-center gap-1.5 text-sm font-semibold tabular-nums">
             <span>{formatTokenCredits(totalTokensUsed)}</span>
             {isWorkingNow ? (
               <span className="inline-flex items-center gap-1 rounded-md border border-cyan-500/30 bg-cyan-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-700 dark:text-cyan-300">
@@ -342,7 +339,7 @@ export function AccountCard({
           </p>
         </div>
         <div>
-          <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+          <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
             Codex CLI sessions
           </p>
           <p className="mt-0.5 text-xs font-semibold tabular-nums">
@@ -366,12 +363,7 @@ export function AccountCard({
       ) : null}
 
       {/* Quota bars */}
-      <div
-        className={cn(
-          "mt-3.5 grid gap-2.5",
-          weeklyOnly ? "grid-cols-1" : "grid-cols-2",
-        )}
-      >
+      <div className={cn("mt-3.5 grid gap-2.5", weeklyOnly ? "grid-cols-1" : "grid-cols-2")}>
         {!weeklyOnly && (
           <QuotaBar
             label="5h"
@@ -394,15 +386,15 @@ export function AccountCard({
       </div>
 
       {/* Actions */}
-      <div className="mt-3 flex items-center gap-1.5 border-t pt-3">
+      <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t pt-3">
         <Button
           type="button"
           size="sm"
-          variant="ghost"
+          variant="default"
           className={cn(
-            "h-7 gap-1.5 rounded-lg text-xs",
+            "h-8 gap-1.5 rounded-lg border border-emerald-500/25 bg-emerald-500/15 px-3 text-xs font-semibold shadow-none hover:bg-emerald-500/25",
             canUseLocally
-              ? "text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300"
+              ? "text-emerald-700 hover:text-emerald-800 dark:text-emerald-300 dark:hover:text-emerald-200"
               : "text-muted-foreground",
           )}
           disabled={!canUseLocally || useLocalBusy}

@@ -18,21 +18,69 @@ import { getDashboardOverview } from "@/features/dashboard/api";
 import { listStickySessions } from "@/features/sticky-sessions/api";
 import { Badge } from "@/components/ui/badge";
 import { usePrivacyStore } from "@/hooks/use-privacy";
+import { cn } from "@/lib/utils";
 import { resolveCodexSessionCount } from "@/utils/codex-sessions";
-import { formatTimeLong } from "@/utils/formatters";
+import { formatLastUsageLabel } from "@/utils/formatters";
 
 const DEFAULT_LIMIT = 25;
 
-type AccountSessionGroup = {
+type ProgressTone = "upToDate" | "muted" | "pending";
+
+type ActivityRow = {
+  rowKey: string;
   accountId: string;
   displayName: string;
-  entries: Array<{
-    key: string;
-    taskPreview: string | null;
-    createdAt: string;
-    updatedAt: string;
-  }>;
+  identity: string;
+  sourceLabel: string;
+  status: "live" | "idle";
+  currentTask: string | null;
+  progressLabel: string;
+  progressTone: ProgressTone;
+  codexSessionCount: number;
 };
+
+function resolveProgressDisplay(
+  isLive: boolean,
+  recordedAt: string | null | undefined,
+): { label: string; tone: ProgressTone } {
+  if (isLive) {
+    return { label: "Up to date", tone: "upToDate" };
+  }
+
+  const lastSeenLabel = formatLastUsageLabel(recordedAt);
+  if (!lastSeenLabel) {
+    return { label: "telemetry pending", tone: "pending" };
+  }
+
+  const normalized = lastSeenLabel.trim().toLowerCase();
+  if (normalized === "last seen now" || /\b0m ago$/.test(normalized)) {
+    return { label: "Up to date", tone: "upToDate" };
+  }
+
+  return { label: lastSeenLabel, tone: "muted" };
+}
+
+function resolveLatestUsageTimestamp(
+  primary: string | null | undefined,
+  secondary: string | null | undefined,
+): string | null {
+  const primaryMs = primary ? Date.parse(primary) : Number.NaN;
+  const secondaryMs = secondary ? Date.parse(secondary) : Number.NaN;
+  const hasPrimary = Number.isFinite(primaryMs) && primaryMs > 0;
+  const hasSecondary = Number.isFinite(secondaryMs) && secondaryMs > 0;
+
+  if (!hasPrimary && !hasSecondary) {
+    return null;
+  }
+  if (!hasPrimary) {
+    return secondary ?? null;
+  }
+  if (!hasSecondary) {
+    return primary ?? null;
+  }
+
+  return primaryMs >= secondaryMs ? primary ?? null : secondary ?? null;
+}
 
 export function SessionsPage() {
   const [offset, setOffset] = useState(0);
@@ -66,50 +114,54 @@ export function SessionsPage() {
   const entries = sessionsQuery.data?.entries;
   const hasMore = sessionsQuery.data?.hasMore ?? false;
 
-  const groups = useMemo<AccountSessionGroup[]>(() => {
-    const grouped = new Map<string, AccountSessionGroup>();
-    for (const entry of entries ?? []) {
-      const existing = grouped.get(entry.accountId);
-      if (existing) {
-        existing.entries.push({
-          key: entry.key,
-          taskPreview: entry.taskPreview,
-          createdAt: entry.createdAt,
-          updatedAt: entry.updatedAt,
-        });
-        continue;
-      }
-
-      grouped.set(entry.accountId, {
+  const stickyActivityRows = useMemo<ActivityRow[]>(() => {
+    const rows = (entries ?? []).map((entry) => {
+      const progress = resolveProgressDisplay(entry.isActive, entry.taskUpdatedAt ?? entry.updatedAt);
+      return {
+        rowKey: `sticky:${entry.key}`,
         accountId: entry.accountId,
         displayName: entry.displayName,
-        entries: [
-          {
-            key: entry.key,
-            taskPreview: entry.taskPreview,
-            createdAt: entry.createdAt,
-            updatedAt: entry.updatedAt,
-          },
-        ],
-      });
-    }
-    return Array.from(grouped.values());
-  }, [entries]);
+        identity: entry.key,
+        sourceLabel: "Sticky mapping",
+        status: entry.isActive ? ("live" as const) : ("idle" as const),
+        currentTask: entry.taskPreview?.trim() || null,
+        progressLabel: progress.label,
+        progressTone: progress.tone,
+        codexSessionCount: 1,
+      };
+    });
 
-  const filteredGroups = useMemo(
-    () => (selectedAccountId ? groups.filter((group) => group.accountId === selectedAccountId) : groups),
-    [groups, selectedAccountId],
-  );
-  const fallbackSessionRows = useMemo(() => {
+    if (selectedAccountId) {
+      return rows.filter((row) => row.accountId === selectedAccountId);
+    }
+
+    return rows;
+  }, [entries, selectedAccountId]);
+  const fallbackActivityRows = useMemo<ActivityRow[]>(() => {
     const rows = (overviewQuery.data?.accounts ?? [])
-      .map((account) => ({
-        accountId: account.accountId,
-        displayName: account.displayName,
-        codexSessionCount: resolveCodexSessionCount(
+      .map((account) => {
+        const hasLiveSession = account.codexAuth?.hasLiveSession ?? false;
+        const codexSessionCount = resolveCodexSessionCount(
           account.codexSessionCount,
-          (account.codexAuth?.hasLiveSession ?? false) || (account.codexAuth?.isActiveSnapshot ?? false),
-        ),
-      }))
+          hasLiveSession || (account.codexAuth?.isActiveSnapshot ?? false),
+        );
+        const progress = resolveProgressDisplay(
+          hasLiveSession,
+          resolveLatestUsageTimestamp(account.lastUsageRecordedAtPrimary, account.lastUsageRecordedAtSecondary),
+        );
+        return {
+          rowKey: `overview:${account.accountId}`,
+          accountId: account.accountId,
+          displayName: account.displayName,
+          identity: "Dashboard overview",
+          sourceLabel: `${codexSessionCount} tracked ${codexSessionCount === 1 ? "session" : "sessions"}`,
+          status: hasLiveSession ? ("live" as const) : ("idle" as const),
+          currentTask: account.codexCurrentTaskPreview?.trim() || null,
+          progressLabel: progress.label,
+          progressTone: progress.tone,
+          codexSessionCount,
+        };
+      })
       .filter((row) => row.codexSessionCount > 0);
 
     if (selectedAccountId) {
@@ -117,12 +169,14 @@ export function SessionsPage() {
     }
     return rows;
   }, [overviewQuery.data?.accounts, selectedAccountId]);
-  const shouldUseFallbackOverview = filteredGroups.length === 0 && fallbackSessionRows.length > 0;
+  const shouldUseFallbackOverview = stickyActivityRows.length === 0 && fallbackActivityRows.length > 0;
+  const activityRows = shouldUseFallbackOverview ? fallbackActivityRows : stickyActivityRows;
+  const stickyAccountCount = new Set(stickyActivityRows.map((row) => row.accountId)).size;
 
   const total = shouldUseFallbackOverview
-    ? fallbackSessionRows.reduce((sum, row) => sum + row.codexSessionCount, 0)
-    : filteredGroups.reduce((sum, group) => sum + group.entries.length, 0);
-  const accountCount = shouldUseFallbackOverview ? fallbackSessionRows.length : filteredGroups.length;
+    ? fallbackActivityRows.reduce((sum, row) => sum + row.codexSessionCount, 0)
+    : stickyActivityRows.length;
+  const accountCount = shouldUseFallbackOverview ? fallbackActivityRows.length : stickyAccountCount;
   const hasSessionRows = total > 0;
   const waitingForOverviewFallback = (sessionsQuery.data?.total ?? 0) === 0 && overviewQuery.isLoading && !overviewQuery.data;
   const isLoading = (sessionsQuery.isLoading && !sessionsQuery.data) || waitingForOverviewFallback;
@@ -163,111 +217,96 @@ export function SessionsPage() {
           </section>
 
           <section className="space-y-4">
-            {shouldUseFallbackOverview ? (
-              <div className="rounded-xl border bg-card">
-                <div className="flex items-center justify-between border-b px-4 py-3">
-                  <div>
-                    <p className="text-sm font-semibold">Live Codex session counters</p>
-                    <p className="text-xs text-muted-foreground">
-                      Sticky session mappings are empty, so this view shows account-level session counters.
-                    </p>
-                  </div>
-                </div>
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/80">Account</TableHead>
-                        <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/80">Account ID</TableHead>
-                        <TableHead className="text-right text-[11px] uppercase tracking-wider text-muted-foreground/80">Codex sessions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {fallbackSessionRows.map((row) => (
-                        <TableRow key={row.accountId}>
-                          <TableCell className="text-sm font-medium">
-                            {blurred ? <span className="privacy-blur">{row.displayName}</span> : row.displayName}
-                          </TableCell>
-                          <TableCell className="font-mono text-xs text-muted-foreground">{row.accountId}</TableCell>
-                          <TableCell className="text-right text-xs font-semibold tabular-nums">{row.codexSessionCount}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+            <div className="rounded-xl border bg-card">
+              <div className="flex items-center justify-between border-b px-4 py-3">
+                <div>
+                  <p className="text-sm font-semibold">Session activity</p>
+                  <p className="text-xs text-muted-foreground">
+                    {shouldUseFallbackOverview
+                      ? "Sticky mappings are empty, so this view falls back to dashboard overview telemetry."
+                      : "Sticky session mappings provide per-session activity telemetry."}
+                  </p>
                 </div>
               </div>
-            ) : (
-              <>
-                {filteredGroups.map((group) => (
-                  <div key={group.accountId} className="rounded-xl border bg-card">
-                    <div className="flex items-center justify-between border-b px-4 py-3">
-                      <div>
-                        <p className="text-sm font-semibold">
-                          {blurred ? <span className="privacy-blur">{group.displayName}</span> : group.displayName}
-                        </p>
-                        <p className="text-xs text-muted-foreground">Account ID: {group.accountId}</p>
-                      </div>
-                      <Badge variant="outline" className="tabular-nums">
-                        {group.entries.length}
-                      </Badge>
-                    </div>
 
-                    <div className="overflow-x-auto">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/80">Session key</TableHead>
-                            <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/80">Current task</TableHead>
-                            <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/80">Updated</TableHead>
-                            <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/80">Created</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {group.entries.map((entry) => {
-                            const updated = formatTimeLong(entry.updatedAt);
-                            const created = formatTimeLong(entry.createdAt);
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/80">Account</TableHead>
+                      <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/80">Session / source</TableHead>
+                      <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/80">Status</TableHead>
+                      <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/80">Current task</TableHead>
+                      <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/80">Progress</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {activityRows.map((row) => (
+                      <TableRow key={row.rowKey}>
+                        <TableCell>
+                          <p className="text-sm font-medium">
+                            {blurred ? <span className="privacy-blur">{row.displayName}</span> : row.displayName}
+                          </p>
+                          <p className="font-mono text-[11px] text-muted-foreground">{row.accountId}</p>
+                        </TableCell>
+                        <TableCell>
+                          <p
+                            className={cn(
+                              "max-w-[28rem] truncate text-xs",
+                              row.sourceLabel === "Sticky mapping" && "font-mono",
+                            )}
+                            title={row.identity}
+                          >
+                            {row.identity}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground">{row.sourceLabel}</p>
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={row.status === "live" ? "secondary" : "outline"}
+                            className={cn(
+                              "text-[11px]",
+                              row.status === "live" && "font-semibold text-emerald-700 dark:text-emerald-300",
+                            )}
+                          >
+                            {row.status === "live" ? "Live" : "Idle"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="max-w-[28rem] text-xs text-muted-foreground" title={row.currentTask ?? undefined}>
+                          {row.currentTask ?? "—"}
+                        </TableCell>
+                        <TableCell
+                          className={cn(
+                            "text-xs",
+                            row.progressTone === "upToDate" && "font-medium text-emerald-600 dark:text-emerald-300",
+                            row.progressTone === "pending" && "text-muted-foreground",
+                            row.progressTone === "muted" && "text-muted-foreground",
+                          )}
+                        >
+                          {row.progressLabel}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
 
-                            return (
-                              <TableRow key={entry.key}>
-                                <TableCell className="max-w-[26rem] truncate font-mono text-xs" title={entry.key}>
-                                  {entry.key}
-                                </TableCell>
-                                <TableCell
-                                  className="max-w-[30rem] truncate text-xs text-muted-foreground"
-                                  title={entry.taskPreview ?? undefined}
-                                >
-                                  {entry.taskPreview ?? "—"}
-                                </TableCell>
-                                <TableCell className="text-xs text-muted-foreground">
-                                  {updated.date} {updated.time}
-                                </TableCell>
-                                <TableCell className="text-xs text-muted-foreground">
-                                  {created.date} {created.time}
-                                </TableCell>
-                              </TableRow>
-                            );
-                          })}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </div>
-                ))}
-
-                <div className="flex justify-end pt-1">
-                  <PaginationControls
-                    total={sessionsQuery.data?.total ?? 0}
-                    limit={limit}
-                    offset={offset}
-                    hasMore={hasMore}
-                    onLimitChange={(nextLimit) => {
-                      setLimit(nextLimit);
-                      setOffset(0);
-                    }}
-                    onOffsetChange={setOffset}
-                  />
-                </div>
-              </>
-            )}
+            {!shouldUseFallbackOverview ? (
+              <div className="flex justify-end pt-1">
+                <PaginationControls
+                  total={sessionsQuery.data?.total ?? 0}
+                  limit={limit}
+                  offset={offset}
+                  hasMore={hasMore}
+                  onLimitChange={(nextLimit) => {
+                    setLimit(nextLimit);
+                    setOffset(0);
+                  }}
+                  onOffsetChange={setOffset}
+                />
+              </div>
+            ) : null}
           </section>
         </>
       )}

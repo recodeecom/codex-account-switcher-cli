@@ -62,6 +62,12 @@ describe("sessions flow integration", () => {
     expect(await screen.findByText("beta@example.com")).toBeInTheDocument();
     expect(screen.getByText("session-alpha")).toBeInTheDocument();
     expect(screen.getByText("session-beta")).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Session / source" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Status" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Progress" })).toBeInTheDocument();
+    expect(screen.getAllByText("Sticky mapping").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Live").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Up to date").length).toBeGreaterThan(0);
     expect(screen.getByText("Investigate alpha session stream retry bug")).toBeInTheDocument();
     expect(screen.getByText("Review beta account quota depletion warnings")).toBeInTheDocument();
     expect(requestUrl).toContain("activeOnly=true");
@@ -79,7 +85,8 @@ describe("sessions flow integration", () => {
     expect(await screen.findByRole("heading", { name: "Sessions" })).toBeInTheDocument();
   });
 
-  it("falls back to dashboard codex session counters when sticky mappings are empty", async () => {
+  it("fallback mode renders account-level live status, task preview, and recency from overview telemetry", async () => {
+    const now = Date.now();
     server.use(
       http.get("/api/sticky-sessions", ({ request }) => {
         const url = new URL(request.url);
@@ -102,11 +109,15 @@ describe("sessions flow integration", () => {
                 email: "zeus@example.com",
                 displayName: "zeus@example.com",
                 codexSessionCount: 6,
+                codexCurrentTaskPreview: "Prepare release checklist for Zeus account",
+                lastUsageRecordedAtPrimary: new Date(now - 30 * 60_000).toISOString(),
+                lastUsageRecordedAtSecondary: new Date(now - 2 * 60 * 60_000).toISOString(),
                 codexAuth: {
                   hasSnapshot: true,
                   snapshotName: "zeus",
                   activeSnapshotName: "zeus",
                   isActiveSnapshot: true,
+                  hasLiveSession: false,
                 },
               }),
             ],
@@ -119,8 +130,12 @@ describe("sessions flow integration", () => {
     renderWithProviders(<App />);
 
     expect(await screen.findByRole("heading", { name: "Sessions" })).toBeInTheDocument();
-    expect(await screen.findByText("Live Codex session counters")).toBeInTheDocument();
+    expect(await screen.findByText("Session activity")).toBeInTheDocument();
     expect(screen.getByText("zeus@example.com")).toBeInTheDocument();
+    expect(screen.getByText("Dashboard overview")).toBeInTheDocument();
+    expect(screen.getByText("Idle")).toBeInTheDocument();
+    expect(screen.getByText("Prepare release checklist for Zeus account")).toBeInTheDocument();
+    expect(screen.getByText(/last seen/i)).toBeInTheDocument();
     expect(screen.getAllByText("6").length).toBeGreaterThan(0);
   });
 
@@ -161,8 +176,56 @@ describe("sessions flow integration", () => {
     renderWithProviders(<App />);
 
     expect(await screen.findByRole("heading", { name: "Sessions" })).toBeInTheDocument();
-    expect(await screen.findByText("Live Codex session counters")).toBeInTheDocument();
+    expect(await screen.findByText("Session activity")).toBeInTheDocument();
     expect(screen.getByText("runtime@example.com")).toBeInTheDocument();
+    expect(screen.getByText("Live")).toBeInTheDocument();
+    expect(screen.getByText("Up to date")).toBeInTheDocument();
     expect(screen.getAllByText("1").length).toBeGreaterThan(0);
+  });
+
+  it("fallback mode handles missing task preview and usage timestamps with safe placeholders", async () => {
+    server.use(
+      http.get("/api/sticky-sessions", () =>
+        HttpResponse.json({
+          entries: [],
+          stalePromptCacheCount: 0,
+          total: 0,
+          hasMore: false,
+        }),
+      ),
+      http.get("/api/dashboard/overview", () =>
+        HttpResponse.json(
+          createDashboardOverview({
+            accounts: [
+              createAccountSummary({
+                accountId: "acc_pending",
+                email: "pending@example.com",
+                displayName: "pending@example.com",
+                codexSessionCount: 2,
+                codexCurrentTaskPreview: null,
+                lastUsageRecordedAtPrimary: null,
+                lastUsageRecordedAtSecondary: null,
+                codexAuth: {
+                  hasSnapshot: true,
+                  snapshotName: "pending",
+                  activeSnapshotName: "pending",
+                  isActiveSnapshot: false,
+                  hasLiveSession: false,
+                },
+              }),
+            ],
+          }),
+        ),
+      ),
+    );
+
+    window.history.pushState({}, "", "/sessions?accountId=acc_pending");
+    renderWithProviders(<App />);
+
+    expect(await screen.findByRole("heading", { name: "Sessions" })).toBeInTheDocument();
+    expect(await screen.findByText("pending@example.com")).toBeInTheDocument();
+    expect(screen.getByText("Idle")).toBeInTheDocument();
+    expect(screen.getByText("telemetry pending")).toBeInTheDocument();
+    expect(screen.getByText("—")).toBeInTheDocument();
   });
 });

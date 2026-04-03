@@ -126,4 +126,37 @@ describe("AccountActions", () => {
     expect(onRepairSnapshot).toHaveBeenNthCalledWith(1, account.accountId, "readd");
     expect(onRepairSnapshot).toHaveBeenNthCalledWith(2, account.accountId, "rename");
   });
+
+  it("tries re-auth against the selected account id", async () => {
+    const user = userEvent.setup({ delay: null });
+    const onReauth = vi.fn();
+    const account = createAccountSummary({
+      accountId: "acc_reauth_action",
+      status: "deactivated",
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "acc_reauth_action",
+        activeSnapshotName: "different-snapshot",
+        isActiveSnapshot: false,
+      },
+    });
+
+    render(
+      <AccountActions
+        account={account}
+        busy={false}
+        useLocalBusy={false}
+        onPause={vi.fn()}
+        onResume={vi.fn()}
+        onDelete={vi.fn()}
+        onUseLocal={vi.fn()}
+        onRepairSnapshot={vi.fn()}
+        onReauth={onReauth}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Re-authenticate" }));
+
+    expect(onReauth).toHaveBeenCalledWith("acc_reauth_action");
+  });
 });

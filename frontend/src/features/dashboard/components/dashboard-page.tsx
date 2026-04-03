@@ -53,7 +53,11 @@ export function DashboardPage() {
           resumeMutation.mutate(account.accountId);
           break;
         case "reauth":
-          navigate(`/accounts?selected=${account.accountId}`);
+          useLocalMutation.mutate(account.accountId, {
+            onError: () => {
+              navigate(`/accounts?selected=${account.accountId}`);
+            },
+          });
           break;
         case "useLocal":
           useLocalMutation.mutate(account.accountId, {

@@ -159,32 +159,32 @@ export function AccountCards({
 
   return (
     <div className="space-y-5">
-      <section className="space-y-3 rounded-xl border border-cyan-500/25 bg-cyan-500/[0.04] p-3.5">
-        <div className="flex flex-wrap items-start justify-between gap-2.5 px-0.5">
+      <section className="space-y-4 rounded-2xl border border-cyan-500/25 bg-cyan-500/[0.04] p-4 md:p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-1">
-            <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700 dark:text-cyan-300">
+            <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-cyan-700 dark:text-cyan-300">
               Working now
             </h3>
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               Live accounts are grouped first so you can switch faster.
             </p>
           </div>
-          <div className="flex flex-wrap items-center justify-end gap-1.5">
-            <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-cyan-500/35 bg-cyan-500/10 px-1.5 text-[11px] font-semibold tabular-nums text-cyan-700 dark:text-cyan-300">
-              {groupedAccounts.working.length}
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <span className="inline-flex items-center rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-1 text-[11px] font-semibold tabular-nums text-cyan-700 dark:text-cyan-300">
+              {groupedAccounts.working.length} working
             </span>
             {workingSummary.liveSessions > 0 ? (
-              <span className="inline-flex items-center rounded-full border border-cyan-500/25 bg-cyan-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-700 dark:text-cyan-300">
+              <span className="inline-flex items-center rounded-full border border-cyan-500/25 bg-cyan-500/10 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-cyan-700 dark:text-cyan-300">
                 {workingSummary.liveSessions} live sessions
               </span>
             ) : null}
             {workingSummary.avgPrimaryRemaining !== null ? (
-              <span className="inline-flex items-center rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
+              <span className="inline-flex items-center rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-emerald-700 dark:text-emerald-300">
                 5h avg {workingSummary.avgPrimaryRemaining}%
               </span>
             ) : null}
             {workingSummary.avgSecondaryRemaining !== null ? (
-              <span className="inline-flex items-center rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
+              <span className="inline-flex items-center rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-emerald-700 dark:text-emerald-300">
                 Weekly avg {workingSummary.avgSecondaryRemaining}%
               </span>
             ) : null}

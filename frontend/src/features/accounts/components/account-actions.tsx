@@ -15,7 +15,7 @@ export type AccountActionsProps = {
   onDelete: (accountId: string) => void;
   onUseLocal: (accountId: string) => void;
   onRepairSnapshot: (accountId: string, mode: "readd" | "rename") => void;
-  onReauth: () => void;
+  onReauth: (accountId: string) => void;
 };
 
 export function AccountActions({
@@ -128,7 +128,7 @@ export function AccountActions({
           size="sm"
           variant="outline"
           className="h-8 gap-1.5 text-xs"
-          onClick={onReauth}
+          onClick={() => onReauth(account.accountId)}
           disabled={busy}
         >
           <RefreshCw className="h-3.5 w-3.5" />
