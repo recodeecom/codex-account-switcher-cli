@@ -16,7 +16,7 @@ Codex stores your authentication session in a single `auth.json` file. This tool
 ## Install (npm)
 
 ```sh
-npm i -g codex-auth
+npm i -g @imdeadpool/codex-account-switcher
 ```
 
 ## Usage
