@@ -1,7 +1,7 @@
 ## 1. Spec
 
 - [x] 1.1 Add frontend architecture spec delta for Storage placeholder route and branding copy update
-- [ ] 1.2 Validate OpenSpec changes (`openspec validate --specs`)
+- [x] 1.2 Validate OpenSpec changes (`openspec validate --specs`)
 
 ## 2. Tests
 

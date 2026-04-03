@@ -1,4 +1,4 @@
-import { Clock, ExternalLink, Play, RotateCcw } from "lucide-react";
+import { Clock, ExternalLink, Play, RotateCcw, SquareTerminal } from "lucide-react";
 
 import { usePrivacyStore } from "@/hooks/use-privacy";
 import { Badge } from "@/components/ui/badge";
@@ -15,7 +15,7 @@ import {
 import { formatCompactNumber, formatPercentNullable, formatQuotaResetLabel, formatSlug } from "@/utils/formatters";
 import { canUseLocalAccount, getUseLocalAccountDisabledReason } from "@/utils/use-local-account";
 
-type AccountAction = "details" | "resume" | "reauth" | "useLocal";
+type AccountAction = "details" | "resume" | "reauth" | "terminal" | "useLocal";
 
 export type AccountCardProps = {
   account: AccountSummary;
@@ -166,6 +166,18 @@ export function AccountCard({ account, showAccountId = false, useLocalBusy = fal
           onClick={() => onAction?.(account, "useLocal")}
         >
           Use this account
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className="h-7 gap-1.5 rounded-lg text-xs text-cyan-700 hover:bg-cyan-500/10 hover:text-cyan-800 dark:text-cyan-300 dark:hover:text-cyan-200"
+          disabled={!canUseLocally || useLocalBusy}
+          title={useLocalDisabledReason ?? undefined}
+          onClick={() => onAction?.(account, "terminal")}
+        >
+          <SquareTerminal className="h-3 w-3" />
+          Terminal
         </Button>
         <Button
           type="button"

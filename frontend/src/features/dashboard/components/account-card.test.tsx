@@ -156,6 +156,18 @@ describe("AccountCard", () => {
     expect(onAction).toHaveBeenCalledWith(account, "useLocal");
   });
 
+  it("calls terminal action when terminal button is clicked", async () => {
+    const user = userEvent.setup({ delay: null });
+    const account = createAccountSummary();
+    const onAction = vi.fn();
+
+    render(<AccountCard account={account} onAction={onAction} />);
+
+    await user.click(screen.getByRole("button", { name: "Terminal" }));
+
+    expect(onAction).toHaveBeenCalledWith(account, "terminal");
+  });
+
   it("shows working indicator when account snapshot is active", () => {
     const account = createAccountSummary({
       codexAuth: {

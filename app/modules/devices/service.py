@@ -26,6 +26,8 @@ class DevicesRepositoryPort(Protocol):
 
     async def add(self, name: str, ip_address: str) -> DeviceEntryLike: ...
 
+    async def update(self, device_id: str, name: str, ip_address: str) -> DeviceEntryLike | None: ...
+
     async def delete(self, device_id: str) -> bool: ...
 
 
@@ -92,6 +94,35 @@ class DevicesService:
             if exc.field == "ip_address":
                 raise DeviceIpExistsError("Device IP address already exists") from exc
             raise
+
+        return DeviceEntryData(
+            id=row.id,
+            name=row.name,
+            ip_address=row.ip_address,
+            created_at=row.created_at,
+            updated_at=row.updated_at,
+        )
+
+    async def update_device(
+        self,
+        device_id: str,
+        name: str,
+        ip_address: str,
+    ) -> DeviceEntryData | None:
+        normalized_name = normalize_device_name(name)
+        normalized_ip = normalize_ip_address(ip_address)
+
+        try:
+            row = await self._repository.update(device_id, normalized_name, normalized_ip)
+        except DeviceRepositoryConflictError as exc:
+            if exc.field == "name":
+                raise DeviceNameExistsError("Device name already exists") from exc
+            if exc.field == "ip_address":
+                raise DeviceIpExistsError("Device IP address already exists") from exc
+            raise
+
+        if row is None:
+            return None
 
         return DeviceEntryData(
             id=row.id,

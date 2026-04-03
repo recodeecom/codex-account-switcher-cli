@@ -5,7 +5,13 @@ from fastapi import APIRouter, Body, Depends
 from app.core.auth.dependencies import set_dashboard_error_format, validate_dashboard_session
 from app.core.exceptions import DashboardBadRequestError, DashboardConflictError, DashboardNotFoundError
 from app.dependencies import DevicesContext, get_devices_context
-from app.modules.devices.schemas import DeviceCreateRequest, DeviceDeleteResponse, DeviceEntry, DevicesResponse
+from app.modules.devices.schemas import (
+    DeviceCreateRequest,
+    DeviceDeleteResponse,
+    DeviceEntry,
+    DeviceUpdateRequest,
+    DevicesResponse,
+)
 from app.modules.devices.service import DeviceIpExistsError, DeviceNameExistsError, DeviceValidationError
 
 router = APIRouter(
@@ -54,6 +60,37 @@ async def create_device(
         ip_address=created.ip_address,
         created_at=created.created_at,
         updated_at=created.updated_at,
+    )
+
+
+@router.put("/{device_id}", response_model=DeviceEntry)
+async def update_device(
+    device_id: str,
+    payload: DeviceUpdateRequest = Body(...),
+    context: DevicesContext = Depends(get_devices_context),
+) -> DeviceEntry:
+    try:
+        updated = await context.service.update_device(
+            device_id=device_id,
+            name=payload.name,
+            ip_address=payload.ip_address,
+        )
+    except DeviceValidationError as exc:
+        raise DashboardBadRequestError(str(exc), code=exc.code) from exc
+    except DeviceNameExistsError as exc:
+        raise DashboardConflictError(str(exc), code="device_name_exists") from exc
+    except DeviceIpExistsError as exc:
+        raise DashboardConflictError(str(exc), code="device_ip_exists") from exc
+
+    if updated is None:
+        raise DashboardNotFoundError("Device not found", code="device_not_found")
+
+    return DeviceEntry(
+        id=updated.id,
+        name=updated.name,
+        ip_address=updated.ip_address,
+        created_at=updated.created_at,
+        updated_at=updated.updated_at,
     )
 
 

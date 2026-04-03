@@ -57,6 +57,13 @@ const DeviceCreatePayloadSchema = z
 	})
 	.passthrough();
 
+const DeviceUpdatePayloadSchema = z
+	.object({
+		name: z.string().optional(),
+		ipAddress: z.string().optional(),
+	})
+	.passthrough();
+
 const ApiKeyUpdatePayloadSchema = z
 	.object({
 		name: z.string().optional(),
@@ -572,6 +579,90 @@ export const handlers = [
 		};
 		state.devices = [...state.devices, created];
 		return HttpResponse.json(created);
+	}),
+
+	http.put("/api/devices/:deviceId", async ({ params, request }) => {
+		const deviceId = String(params.deviceId);
+		const payload = await parseJsonBody(request, DeviceUpdatePayloadSchema);
+		const name = String(payload?.name || "").trim();
+		const ipAddress = String(payload?.ipAddress || "").trim();
+		const current = state.devices.find((entry) => entry.id === deviceId);
+
+		if (!current) {
+			return HttpResponse.json(
+				{
+					error: {
+						code: "device_not_found",
+						message: "Device not found",
+					},
+				},
+				{ status: 404 },
+			);
+		}
+
+		if (!name) {
+			return HttpResponse.json(
+				{
+					error: {
+						code: "invalid_device_name",
+						message: "Device name is required",
+					},
+				},
+				{ status: 400 },
+			);
+		}
+		if (!ipAddress) {
+			return HttpResponse.json(
+				{
+					error: {
+						code: "invalid_ip",
+						message: "IP address is required",
+					},
+				},
+				{ status: 400 },
+			);
+		}
+		if (
+			state.devices.some(
+				(entry) => entry.id !== deviceId && entry.name === name,
+			)
+		) {
+			return HttpResponse.json(
+				{
+					error: {
+						code: "device_name_exists",
+						message: "Device name already exists",
+					},
+				},
+				{ status: 409 },
+			);
+		}
+		if (
+			state.devices.some(
+				(entry) => entry.id !== deviceId && entry.ipAddress === ipAddress,
+			)
+		) {
+			return HttpResponse.json(
+				{
+					error: {
+						code: "device_ip_exists",
+						message: "Device IP address already exists",
+					},
+				},
+				{ status: 409 },
+			);
+		}
+
+		const updated = {
+			...current,
+			name,
+			ipAddress,
+			updatedAt: new Date().toISOString(),
+		};
+		state.devices = state.devices.map((entry) =>
+			entry.id === deviceId ? updated : entry,
+		);
+		return HttpResponse.json(updated);
 	}),
 
 	http.delete("/api/devices/:deviceId", ({ params }) => {

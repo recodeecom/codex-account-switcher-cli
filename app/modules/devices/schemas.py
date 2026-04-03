@@ -22,5 +22,10 @@ class DeviceCreateRequest(DashboardModel):
     ip_address: str
 
 
+class DeviceUpdateRequest(DashboardModel):
+    name: str
+    ip_address: str
+
+
 class DeviceDeleteResponse(DashboardModel):
     status: str

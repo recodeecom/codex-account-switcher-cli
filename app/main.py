@@ -312,6 +312,7 @@ def create_app() -> FastAPI:
     app.include_router(proxy_api.usage_router)
     app.include_router(audit_api.router)
     app.include_router(accounts_api.router)
+    app.include_router(accounts_api.ws_router)
     app.include_router(dashboard_api.router)
     app.include_router(usage_api.router)
     app.include_router(request_logs_api.router)

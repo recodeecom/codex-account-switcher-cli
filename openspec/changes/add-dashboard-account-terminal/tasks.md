@@ -1,0 +1,5 @@
+- [x] Add backend websocket endpoint for account-scoped terminal sessions.
+- [x] Launch a PTY session that starts Codex after switching to the selected snapshot.
+- [x] Add dashboard terminal modal using xterm.js and wire account-card Terminal action.
+- [x] Add or update tests for terminal websocket behavior and dashboard action wiring.
+- [x] Validate specs with `openspec validate --specs`.

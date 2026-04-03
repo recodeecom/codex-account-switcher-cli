@@ -17,6 +17,11 @@ export const DeviceCreateRequestSchema = z.object({
   ipAddress: z.string().min(1),
 });
 
+export const DeviceUpdateRequestSchema = z.object({
+  name: z.string().min(1).max(128),
+  ipAddress: z.string().min(1),
+});
+
 export const DeviceDeleteResponseSchema = z.object({
   status: z.string().min(1),
 });
@@ -24,4 +29,5 @@ export const DeviceDeleteResponseSchema = z.object({
 export type DeviceEntry = z.infer<typeof DeviceEntrySchema>;
 export type DevicesResponse = z.infer<typeof DevicesResponseSchema>;
 export type DeviceCreateRequest = z.infer<typeof DeviceCreateRequestSchema>;
+export type DeviceUpdateRequest = z.infer<typeof DeviceUpdateRequestSchema>;
 export type DeviceDeleteResponse = z.infer<typeof DeviceDeleteResponseSchema>;

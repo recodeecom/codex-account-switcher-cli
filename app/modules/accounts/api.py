@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Request, UploadFile, WebSocket
 
 from app.core.audit.service import AuditService
 from app.core.auth.dependencies import set_dashboard_error_format, validate_dashboard_session
+from app.core.config.settings_cache import get_settings_cache
 from app.core.exceptions import DashboardBadRequestError, DashboardConflictError, DashboardNotFoundError
 from app.dependencies import AccountsContext, get_accounts_context
 from app.modules.accounts.codex_auth_switcher import (
@@ -22,12 +23,16 @@ from app.modules.accounts.schemas import (
     AccountUseLocalResponse,
 )
 from app.modules.accounts.service import InvalidAuthJsonError
+from app.modules.accounts.terminal import TerminalLaunchError, TerminalProcess, stream_terminal_session
+from app.modules.dashboard_auth.service import DASHBOARD_SESSION_COOKIE, get_dashboard_session_store
 
 router = APIRouter(
     prefix="/api/accounts",
     tags=["dashboard"],
     dependencies=[Depends(validate_dashboard_session), Depends(set_dashboard_error_format)],
 )
+
+ws_router = APIRouter(prefix="/api/accounts", tags=["dashboard"])
 
 
 @router.get("", response_model=AccountsResponse)
@@ -126,3 +131,73 @@ async def use_account_locally(
     if result is None:
         raise DashboardNotFoundError("Account not found", code="account_not_found")
     return result
+
+
+@ws_router.websocket("/{account_id}/terminal/ws")
+async def account_terminal_websocket(
+    websocket: WebSocket,
+    account_id: str,
+    context: AccountsContext = Depends(get_accounts_context),
+) -> None:
+    if not await _validate_dashboard_websocket_session(websocket):
+        return
+
+    try:
+        switch_result = await context.service.use_account_locally(account_id)
+    except CodexAuthSnapshotNotFoundError as exc:
+        await _send_terminal_error(websocket, str(exc), code="codex_auth_snapshot_not_found")
+        return
+    except CodexAuthNotInstalledError as exc:
+        await _send_terminal_error(websocket, str(exc), code="codex_auth_not_installed")
+        return
+    except CodexAuthSwitchFailedError as exc:
+        await _send_terminal_error(websocket, str(exc), code="codex_auth_switch_failed")
+        return
+
+    if switch_result is None:
+        await _send_terminal_error(websocket, "Account not found", code="account_not_found")
+        return
+
+    try:
+        terminal_process, launch = TerminalProcess.start(snapshot_name=switch_result.snapshot_name)
+    except TerminalLaunchError as exc:
+        await _send_terminal_error(websocket, str(exc), code="terminal_launch_failed")
+        return
+
+    await websocket.accept()
+    await stream_terminal_session(
+        websocket=websocket,
+        terminal_process=terminal_process,
+        launch=launch,
+        account_id=switch_result.account_id,
+        snapshot_name=switch_result.snapshot_name,
+    )
+
+
+async def _validate_dashboard_websocket_session(websocket: WebSocket) -> bool:
+    settings = await get_settings_cache().get()
+    requires_auth = settings.password_hash is not None or settings.totp_required_on_login
+    if not requires_auth:
+        return True
+
+    session_id = websocket.cookies.get(DASHBOARD_SESSION_COOKIE)
+    state = get_dashboard_session_store().get(session_id)
+    if state is None:
+        await websocket.close(code=4401, reason="Authentication is required")
+        return False
+
+    if settings.password_hash is not None and not state.password_verified:
+        await websocket.close(code=4401, reason="Authentication is required")
+        return False
+
+    if settings.totp_required_on_login and not state.totp_verified:
+        await websocket.close(code=4403, reason="TOTP verification is required")
+        return False
+
+    return True
+
+
+async def _send_terminal_error(websocket: WebSocket, message: str, *, code: str) -> None:
+    await websocket.accept()
+    await websocket.send_json({"type": "error", "message": message, "code": code})
+    await websocket.close(code=1011)

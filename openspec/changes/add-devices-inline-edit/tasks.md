@@ -1,0 +1,5 @@
+- [x] Add devices API/backend update support (`PUT /api/devices/{deviceId}`) with existing validation and conflict mapping.
+- [x] Add frontend devices update API/hook support and inline row edit UX (save/cancel, single-row edit mode).
+- [x] Extend frontend mocks + integration tests for device edit behavior and endpoint coverage.
+- [x] Extend backend unit/integration tests for device update success + error paths.
+- [x] Validate specs with `openspec validate --specs`.

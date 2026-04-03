@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-import { createDevice, deleteDevice, listDevices } from "@/features/devices/api";
-import type { DeviceCreateRequest } from "@/features/devices/schemas";
+import { createDevice, deleteDevice, listDevices, updateDevice } from "@/features/devices/api";
+import type { DeviceCreateRequest, DeviceUpdateRequest } from "@/features/devices/schemas";
 
 export function useDevices() {
   const queryClient = useQueryClient();
@@ -30,6 +30,18 @@ export function useDevices() {
     },
   });
 
+  const updateMutation = useMutation({
+    mutationFn: ({ deviceId, payload }: { deviceId: string; payload: DeviceUpdateRequest }) =>
+      updateDevice(deviceId, payload),
+    onSuccess: () => {
+      toast.success("Device updated");
+      invalidate();
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Failed to update device");
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: (deviceId: string) => deleteDevice(deviceId),
     onSuccess: () => {
@@ -44,6 +56,7 @@ export function useDevices() {
   return {
     devicesQuery,
     createMutation,
+    updateMutation,
     deleteMutation,
   };
 }

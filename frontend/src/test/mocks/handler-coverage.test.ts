@@ -62,6 +62,7 @@ const EXPECTED_ENDPOINTS = [
 	// devices
 	"GET /api/devices",
 	"POST /api/devices",
+	"PUT /api/devices/:deviceId",
 	"DELETE /api/devices/:deviceId",
 	// models
 	"GET /api/models",

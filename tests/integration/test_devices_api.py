@@ -27,16 +27,68 @@ async def test_devices_api_crud_and_validation(async_client):
     assert len(listed_payload["entries"]) == 1
     assert listed_payload["entries"][0]["id"] == created_payload["id"]
 
+    second = await async_client.post(
+        "/api/devices",
+        json={"name": "ksskringdistance04", "ipAddress": "192.168.0.2"},
+    )
+    assert second.status_code == 200
+    second_payload = second.json()
+
+    updated = await async_client.put(
+        f"/api/devices/{created_payload['id']}",
+        json={"name": "ksskringdistance03-updated", "ipAddress": "192.168.0.10"},
+    )
+    assert updated.status_code == 200
+    updated_payload = updated.json()
+    assert updated_payload["id"] == created_payload["id"]
+    assert updated_payload["name"] == "ksskringdistance03-updated"
+    assert updated_payload["ipAddress"] == "192.168.0.10"
+
+    update_duplicate_name = await async_client.put(
+        f"/api/devices/{created_payload['id']}",
+        json={"name": second_payload["name"], "ipAddress": "192.168.0.11"},
+    )
+    assert update_duplicate_name.status_code == 409
+    assert update_duplicate_name.json()["error"]["code"] == "device_name_exists"
+
+    update_duplicate_ip = await async_client.put(
+        f"/api/devices/{created_payload['id']}",
+        json={"name": "another-name", "ipAddress": second_payload["ipAddress"]},
+    )
+    assert update_duplicate_ip.status_code == 409
+    assert update_duplicate_ip.json()["error"]["code"] == "device_ip_exists"
+
+    update_invalid_name = await async_client.put(
+        f"/api/devices/{created_payload['id']}",
+        json={"name": "   ", "ipAddress": "192.168.0.3"},
+    )
+    assert update_invalid_name.status_code == 400
+    assert update_invalid_name.json()["error"]["code"] == "invalid_device_name"
+
+    update_invalid_ip = await async_client.put(
+        f"/api/devices/{created_payload['id']}",
+        json={"name": "new-valid-name", "ipAddress": "not-an-ip"},
+    )
+    assert update_invalid_ip.status_code == 400
+    assert update_invalid_ip.json()["error"]["code"] == "invalid_ip"
+
+    update_missing = await async_client.put(
+        "/api/devices/missing-device",
+        json={"name": "new-valid-name", "ipAddress": "192.168.0.3"},
+    )
+    assert update_missing.status_code == 404
+    assert update_missing.json()["error"]["code"] == "device_not_found"
+
     duplicate_name = await async_client.post(
         "/api/devices",
-        json={"name": "ksskringdistance03", "ipAddress": "192.168.0.2"},
+        json={"name": "ksskringdistance03-updated", "ipAddress": "192.168.0.22"},
     )
     assert duplicate_name.status_code == 409
     assert duplicate_name.json()["error"]["code"] == "device_name_exists"
 
     duplicate_ip = await async_client.post(
         "/api/devices",
-        json={"name": "ksskringdistance04", "ipAddress": "192.168.0.1"},
+        json={"name": "ksskringdistance05", "ipAddress": "192.168.0.10"},
     )
     assert duplicate_ip.status_code == 409
     assert duplicate_ip.json()["error"]["code"] == "device_ip_exists"

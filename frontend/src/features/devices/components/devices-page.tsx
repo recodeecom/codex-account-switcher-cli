@@ -25,20 +25,25 @@ import { formatTimeLong } from "@/utils/formatters";
 export function DevicesPage() {
   const [deviceName, setDeviceName] = useState("");
   const [deviceIpAddress, setDeviceIpAddress] = useState("");
+  const [editingDeviceId, setEditingDeviceId] = useState<string | null>(null);
+  const [editingDeviceName, setEditingDeviceName] = useState("");
+  const [editingDeviceIpAddress, setEditingDeviceIpAddress] = useState("");
   const blurred = usePrivacyStore((s) => s.blurred);
-  const { devicesQuery, createMutation, deleteMutation } = useDevices();
+  const { devicesQuery, createMutation, updateMutation, deleteMutation } = useDevices();
   const deleteDialog = useDialogState<{ id: string; name: string }>();
 
   const mutationError = useMemo(
     () =>
       getErrorMessageOrNull(devicesQuery.error) ||
       getErrorMessageOrNull(createMutation.error) ||
+      getErrorMessageOrNull(updateMutation.error) ||
       getErrorMessageOrNull(deleteMutation.error),
-    [devicesQuery.error, createMutation.error, deleteMutation.error],
+    [devicesQuery.error, createMutation.error, updateMutation.error, deleteMutation.error],
   );
 
   const entries = devicesQuery.data?.entries ?? [];
-  const busy = createMutation.isPending || deleteMutation.isPending;
+  const busy = createMutation.isPending || updateMutation.isPending || deleteMutation.isPending;
+  const addDisabled = busy || editingDeviceId !== null;
 
   const handleAdd = async () => {
     const name = deviceName.trim();
@@ -63,6 +68,37 @@ export function DevicesPage() {
     } catch {
       toast.error("Failed to copy device details");
     }
+  };
+
+  const handleEditStart = (deviceId: string, name: string, ipAddress: string) => {
+    setEditingDeviceId(deviceId);
+    setEditingDeviceName(name);
+    setEditingDeviceIpAddress(ipAddress);
+  };
+
+  const handleEditCancel = () => {
+    setEditingDeviceId(null);
+    setEditingDeviceName("");
+    setEditingDeviceIpAddress("");
+  };
+
+  const handleEditSave = async () => {
+    if (!editingDeviceId) {
+      return;
+    }
+    const name = editingDeviceName.trim();
+    const ipAddress = editingDeviceIpAddress.trim();
+    if (!name || !ipAddress) {
+      return;
+    }
+    await updateMutation.mutateAsync({
+      deviceId: editingDeviceId,
+      payload: {
+        name,
+        ipAddress,
+      },
+    });
+    handleEditCancel();
   };
 
   return (
@@ -93,7 +129,7 @@ export function DevicesPage() {
             onChange={(event) => setDeviceName(event.target.value)}
             placeholder="Device name (e.g. ksskringdistance03)"
             className="h-8 text-xs"
-            disabled={busy}
+            disabled={addDisabled}
           />
           <Input
             value={deviceIpAddress}
@@ -105,7 +141,7 @@ export function DevicesPage() {
             }}
             placeholder="IP address (e.g. 192.168.0.1)"
             className="h-8 text-xs"
-            disabled={busy}
+            disabled={addDisabled}
           />
           <Button
             type="button"
@@ -114,7 +150,7 @@ export function DevicesPage() {
             onClick={() => {
               void handleAdd();
             }}
-            disabled={busy || !deviceName.trim() || !deviceIpAddress.trim()}
+            disabled={addDisabled || !deviceName.trim() || !deviceIpAddress.trim()}
           >
             Add device
           </Button>
@@ -143,44 +179,111 @@ export function DevicesPage() {
               </TableHeader>
               <TableBody>
                 {entries.map((entry) => {
+                  const isEditing = editingDeviceId === entry.id;
                   const created = formatTimeLong(entry.createdAt);
                   return (
                     <TableRow key={entry.id}>
                       <TableCell className="font-medium">
-                        <span className={blurred ? "privacy-blur" : undefined}>{entry.name}</span>
+                        {isEditing ? (
+                          <Input
+                            value={editingDeviceName}
+                            onChange={(event) => setEditingDeviceName(event.target.value)}
+                            className="h-8 text-xs"
+                            disabled={busy}
+                            aria-label={`Edit device name for ${entry.name}`}
+                          />
+                        ) : (
+                          <span className={blurred ? "privacy-blur" : undefined}>{entry.name}</span>
+                        )}
                       </TableCell>
                       <TableCell className="font-mono text-xs">
-                        <span className={blurred ? "privacy-blur" : undefined}>{entry.ipAddress}</span>
+                        {isEditing ? (
+                          <Input
+                            value={editingDeviceIpAddress}
+                            onChange={(event) => setEditingDeviceIpAddress(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                void handleEditSave();
+                              }
+                            }}
+                            className="h-8 text-xs"
+                            disabled={busy}
+                            aria-label={`Edit IP address for ${entry.name}`}
+                          />
+                        ) : (
+                          <span className={blurred ? "privacy-blur" : undefined}>{entry.ipAddress}</span>
+                        )}
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
                         {created.date} {created.time}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center justify-end gap-1">
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="ghost"
-                            className="h-8 w-8"
-                            aria-label={`Copy ${entry.name} and ${entry.ipAddress}`}
-                            title="Copy device name and IP"
-                            disabled={busy}
-                            onClick={() => {
-                              void handleCopy(entry.name, entry.ipAddress);
-                            }}
-                          >
-                            <Copy className="h-4 w-4" aria-hidden="true" />
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            className="text-destructive hover:text-destructive"
-                            disabled={busy}
-                            onClick={() => deleteDialog.show({ id: entry.id, name: entry.name })}
-                          >
-                            Delete
-                          </Button>
+                          {isEditing ? (
+                            <>
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={() => {
+                                  void handleEditSave();
+                                }}
+                                disabled={
+                                  busy ||
+                                  !editingDeviceName.trim() ||
+                                  !editingDeviceIpAddress.trim() ||
+                                  (editingDeviceName.trim() === entry.name &&
+                                    editingDeviceIpAddress.trim() === entry.ipAddress)
+                                }
+                              >
+                                Save
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                onClick={handleEditCancel}
+                                disabled={busy}
+                              >
+                                Cancel
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8"
+                                aria-label={`Copy ${entry.name} and ${entry.ipAddress}`}
+                                title="Copy device name and IP"
+                                disabled={busy || editingDeviceId !== null}
+                                onClick={() => {
+                                  void handleCopy(entry.name, entry.ipAddress);
+                                }}
+                              >
+                                <Copy className="h-4 w-4" aria-hidden="true" />
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                disabled={busy || editingDeviceId !== null}
+                                onClick={() => handleEditStart(entry.id, entry.name, entry.ipAddress)}
+                              >
+                                Edit
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                className="text-destructive hover:text-destructive"
+                                disabled={busy || editingDeviceId !== null}
+                                onClick={() => deleteDialog.show({ id: entry.id, name: entry.name })}
+                              >
+                                Delete
+                              </Button>
+                            </>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>

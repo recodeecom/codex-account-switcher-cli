@@ -43,6 +43,20 @@ class DevicesRepository:
         await self._session.refresh(row)
         return row
 
+    async def update(self, device_id: str, name: str, ip_address: str) -> Device | None:
+        row = await self._session.get(Device, device_id)
+        if row is None:
+            return None
+        row.name = name
+        row.ip_address = ip_address
+        try:
+            await self._session.commit()
+        except IntegrityError as exc:
+            await self._session.rollback()
+            raise DeviceRepositoryConflictError(_detect_conflict_field(exc)) from exc
+        await self._session.refresh(row)
+        return row
+
     async def delete(self, device_id: str) -> bool:
         row = await self._session.get(Device, device_id)
         if row is None:

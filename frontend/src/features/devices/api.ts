@@ -1,9 +1,10 @@
-import { del, get, post } from "@/lib/api-client";
+import { del, get, post, put } from "@/lib/api-client";
 
 import {
   DeviceCreateRequestSchema,
   DeviceDeleteResponseSchema,
   DeviceEntrySchema,
+  DeviceUpdateRequestSchema,
   DevicesResponseSchema,
 } from "@/features/devices/schemas";
 
@@ -16,6 +17,13 @@ export function listDevices() {
 export function createDevice(payload: unknown) {
   const validated = DeviceCreateRequestSchema.parse(payload);
   return post(DEVICES_BASE_PATH, DeviceEntrySchema, {
+    body: validated,
+  });
+}
+
+export function updateDevice(deviceId: string, payload: unknown) {
+  const validated = DeviceUpdateRequestSchema.parse(payload);
+  return put(`${DEVICES_BASE_PATH}/${encodeURIComponent(deviceId)}`, DeviceEntrySchema, {
     body: validated,
   });
 }

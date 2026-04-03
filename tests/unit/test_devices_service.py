@@ -55,6 +55,21 @@ class _Repo:
         self._entries[entry.id] = entry
         return entry
 
+    async def update(self, device_id: str, name: str, ip_address: str) -> _Entry | None:
+        entry = self._entries.get(device_id)
+        if entry is None:
+            return None
+        now = datetime.now(UTC)
+        updated = _Entry(
+            id=entry.id,
+            name=name,
+            ip_address=ip_address,
+            created_at=entry.created_at,
+            updated_at=now,
+        )
+        self._entries[device_id] = updated
+        return updated
+
     async def delete(self, device_id: str) -> bool:
         return self._entries.pop(device_id, None) is not None
 
@@ -112,3 +127,65 @@ async def test_add_device_maps_repository_conflict_field() -> None:
 
     with pytest.raises(DeviceIpExistsError):
         await service.add_device("ksskringdistance03", "192.168.0.1")
+
+
+@pytest.mark.asyncio
+async def test_update_device_success() -> None:
+    service = DevicesService(cast(DevicesRepositoryPort, _Repo()))
+    created = await service.add_device("old-name", "192.168.0.1")
+
+    updated = await service.update_device(created.id, "new-name", "192.168.0.2")
+
+    assert updated is not None
+    assert updated.id == created.id
+    assert updated.name == "new-name"
+    assert updated.ip_address == "192.168.0.2"
+
+
+@pytest.mark.asyncio
+async def test_update_device_returns_none_when_missing() -> None:
+    service = DevicesService(cast(DevicesRepositoryPort, _Repo()))
+
+    updated = await service.update_device("missing", "new-name", "192.168.0.2")
+
+    assert updated is None
+
+
+@pytest.mark.asyncio
+async def test_update_device_maps_repository_name_conflict() -> None:
+    class _ConflictRepo(_Repo):
+        async def update(self, device_id: str, name: str, ip_address: str) -> _Entry | None:  # noqa: ARG002
+            raise DeviceRepositoryConflictError("name")
+
+    service = DevicesService(cast(DevicesRepositoryPort, _ConflictRepo()))
+
+    with pytest.raises(DeviceNameExistsError):
+        await service.update_device("dev-1", "new-name", "192.168.0.2")
+
+
+@pytest.mark.asyncio
+async def test_update_device_maps_repository_ip_conflict() -> None:
+    class _ConflictRepo(_Repo):
+        async def update(self, device_id: str, name: str, ip_address: str) -> _Entry | None:  # noqa: ARG002
+            raise DeviceRepositoryConflictError("ip_address")
+
+    service = DevicesService(cast(DevicesRepositoryPort, _ConflictRepo()))
+
+    with pytest.raises(DeviceIpExistsError):
+        await service.update_device("dev-1", "new-name", "192.168.0.2")
+
+
+@pytest.mark.asyncio
+async def test_update_device_rejects_invalid_name() -> None:
+    service = DevicesService(cast(DevicesRepositoryPort, _Repo()))
+
+    with pytest.raises(DeviceValidationError):
+        await service.update_device("dev-1", "   ", "192.168.0.2")
+
+
+@pytest.mark.asyncio
+async def test_update_device_rejects_invalid_ip() -> None:
+    service = DevicesService(cast(DevicesRepositoryPort, _Repo()))
+
+    with pytest.raises(DeviceValidationError):
+        await service.update_device("dev-1", "new-name", "invalid")
