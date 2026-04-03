@@ -85,6 +85,7 @@ export function createAccountSummary(
 		resetAtSecondary: offsetIso(24 * 60),
 		windowMinutesPrimary: 300,
 		windowMinutesSecondary: 10_080,
+		codexSessionCount: 0,
 		auth: {
 			access: { expiresAt: offsetIso(30), state: null },
 			refresh: { state: "stored" },

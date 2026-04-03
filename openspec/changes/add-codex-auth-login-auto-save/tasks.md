@@ -1,0 +1,4 @@
+- [x] 1. Add OpenSpec requirement updates for login-and-save workflow.
+- [x] 2. Implement `codex-auth login <name>` command with optional `--device-auth` passthrough.
+- [x] 3. Update README usage docs for the new command.
+- [x] 4. Run validation/build verification (`npm run build`, `openspec validate --specs`).

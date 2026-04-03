@@ -50,10 +50,13 @@ export function AuthGate({ children }: PropsWithChildren) {
             </div>
             <div>
               <h1 className="text-xl font-semibold tracking-tight">
-                Codexina Viktor Kedvence
+                Codexina
               </h1>
               <p className="mt-0.5 text-sm text-muted-foreground">
-                API Load Balancer
+                Codex account manager + switcher
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground/80">
+                Monitor usage and token usage. Secure device and API env storage coming soon.
               </p>
             </div>
           </div>

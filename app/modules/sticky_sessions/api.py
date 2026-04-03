@@ -36,6 +36,7 @@ async def list_sticky_sessions(
         entries=[
             StickySessionEntryResponse(
                 key=entry.key,
+                account_id=entry.account_id,
                 display_name=entry.display_name,
                 kind=entry.kind,
                 created_at=entry.created_at,

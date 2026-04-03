@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.usage.types import BucketModelAggregate
 from app.db.models import Account, AdditionalUsageHistory, RequestLog, UsageHistory
-from app.modules.accounts.repository import AccountsRepository
+from app.modules.accounts.repository import AccountRequestUsageSummary, AccountsRepository
 from app.modules.request_logs.repository import RequestLogsRepository
 from app.modules.usage.repository import AdditionalUsageRepository, UsageRepository
 
@@ -28,6 +28,18 @@ class DashboardRepository:
 
     async def latest_usage_by_account(self, window: str) -> dict[str, UsageHistory]:
         return await self._usage_repo.latest_by_account(window=window)
+
+    async def list_request_usage_summary_by_account(
+        self,
+        account_ids: list[str] | None = None,
+    ) -> dict[str, AccountRequestUsageSummary]:
+        return await self._accounts_repo.list_request_usage_summary_by_account(account_ids)
+
+    async def list_codex_session_counts_by_account(
+        self,
+        account_ids: list[str] | None = None,
+    ) -> dict[str, int]:
+        return await self._accounts_repo.list_codex_session_counts_by_account(account_ids)
 
     async def usage_history_since(
         self,

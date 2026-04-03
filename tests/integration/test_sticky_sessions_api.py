@@ -116,12 +116,14 @@ async def test_sticky_sessions_api_lists_metadata_and_purges_stale(async_client)
     assert payload["hasMore"] is False
 
     assert entries["prompt-cache-stale"]["kind"] == "prompt_cache"
+    assert entries["prompt-cache-stale"]["accountId"] == accounts[0].id
     assert entries["prompt-cache-stale"]["displayName"] == "sticky-a@example.com"
     assert entries["prompt-cache-stale"]["isStale"] is True
     assert entries["prompt-cache-stale"]["expiresAt"] is not None
     assert entries["prompt-cache-fresh"]["displayName"] == "sticky-a@example.com"
     assert entries["prompt-cache-fresh"]["isStale"] is False
     assert entries["codex-session-old"]["kind"] == "codex_session"
+    assert entries["codex-session-old"]["accountId"] == accounts[1].id
     assert entries["codex-session-old"]["displayName"] == "sticky-b@example.com"
     assert entries["codex-session-old"]["isStale"] is False
     assert entries["codex-session-old"]["expiresAt"] is None

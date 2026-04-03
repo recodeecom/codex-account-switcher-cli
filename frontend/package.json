@@ -1,7 +1,7 @@
 {
   "name": "frontend",
   "private": true,
-  "version": "1.10.17",
+  "version": "1.10.21",
   "type": "module",
   "packageManager": "bun@1.3.7",
   "scripts": {

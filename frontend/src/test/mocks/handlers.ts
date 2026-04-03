@@ -124,6 +124,7 @@ type MockState = {
 	}>;
 	stickySessions: Array<{
 		key: string;
+		accountId: string;
 		displayName: string;
 		kind: "codex_session" | "sticky_thread" | "prompt_cache";
 		createdAt: string;
@@ -606,13 +607,17 @@ export const handlers = [
 	http.get("/api/sticky-sessions", ({ request }) => {
 		const url = new URL(request.url);
 		const staleOnly = url.searchParams.get("staleOnly") === "true";
+		const kind = url.searchParams.get("kind");
 		const offset = Number(url.searchParams.get("offset") ?? "0");
 		const limit = Number(url.searchParams.get("limit") ?? "10");
+		const kindFilteredEntries = kind
+			? state.stickySessions.filter((entry) => entry.kind === kind)
+			: state.stickySessions;
 		const filteredEntries = staleOnly
-			? state.stickySessions.filter(
+			? kindFilteredEntries.filter(
 					(entry) => entry.kind === "prompt_cache" && entry.isStale,
 				)
-			: state.stickySessions;
+			: kindFilteredEntries;
 		const entries = filteredEntries.slice(offset, offset + limit);
 		const stalePromptCacheCount = state.stickySessions.filter(
 			(entry) => entry.kind === "prompt_cache" && entry.isStale,

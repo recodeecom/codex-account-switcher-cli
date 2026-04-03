@@ -8,7 +8,15 @@ from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Account, AccountStatus, DashboardSettings, RequestLog, StickySession, UsageHistory
+from app.db.models import (
+    Account,
+    AccountStatus,
+    DashboardSettings,
+    RequestLog,
+    StickySession,
+    StickySessionKind,
+    UsageHistory,
+)
 
 _SETTINGS_ROW_ID = 1
 _DUPLICATE_ACCOUNT_SUFFIX = "__copy"
@@ -83,6 +91,28 @@ class AccountsRepository:
             summaries[account_id] = return_row
 
         return summaries
+
+    async def list_codex_session_counts_by_account(
+        self,
+        account_ids: list[str] | None = None,
+    ) -> dict[str, int]:
+        stmt = (
+            select(
+                StickySession.account_id,
+                func.count(StickySession.key).label("session_count"),
+            )
+            .where(StickySession.kind == StickySessionKind.CODEX_SESSION)
+            .group_by(StickySession.account_id)
+        )
+        if account_ids:
+            stmt = stmt.where(StickySession.account_id.in_(account_ids))
+
+        result = await self._session.execute(stmt)
+        return {
+            str(account_id): int(session_count or 0)
+            for account_id, session_count in result.all()
+            if account_id
+        }
 
     async def exists_active_chatgpt_account_id(self, chatgpt_account_id: str) -> bool:
         result = await self._session.execute(

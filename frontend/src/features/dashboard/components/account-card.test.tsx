@@ -14,12 +14,24 @@ afterEach(() => {
 
 describe("AccountCard", () => {
   it("renders both 5h and weekly quota bars for regular accounts", () => {
-    const account = createAccountSummary();
+    const account = createAccountSummary({
+      requestUsage: {
+        requestCount: 12,
+        totalTokens: 98_765,
+        cachedInputTokens: 0,
+        totalCostUsd: 1.23,
+      },
+      codexSessionCount: 3,
+    });
     render(<AccountCard account={account} />);
 
     expect(screen.getByText("Plus")).toBeInTheDocument();
     expect(screen.getByText("5h")).toBeInTheDocument();
     expect(screen.getByText("Weekly")).toBeInTheDocument();
+    expect(screen.getByText("Tokens used")).toBeInTheDocument();
+    expect(screen.getByText("Codex sessions")).toBeInTheDocument();
+    expect(screen.getByText("98.77K")).toBeInTheDocument();
+    expect(screen.getByText("3")).toBeInTheDocument();
   });
 
   it("hides 5h quota bar for weekly-only accounts", () => {

@@ -14,7 +14,7 @@ from app.modules.accounts.codex_auth_switcher import (
     select_snapshot_name,
 )
 from app.modules.accounts.mappers import build_account_summaries
-from app.modules.accounts.schemas import AccountCodexAuthStatus
+from app.modules.accounts.schemas import AccountCodexAuthStatus, AccountRequestUsage
 from app.modules.dashboard.repository import DashboardRepository
 from app.modules.dashboard.schemas import (
     DashboardOverviewResponse,
@@ -43,6 +43,18 @@ class DashboardService:
         accounts = await self._repo.list_accounts()
         primary_usage = await self._repo.latest_usage_by_account("primary")
         secondary_usage = await self._repo.latest_usage_by_account("secondary")
+        account_ids = [account.id for account in accounts]
+        request_usage_rows = await self._repo.list_request_usage_summary_by_account(account_ids)
+        request_usage_by_account = {
+            account_id: AccountRequestUsage(
+                request_count=row.request_count,
+                total_tokens=row.total_tokens,
+                cached_input_tokens=row.cached_input_tokens,
+                total_cost_usd=row.total_cost_usd,
+            )
+            for account_id, row in request_usage_rows.items()
+        }
+        codex_session_counts_by_account = await self._repo.list_codex_session_counts_by_account(account_ids)
         snapshot_index = build_snapshot_index()
         codex_auth_by_account = {
             account.id: _build_codex_auth_status(account_id=account.id, snapshot_index=snapshot_index)
@@ -53,6 +65,8 @@ class DashboardService:
             accounts=accounts,
             primary_usage=primary_usage,
             secondary_usage=secondary_usage,
+            request_usage_by_account=request_usage_by_account,
+            codex_session_counts_by_account=codex_session_counts_by_account,
             codex_auth_by_account=codex_auth_by_account,
             encryptor=self._encryptor,
             include_auth=False,

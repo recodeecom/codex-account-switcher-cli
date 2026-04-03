@@ -1,0 +1,7 @@
+- [x] Extend backend dashboard overview account payloads with `requestUsage` rollups and `codexSessionCount`.
+- [x] Extend sticky-session list payload with `accountId` and expose kind filtering in frontend list API/hook params.
+- [x] Add Dashboard account-card UI fields for tokens used and codex session count.
+- [x] Add a new top-nav Sessions route/page rendering read-only `codex_session` mappings grouped by account.
+- [x] Add/extend backend and frontend tests for the new payload/UI behavior.
+- [x] Bump frontend patch version and verify build/test/lint/typecheck.
+- [x] Validate specs with `openspec validate --specs`.

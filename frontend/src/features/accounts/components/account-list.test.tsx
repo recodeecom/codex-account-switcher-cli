@@ -18,6 +18,7 @@ describe("AccountList", () => {
             displayName: "Primary",
             planType: "plus",
             status: "active",
+            codexSessionCount: 0,
             additionalQuotas: [],
           },
           {
@@ -26,6 +27,7 @@ describe("AccountList", () => {
             displayName: "Secondary",
             planType: "pro",
             status: "paused",
+            codexSessionCount: 0,
             additionalQuotas: [],
           },
         ]}
@@ -61,6 +63,7 @@ describe("AccountList", () => {
             displayName: "Primary",
             planType: "plus",
             status: "active",
+            codexSessionCount: 0,
             additionalQuotas: [],
           },
         ]}
@@ -87,6 +90,7 @@ describe("AccountList", () => {
             displayName: "Duplicate A",
             planType: "plus",
             status: "active",
+            codexSessionCount: 0,
             additionalQuotas: [],
           },
           {
@@ -95,6 +99,7 @@ describe("AccountList", () => {
             displayName: "Duplicate B",
             planType: "plus",
             status: "active",
+            codexSessionCount: 0,
             additionalQuotas: [],
           },
           {
@@ -103,6 +108,7 @@ describe("AccountList", () => {
             displayName: "Unique",
             planType: "pro",
             status: "active",
+            codexSessionCount: 0,
             additionalQuotas: [],
           },
         ]}

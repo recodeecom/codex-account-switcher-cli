@@ -1,0 +1,9 @@
+- [x] Add OpenSpec requirement updates for remove/status/auto-switch command surface.
+- [x] Implement `codex-auth remove [<query>|--all]` with interactive multi-select.
+- [x] Implement `codex-auth status` output for auto-switch/service/threshold/usage mode.
+- [x] Implement `config auto`, `config api`, and `daemon --watch|--once` command handling.
+- [x] Add registry sidecar metadata in `~/.codex/accounts/registry.json` while preserving `*.json` snapshots.
+- [x] Implement managed watcher service enable/disable/status for Linux/macOS/Windows.
+- [x] Add tests for auth parsing, usage threshold logic, and registry reconciliation.
+- [x] Update `codex-account-switcher/README.md` with new command usage and auto-switch behavior.
+- [x] Run validation/build verification (`npm run build`, `npm run test`, `openspec validate --specs`).

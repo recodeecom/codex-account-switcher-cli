@@ -19,6 +19,8 @@ const NAV_ITEMS = [
   { to: "/accounts", label: "Accounts" },
   { to: "/apis", label: "APIs" },
   { to: "/devices", label: "Devices" },
+  { to: "/storage", label: "Storage (coming soon)" },
+  { to: "/sessions", label: "Sessions" },
   { to: "/settings", label: "Settings" },
 ] as const;
 
@@ -54,6 +56,9 @@ export function AppHeader({
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold tracking-tight">
               Codexina
+            </p>
+            <p className="hidden truncate text-[11px] text-muted-foreground md:block">
+              Codex account manager + switcher
             </p>
           </div>
         </div>

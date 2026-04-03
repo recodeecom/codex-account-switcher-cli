@@ -13,6 +13,7 @@ from app.modules.settings.repository import SettingsRepository
 @dataclass(frozen=True, slots=True)
 class StickySessionEntryData:
     key: str
+    account_id: str
     display_name: str
     kind: StickySessionKind
     created_at: datetime
@@ -96,6 +97,7 @@ class StickySessionsService:
             is_stale = expires_at <= utcnow()
         return StickySessionEntryData(
             key=sticky_session.key,
+            account_id=sticky_session.account_id,
             display_name=row.display_name,
             kind=sticky_session.kind,
             created_at=sticky_session.created_at,

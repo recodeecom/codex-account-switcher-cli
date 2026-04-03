@@ -11,6 +11,7 @@ from app.modules.shared.schemas import DashboardModel
 
 class StickySessionEntryResponse(DashboardModel):
     key: str
+    account_id: str
     display_name: str
     kind: StickySessionKind
     created_at: datetime

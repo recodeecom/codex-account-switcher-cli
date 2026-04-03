@@ -10,7 +10,9 @@ import { AccountsPage } from "@/features/accounts/components/accounts-page";
 import { ApisPage } from "@/features/apis/components/apis-page";
 import { DashboardPage } from "@/features/dashboard/components/dashboard-page";
 import { DevicesPage } from "@/features/devices/components/devices-page";
+import { SessionsPage } from "@/features/sessions/components/sessions-page";
 import { SettingsPage } from "@/features/settings/components/settings-page";
+import { StoragePage } from "@/features/storage/components/storage-page";
 
 function AppLayout() {
   const logout = useAuthStore((state) => state.logout);
@@ -44,6 +46,8 @@ export default function App() {
             <Route path="/accounts" element={<AccountsPage />} />
             <Route path="/apis" element={<ApisPage />} />
             <Route path="/devices" element={<DevicesPage />} />
+            <Route path="/storage" element={<StoragePage />} />
+            <Route path="/sessions" element={<SessionsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/firewall" element={<Navigate to="/settings" replace />} />
           </Route>

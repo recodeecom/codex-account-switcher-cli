@@ -42,6 +42,7 @@ describe("StickySessionsSection", () => {
           entries: [
             {
               key: "session-1",
+              accountId: "acc_sticky_a",
               displayName: "sticky-a@example.com",
               kind: "prompt_cache",
               createdAt: "2026-03-10T12:00:00Z",
@@ -51,6 +52,7 @@ describe("StickySessionsSection", () => {
             },
             {
               key: "session-2",
+              accountId: "acc_sticky_b",
               displayName: "sticky-b@example.com",
               kind: "codex_session",
               createdAt: "2026-03-10T12:00:00Z",
@@ -139,6 +141,7 @@ describe("StickySessionsSection", () => {
           entries: [
             {
               key: "session-2",
+              accountId: "acc_sticky_b",
               displayName: "sticky-b@example.com",
               kind: "codex_session",
               createdAt: "2026-03-10T12:00:00Z",
@@ -191,6 +194,7 @@ describe("StickySessionsSection", () => {
           entries: [
             {
               key: "session-2",
+              accountId: "acc_sticky_b",
               displayName: "sticky-b@example.com",
               kind: "codex_session",
               createdAt: "2026-03-10T12:00:00Z",

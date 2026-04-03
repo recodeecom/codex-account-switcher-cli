@@ -31,6 +31,7 @@ describe("useStickySessions", () => {
     const entries = [
       {
         key: "thread_123",
+        accountId: "acc_sticky_a",
         displayName: "sticky-a@example.com",
         kind: "prompt_cache",
         createdAt: "2026-03-10T12:00:00Z",

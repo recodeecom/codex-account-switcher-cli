@@ -6,6 +6,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import pytest
+from sqlalchemy import text
 
 from app.core.auth import generate_unique_account_id
 from app.core.crypto import TokenEncryptor
@@ -88,12 +89,30 @@ async def test_dashboard_overview_combines_data(async_client, db_setup):
             error_code=None,
             requested_at=now - timedelta(minutes=1),
         )
+        await session.execute(
+            text(
+                """
+                INSERT INTO sticky_sessions (key, account_id, kind, created_at, updated_at)
+                VALUES (:key, :account_id, :kind, :timestamp, :timestamp)
+                """
+            ),
+            {
+                "key": "dashboard-session-1",
+                "account_id": "acc_dash",
+                "kind": "codex_session",
+                "timestamp": now - timedelta(minutes=1),
+            },
+        )
+        await session.commit()
 
     response = await async_client.get("/api/dashboard/overview")
     assert response.status_code == 200
     payload = response.json()
 
     assert payload["accounts"][0]["accountId"] == "acc_dash"
+    assert payload["accounts"][0]["requestUsage"] is not None
+    assert payload["accounts"][0]["requestUsage"]["totalTokens"] == 150
+    assert payload["accounts"][0]["codexSessionCount"] == 1
     assert payload["summary"]["primaryWindow"]["capacityCredits"] == pytest.approx(225.0)
     assert payload["windows"]["primary"]["windowKey"] == "primary"
     assert payload["windows"]["secondary"]["windowKey"] == "secondary"

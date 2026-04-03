@@ -6,6 +6,7 @@ export const StickySessionKindSchema = z.enum(STICKY_SESSION_KINDS);
 
 export const StickySessionEntrySchema = z.object({
   key: z.string().min(1),
+  accountId: z.string().min(1),
   displayName: z.string().min(1),
   kind: StickySessionKindSchema,
   createdAt: z.string().datetime({ offset: true }),
@@ -31,6 +32,7 @@ export const StickySessionsListResponseSchema = z.object({
 });
 
 export const StickySessionsListParamsSchema = z.object({
+  kind: StickySessionKindSchema.optional(),
   staleOnly: z.boolean().default(false),
   offset: z.number().int().nonnegative().default(0),
   limit: z.number().int().positive().max(500).default(10),

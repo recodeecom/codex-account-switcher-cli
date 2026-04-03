@@ -22,6 +22,12 @@ npm i -g @imdeadpool/codex-account-switcher
 ## Usage
 
 ```sh
+# login to Codex and immediately snapshot the refreshed auth session
+codex-auth login <name>
+
+# headless/remote login flow + snapshot
+codex-auth login <name> --device-auth
+
 # save the current logged-in token as a named account
 codex-auth save <name>
 
@@ -36,14 +42,65 @@ codex-auth list
 
 # show current account name
 codex-auth current
+
+# remove accounts (interactive multi-select)
+codex-auth remove
+
+# remove by selector or all
+codex-auth remove <query>
+codex-auth remove --all
+
+# show auto-switch + service status
+codex-auth status
+
+# auto-switch configuration
+codex-auth config auto enable
+codex-auth config auto disable
+codex-auth config auto --5h 12 --weekly 8
+
+# usage source configuration
+codex-auth config api enable
+codex-auth config api disable
+
+# daemon runtime (internal/service use)
+codex-auth daemon --once
+codex-auth daemon --watch
 ```
 
 ### Command reference
 
 - `codex-auth save <name>` – Validates `<name>`, ensures `auth.json` exists, then snapshots it to `~/.codex/accounts/<name>.json`.
+- `codex-auth login <name> [--device-auth]` – Runs `codex login` (optionally with device auth) and automatically snapshots the resulting `auth.json` to `~/.codex/accounts/<name>.json`.
 - `codex-auth use [name]` – Accepts a name or launches an interactive selector with the current account pre-selected. Copies on Windows, creates a symlink elsewhere, and records the active name.
 - `codex-auth list` – Lists all saved snapshots alphabetically and marks the active one with `*`.
 - `codex-auth current` – Prints the active account name, or a friendly message if none is active.
+- `codex-auth remove [query|--all]` – Removes snapshots interactively or by selector. If the active account is removed, the best remaining account is activated automatically.
+- `codex-auth status` – Prints auto-switch state, managed service status, active thresholds, and usage mode.
+- `codex-auth config auto ...` – Enables/disables managed auto-switch and updates threshold percentages.
+- `codex-auth config api enable|disable` – Chooses usage source mode (`api` or `local`).
+- `codex-auth daemon --once|--watch` – Runs the auto-switch loop once or continuously.
+
+### Auto-switch behavior
+
+When auto-switch is enabled, the daemon evaluates the active account and switches when either threshold is crossed:
+
+- `5h` remaining `< threshold5h` (default `10%`)
+- `weekly` remaining `< thresholdWeekly` (default `5%`)
+
+Usage refresh is hybrid:
+
+1. API mode (`config api enable`): query ChatGPT usage endpoint for each account.
+2. Local fallback: active account usage can fall back to local session rollout logs when API data is unavailable.
+
+### Managed background service
+
+`codex-auth config auto enable` installs a managed watcher per OS:
+
+- Linux: user `systemd` service
+- macOS: LaunchAgent
+- Windows: Scheduled Task
+
+`codex-auth status` reports whether the managed watcher is active.
 
 Notes:
 

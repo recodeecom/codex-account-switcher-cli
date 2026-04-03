@@ -80,6 +80,7 @@ class AccountSummary(DashboardModel):
     capacity_credits_secondary: float | None = None
     remaining_credits_secondary: float | None = None
     request_usage: AccountRequestUsage | None = None
+    codex_session_count: int = 0
     additional_quotas: list[AccountAdditionalQuota] = Field(default_factory=list)
     deactivation_reason: str | None = None
     auth: AccountAuthStatus | None = None

@@ -14,11 +14,13 @@ const STICKY_SESSIONS_PATH = "/api/sticky-sessions";
 
 export function listStickySessions(params: unknown) {
   const validated = StickySessionsListParamsSchema.parse(params);
-  const searchParams = new URLSearchParams({
-    staleOnly: String(validated.staleOnly),
-    offset: String(validated.offset),
-    limit: String(validated.limit),
-  });
+  const searchParams = new URLSearchParams();
+  searchParams.set("staleOnly", String(validated.staleOnly));
+  searchParams.set("offset", String(validated.offset));
+  searchParams.set("limit", String(validated.limit));
+  if (validated.kind) {
+    searchParams.set("kind", validated.kind);
+  }
   return get(`${STICKY_SESSIONS_PATH}?${searchParams.toString()}`, StickySessionsListResponseSchema);
 }
 
