@@ -1,0 +1,5 @@
+- [x] Add conditional `codex-auth` install/update logic to `redeploy.sh` (missing/version/fingerprint/force).
+- [x] Add `--force-codex-auth-install` flag.
+- [x] Add opt-in frontend version bump behavior with `--bump-frontend-version` and `CODEX_LB_BUMP_FRONTEND_VERSION`.
+- [x] Add unit tests for the new redeploy behavior.
+- [x] Update README redeploy documentation.

@@ -162,6 +162,8 @@ export function DashboardPage() {
             </div>
             <AccountCards
               accounts={overview?.accounts ?? []}
+              primaryWindow={overview?.windows.primary ?? null}
+              secondaryWindow={overview?.windows.secondary ?? null}
               useLocalBusy={useLocalMutation.isPending}
               onAction={handleAccountAction}
             />

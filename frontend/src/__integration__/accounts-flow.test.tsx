@@ -94,6 +94,9 @@ describe("accounts flow integration", () => {
     renderWithProviders(<App />);
 
     expect(await screen.findByRole("heading", { name: "Accounts" })).toBeInTheDocument();
+    expect(
+      await screen.findByText("No codex-auth snapshot is linked to this account yet."),
+    ).toBeInTheDocument();
     const useButtons = await screen.findAllByRole("button", { name: "Use this" });
     if (useButtons.length === 0) {
       throw new Error("Expected at least one use button");

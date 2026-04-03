@@ -156,7 +156,10 @@ When `CODEX_LB_CODEX_AUTH_AUTO_IMPORT_ON_ACCOUNTS_LIST=true` (default), loading 
 
 > Docker Compose note: the default `docker-compose.yml` mounts `${HOME}/.codex` into the server container as read-only, so codex-auth snapshots on your host are visible to codex-lb.
 >
-> `./redeploy.sh` also installs/updates the bundled `codex-auth` package globally from `./codex-account-switcher` before rebuilding containers. Use `--skip-codex-auth-install` (or `CODEX_LB_INSTALL_CODEX_AUTH=false`) to disable that step.
+> `./redeploy.sh` checks whether bundled `codex-auth` is already up to date, and only reinstalls when missing/outdated/changed.
+> Use `--force-codex-auth-install` to force reinstall, or `--skip-codex-auth-install` (or `CODEX_LB_INSTALL_CODEX_AUTH=false`) to disable that step.
+>
+> Frontend version no longer auto-increments on every redeploy. Use `--bump-frontend-version` (or `CODEX_LB_BUMP_FRONTEND_VERSION=true`) when you explicitly want a patch bump.
 
 ## Client Setup
 

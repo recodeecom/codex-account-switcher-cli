@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 from dataclasses import dataclass
@@ -49,6 +50,45 @@ def _resolve_active_auth_path() -> Path:
     return Path.home() / ".codex" / "auth.json"
 
 
+def _resolve_registry_path(accounts_dir: Path) -> Path:
+    raw = os.environ.get("CODEX_AUTH_REGISTRY_PATH")
+    if raw:
+        path = Path(raw).expanduser()
+        return path if path.is_absolute() else Path.cwd() / path
+    return accounts_dir / "registry.json"
+
+
+def _validate_snapshot_name(snapshot_name: str | None, *, accounts_dir: Path) -> str | None:
+    if not snapshot_name:
+        return None
+    name = snapshot_name.strip()
+    if not name:
+        return None
+    if (accounts_dir / f"{name}.json").exists():
+        return name
+    return None
+
+
+def _resolve_active_snapshot_name_from_registry(accounts_dir: Path) -> str | None:
+    registry_path = _resolve_registry_path(accounts_dir)
+    if not registry_path.exists() or not registry_path.is_file():
+        return None
+
+    try:
+        payload = json.loads(registry_path.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, ValueError, TypeError):
+        return None
+
+    if not isinstance(payload, dict):
+        return None
+
+    active_name = payload.get("activeAccountName")
+    if not isinstance(active_name, str):
+        return None
+
+    return _validate_snapshot_name(active_name, accounts_dir=accounts_dir)
+
+
 def _snapshot_account_id(snapshot_path: Path) -> str | None:
     try:
         auth = parse_auth_json(snapshot_path.read_bytes())
@@ -61,14 +101,19 @@ def _snapshot_account_id(snapshot_path: Path) -> str | None:
 
 
 def _resolve_active_snapshot_name(accounts_dir: Path) -> str | None:
+    registry_active = _resolve_active_snapshot_name_from_registry(accounts_dir)
+    if registry_active:
+        return registry_active
+
     current_path = _resolve_current_path()
     if current_path.exists() and current_path.is_file():
         try:
             name = current_path.read_text(encoding="utf-8", errors="replace").strip()
         except OSError:
             name = ""
-        if name:
-            return name
+        resolved = _validate_snapshot_name(name, accounts_dir=accounts_dir)
+        if resolved:
+            return resolved
 
     active_auth_path = _resolve_active_auth_path()
     if active_auth_path.exists() and active_auth_path.is_symlink():
@@ -78,9 +123,9 @@ def _resolve_active_snapshot_name(accounts_dir: Path) -> str | None:
             return None
 
         if target.suffix == ".json":
-            if target.parent == accounts_dir:
-                return target.stem
-            return target.stem
+            resolved = _validate_snapshot_name(target.stem, accounts_dir=accounts_dir)
+            if resolved:
+                return resolved
 
     return None
 

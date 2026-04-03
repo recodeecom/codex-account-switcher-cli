@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -196,5 +196,51 @@ describe("AccountCard", () => {
     render(<AccountCard account={account} />);
 
     expect(screen.queryByText("Working now")).not.toBeInTheDocument();
+  });
+
+  it("shows at least one codex session when account is working now", () => {
+    const account = createAccountSummary({
+      email: "working@example.com",
+      displayName: "working@example.com",
+      codexSessionCount: 0,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "working",
+        activeSnapshotName: "working",
+        isActiveSnapshot: true,
+      },
+    });
+
+    render(<AccountCard account={account} />);
+
+    const card = screen.getByText("working@example.com").closest(".card-hover");
+    expect(card).not.toBeNull();
+    const sessionsLabel = within(card as HTMLElement).getByText("Codex sessions");
+    const sessionsValue = sessionsLabel.parentElement?.querySelector("p.mt-0\\.5.text-xs.font-semibold.tabular-nums");
+    expect(sessionsValue).not.toBeNull();
+    expect(sessionsValue).toHaveTextContent(/^1$/);
+  });
+
+  it("keeps codex sessions at zero when account is not the active snapshot", () => {
+    const account = createAccountSummary({
+      email: "idle@example.com",
+      displayName: "idle@example.com",
+      codexSessionCount: 0,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "idle",
+        activeSnapshotName: "working",
+        isActiveSnapshot: false,
+      },
+    });
+
+    render(<AccountCard account={account} />);
+
+    const card = screen.getByText("idle@example.com").closest(".card-hover");
+    expect(card).not.toBeNull();
+    const sessionsLabel = within(card as HTMLElement).getByText("Codex sessions");
+    const sessionsValue = sessionsLabel.parentElement?.querySelector("p.mt-0\\.5.text-xs.font-semibold.tabular-nums");
+    expect(sessionsValue).not.toBeNull();
+    expect(sessionsValue).toHaveTextContent(/^0$/);
   });
 });

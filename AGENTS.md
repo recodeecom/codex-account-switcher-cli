@@ -10,15 +10,12 @@
 
 The `/project-conventions` skill is auto-activated on code edits (PreToolUse guard).
 
-| Convention | Location | When |
-|-----------|----------|------|
-| Code Conventions (Full) | `/project-conventions` skill | On code edit (auto-enforced) |
-| Git Workflow | `.agents/conventions/git-workflow.md` | Commit / PR |
+| Convention              | Location                              | When                         |
+| ----------------------- | ------------------------------------- | ---------------------------- |
+| Code Conventions (Full) | `/project-conventions` skill          | On code edit (auto-enforced) |
+| Git Workflow            | `.agents/conventions/git-workflow.md` | Commit / PR                  |
 
 ## Versioning Rule
-
-- Always bump the app version by **+1 patch** in `frontend/package.json` on every implemented code change.
-- Keep the UI version badge/header in sync with `frontend/package.json`.
 
 ## Workflow (OpenSpec-first)
 
@@ -26,11 +23,11 @@ This repo uses **OpenSpec as the primary workflow and SSOT** for change-driven d
 
 ### How to work (default)
 
-1) Find the relevant spec(s) in `openspec/specs/**` and treat them as source-of-truth.
-2) If the work changes behavior, requirements, contracts, or schema: create an OpenSpec change in `openspec/changes/**` first (proposal -> tasks).
-3) Implement the tasks; keep code + specs in sync (update `spec.md` as needed).
-4) Validate specs locally: `openspec validate --specs`
-5) When done: verify + archive the change (do not archive unverified changes).
+1. Find the relevant spec(s) in `openspec/specs/**` and treat them as source-of-truth.
+2. If the work changes behavior, requirements, contracts, or schema: create an OpenSpec change in `openspec/changes/**` first (proposal -> tasks).
+3. Implement the tasks; keep code + specs in sync (update `spec.md` as needed).
+4. Validate specs locally: `openspec validate --specs`
+5. When done: verify + archive the change (do not archive unverified changes).
 
 ### Source of Truth
 

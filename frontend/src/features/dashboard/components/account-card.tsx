@@ -19,6 +19,7 @@ type AccountAction = "details" | "resume" | "reauth" | "terminal" | "useLocal";
 
 export type AccountCardProps = {
   account: AccountSummary;
+  tokensUsed?: number | null;
   showAccountId?: boolean;
   useLocalBusy?: boolean;
   onAction?: (account: AccountSummary, action: AccountAction) => void;
@@ -68,7 +69,13 @@ function QuotaBar({
   );
 }
 
-export function AccountCard({ account, showAccountId = false, useLocalBusy = false, onAction }: AccountCardProps) {
+export function AccountCard({
+  account,
+  tokensUsed = null,
+  showAccountId = false,
+  useLocalBusy = false,
+  onAction,
+}: AccountCardProps) {
   const blurred = usePrivacyStore((s) => s.blurred);
   const status = normalizeStatus(account.status);
   const primaryRemaining = account.usage?.primaryRemainingPercent ?? null;
@@ -90,8 +97,8 @@ export function AccountCard({ account, showAccountId = false, useLocalBusy = fal
   const title = account.displayName || account.email;
   const compactId = formatCompactAccountId(account.accountId);
   const planLabel = formatSlug(account.planType);
-  const totalTokensUsed = account.requestUsage?.totalTokens ?? 0;
-  const codexSessionCount = account.codexSessionCount ?? 0;
+  const totalTokensUsed = tokensUsed ?? account.requestUsage?.totalTokens ?? 0;
+  const codexSessionCount = Math.max(account.codexSessionCount ?? 0, isWorkingNow ? 1 : 0);
   const emailSubtitle =
     account.displayName && account.displayName !== account.email
       ? account.email

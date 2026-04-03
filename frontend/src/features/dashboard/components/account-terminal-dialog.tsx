@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FitAddon } from "@xterm/addon-fit";
-import XtermModule from "@xterm/xterm";
+import * as XtermModule from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 
 import {
@@ -11,6 +11,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import type { AccountSummary } from "@/features/dashboard/schemas";
+import {
+  resolveTerminalConstructor,
+  type XtermTerminalInstance,
+} from "@/features/dashboard/components/terminal-constructor";
 import { useThemeStore } from "@/hooks/use-theme";
 
 type TerminalDialogProps = {
@@ -18,54 +22,6 @@ type TerminalDialogProps = {
   account: AccountSummary | null;
   onOpenChange: (open: boolean) => void;
 };
-
-type Disposable = { dispose: () => void };
-
-type XtermTerminalInstance = {
-  cols: number;
-  rows: number;
-  loadAddon: (addon: FitAddon) => void;
-  open: (parent: HTMLElement) => void;
-  focus: () => void;
-  writeln: (data: string) => void;
-  write: (data: string) => void;
-  onData: (callback: (data: string) => void) => Disposable;
-  dispose: () => void;
-};
-
-type XtermTerminalConstructor = new (options: {
-  allowTransparency: boolean;
-  convertEol: boolean;
-  cursorBlink: boolean;
-  cursorStyle: "block";
-  cols: number;
-  rows: number;
-  fontFamily: string;
-  fontSize: number;
-  lineHeight: number;
-  scrollback: number;
-  theme: ReturnType<typeof toTerminalTheme>;
-}) => XtermTerminalInstance;
-
-export function resolveTerminalConstructor(moduleValue: unknown): XtermTerminalConstructor | null {
-  const direct = moduleValue as { Terminal?: unknown; default?: unknown } | null;
-  if (direct && typeof direct.Terminal === "function") {
-    return direct.Terminal as XtermTerminalConstructor;
-  }
-
-  if (direct && direct.default && typeof direct.default === "object") {
-    const nested = direct.default as { Terminal?: unknown };
-    if (typeof nested.Terminal === "function") {
-      return nested.Terminal as XtermTerminalConstructor;
-    }
-  }
-
-  if (typeof moduleValue === "function") {
-    return moduleValue as XtermTerminalConstructor;
-  }
-
-  return null;
-}
 
 function buildTerminalSocketUrl(accountId: string): string {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -94,24 +50,33 @@ function toTerminalTheme(isDark: boolean) {
 }
 
 export function AccountTerminalDialog({ open, account, onOpenChange }: TerminalDialogProps) {
-  const terminalHostRef = useRef<HTMLDivElement | null>(null);
-  const [initError, setInitError] = useState<string | null>(null);
+  const terminalHostElementRef = useRef<HTMLDivElement | null>(null);
+  const [hostVersion, setHostVersion] = useState(0);
+  const handleTerminalHostRef = useCallback((node: HTMLDivElement | null) => {
+    terminalHostElementRef.current = node;
+    setHostVersion((value) => value + 1);
+  }, []);
   const isDark = useThemeStore((s) => s.theme === "dark");
   const theme = useMemo(() => toTerminalTheme(isDark), [isDark]);
 
   useEffect(() => {
-    if (!open || !account || !terminalHostRef.current) {
+    const hostElement = terminalHostElementRef.current;
+    if (!open || !account || !hostElement) {
       return;
     }
-
-    setInitError(null);
-
-    const hostElement = terminalHostRef.current;
     hostElement.innerHTML = "";
+    const renderInitError = (message: string) => {
+      hostElement.innerHTML = "";
+      const notice = document.createElement("p");
+      notice.role = "status";
+      notice.className = "px-4 py-3 text-sm text-rose-300";
+      notice.textContent = message;
+      hostElement.appendChild(notice);
+    };
 
     const TerminalConstructor = resolveTerminalConstructor(XtermModule);
     if (!TerminalConstructor) {
-      setInitError("Terminal runtime failed to load. Refresh and try again.");
+      renderInitError("Terminal runtime failed to load. Refresh and try again.");
       return;
     }
 
@@ -131,7 +96,7 @@ export function AccountTerminalDialog({ open, account, onOpenChange }: TerminalD
         theme,
       });
     } catch {
-      setInitError("Terminal failed to initialize. Please reopen the dialog.");
+      renderInitError("Terminal failed to initialize. Please reopen the dialog.");
       return;
     }
 
@@ -231,7 +196,7 @@ export function AccountTerminalDialog({ open, account, onOpenChange }: TerminalD
       terminal.dispose();
       hostElement.innerHTML = "";
     };
-  }, [account, open, theme]);
+  }, [account, hostVersion, open, theme]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -243,12 +208,7 @@ export function AccountTerminalDialog({ open, account, onOpenChange }: TerminalD
           </DialogDescription>
         </DialogHeader>
         <div className="rounded-b-xl bg-[#090d1a] px-2 py-2 dark:bg-[#090d1a]">
-          {initError ? (
-            <p className="mb-2 rounded-md border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-200" role="status">
-              {initError}
-            </p>
-          ) : null}
-          <div ref={terminalHostRef} className="h-[65vh] w-full overflow-hidden rounded-lg border border-cyan-500/20" />
+          <div ref={handleTerminalHostRef} className="h-[65vh] w-full overflow-hidden rounded-lg border border-cyan-500/20" />
         </div>
       </DialogContent>
     </Dialog>

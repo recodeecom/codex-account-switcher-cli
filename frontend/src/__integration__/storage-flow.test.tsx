@@ -25,7 +25,7 @@ describe("storage flow integration", () => {
 
     expect(await screen.findByRole("heading", { name: "Dashboard" })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("link", { name: "Storage (coming soon)" }));
+    await user.click(screen.getByRole("link", { name: /Storage/i }));
     expect(await screen.findByRole("heading", { name: "Storage" })).toBeInTheDocument();
   });
 });

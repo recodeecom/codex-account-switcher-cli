@@ -3,6 +3,7 @@ import { User } from "lucide-react";
 import { isEmailLabel } from "@/components/blur-email";
 import { usePrivacyStore } from "@/hooks/use-privacy";
 import { AccountActions } from "@/features/accounts/components/account-actions";
+import { AccountSnapshotTutorial } from "@/features/accounts/components/account-snapshot-tutorial";
 import { AccountTokenInfo } from "@/features/accounts/components/account-token-info";
 import { AccountUsagePanel } from "@/features/accounts/components/account-usage-panel";
 import type { AccountSummary } from "@/features/accounts/schemas";
@@ -54,6 +55,7 @@ export function AccountDetail({
     ? account.email
     : null;
   const idSuffix = showAccountId ? ` (${compactId})` : "";
+  const hasResolvedSnapshot = Boolean(account.codexAuth?.snapshotName?.trim());
 
   return (
     <div key={account.accountId} className="animate-fade-in-up space-y-4 rounded-xl border bg-card p-5">
@@ -69,6 +71,7 @@ export function AccountDetail({
         ) : null}
       </div>
 
+      {!hasResolvedSnapshot ? <AccountSnapshotTutorial /> : null}
       <AccountUsagePanel account={account} trends={trends} />
       <AccountTokenInfo account={account} />
       <AccountActions

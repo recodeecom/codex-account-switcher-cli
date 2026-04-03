@@ -3,6 +3,7 @@ import { useState } from "react";
 import { NavLink } from "react-router-dom";
 
 import { CodexLogo } from "@/components/brand/codex-logo";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -14,15 +15,21 @@ import {
 import { usePrivacyStore } from "@/hooks/use-privacy";
 import { cn } from "@/lib/utils";
 
-const NAV_ITEMS = [
+type NavItem = {
+  to: string;
+  label: string;
+  isComingSoon?: boolean;
+};
+
+const NAV_ITEMS: NavItem[] = [
   { to: "/dashboard", label: "Dashboard" },
   { to: "/accounts", label: "Accounts" },
   { to: "/apis", label: "APIs" },
   { to: "/devices", label: "Devices" },
-  { to: "/storage", label: "Storage (coming soon)" },
+  { to: "/storage", label: "Storage", isComingSoon: true },
   { to: "/sessions", label: "Sessions" },
   { to: "/settings", label: "Settings" },
-] as const;
+];
 
 export type AppHeaderProps = {
   onLogout: () => void;
@@ -78,7 +85,15 @@ export function AppHeader({
                 )
               }
             >
-              {item.label}
+              <span>{item.label}</span>
+              {item.isComingSoon ? (
+                <Badge
+                  variant="secondary"
+                  className="ml-1 border border-border/60 bg-muted px-1.5 py-0 text-[10px] text-muted-foreground"
+                >
+                  Coming soon
+                </Badge>
+              ) : null}
             </NavLink>
           ))}
         </nav>
@@ -140,13 +155,21 @@ export function AppHeader({
                     {({ isActive }) => (
                       <span
                         className={cn(
-                          "block w-full rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors",
+                          "flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors",
                           isActive
                             ? "bg-primary/10 text-primary"
                             : "text-muted-foreground hover:bg-muted hover:text-foreground",
                         )}
                       >
-                        {item.label}
+                        <span>{item.label}</span>
+                        {item.isComingSoon ? (
+                          <Badge
+                            variant="secondary"
+                            className="border border-border/60 bg-muted px-1.5 py-0 text-[10px] text-muted-foreground"
+                          >
+                            Coming soon
+                          </Badge>
+                        ) : null}
                       </span>
                     )}
                   </NavLink>

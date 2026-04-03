@@ -1,0 +1,7 @@
+- [x] Update codex-auth snapshot index resolution to prefer registry `activeAccountName` with validated fallback order.
+- [x] Add backend unit tests for active snapshot resolution precedence and fallback behavior.
+- [x] Update dashboard account-card metric derivation to use quota-based consumption per account window.
+- [x] Ensure active snapshot cards show minimum one codex session when raw count is zero.
+- [x] Add/extend frontend tests for quota-based token display and codex-session active fallback.
+- [x] Bump frontend patch version and keep UI version source in sync.
+- [x] Run targeted lint/typecheck/tests and `openspec validate --specs`.

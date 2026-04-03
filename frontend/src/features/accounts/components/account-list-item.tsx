@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { isEmailLabel } from "@/components/blur-email";
 import { usePrivacyStore } from "@/hooks/use-privacy";
 import { StatusBadge } from "@/components/status-badge";
@@ -62,6 +63,7 @@ export function AccountListItem({
   const idSuffix = showAccountId ? ` | ID ${formatCompactAccountId(account.accountId)}` : "";
   const secondary = account.usage?.secondaryRemainingPercent ?? null;
   const primaryRemaining = account.usage?.primaryRemainingPercent;
+  const hasResolvedSnapshot = Boolean(account.codexAuth?.snapshotName?.trim());
   const canUseLocally = canUseLocalAccount({
     status: account.status,
     primaryRemainingPercent: primaryRemaining,
@@ -95,7 +97,18 @@ export function AccountListItem({
                 {emailSubtitle ? <><span className={blurred ? "privacy-blur" : undefined}>{emailSubtitle}</span>{idSuffix}</> : <>{baseSubtitle}{idSuffix}</>}
               </p>
             </div>
-            <StatusBadge status={status} />
+            <div className="flex items-center gap-1">
+              <StatusBadge status={status} />
+              {!hasResolvedSnapshot ? (
+                <Badge
+                  data-testid="missing-snapshot-badge"
+                  variant="destructive"
+                  className="h-5 border-destructive/30 px-1.5 py-0 text-[10px]"
+                >
+                  No snapshot
+                </Badge>
+              ) : null}
+            </div>
           </div>
           <div className="mt-1.5">
             <MiniQuotaBar percent={secondary} />

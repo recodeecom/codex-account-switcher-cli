@@ -1,0 +1,4 @@
+- [x] Add missing-snapshot warning badge rendering in Accounts list rows.
+- [x] Add detail-panel tutorial with exact terminal commands for creating a codex-auth snapshot.
+- [x] Add/adjust frontend tests for badge rendering and tutorial visibility in missing-snapshot flow.
+- [x] Validate specs with `openspec validate --specs`.

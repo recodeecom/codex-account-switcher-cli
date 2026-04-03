@@ -175,6 +175,30 @@ describe("AccountListItem", () => {
     );
 
     expect(screen.getByText("Team · No snapshot")).toBeInTheDocument();
+    expect(screen.getByTestId("missing-snapshot-badge")).toHaveTextContent("No snapshot");
+  });
+
+  it("does not show missing snapshot badge when snapshot is mapped", () => {
+    const account = createAccountSummary({
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "deadpool",
+        activeSnapshotName: "deadpool",
+        isActiveSnapshot: true,
+      },
+    });
+
+    render(
+      <AccountListItem
+        account={account}
+        selected={false}
+        onSelect={vi.fn()}
+        onUseLocal={vi.fn()}
+        useLocalBusy={false}
+      />,
+    );
+
+    expect(screen.queryByTestId("missing-snapshot-badge")).not.toBeInTheDocument();
   });
 
   it("disables use button when account status is not active", () => {
