@@ -40,3 +40,21 @@ export class PromptCancelledError extends CodexAuthError {
     super("No account selected. The operation was cancelled.");
   }
 }
+
+export class InvalidRemoveSelectionError extends CodexAuthError {
+  constructor() {
+    super("No accounts were selected for removal.");
+  }
+}
+
+export class AmbiguousAccountQueryError extends CodexAuthError {
+  constructor(query: string) {
+    super(`Query "${query}" matched multiple accounts. Refine the query or use interactive mode.`);
+  }
+}
+
+export class AutoSwitchConfigError extends CodexAuthError {
+  constructor(message: string) {
+    super(message);
+  }
+}

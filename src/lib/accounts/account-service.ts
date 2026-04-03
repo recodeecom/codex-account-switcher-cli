@@ -1,32 +1,103 @@
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
-import { accountsDir, authPath, codexDir, currentNamePath } from "../config/paths";
+import {
+  resolveAccountsDir,
+  resolveAuthPath,
+  resolveCodexDir,
+  resolveCurrentNamePath,
+} from "../config/paths";
 import {
   AccountNotFoundError,
+  AmbiguousAccountQueryError,
   AuthFileMissingError,
+  AutoSwitchConfigError,
   InvalidAccountNameError,
 } from "./errors";
+import { parseAuthSnapshotFile } from "./auth-parser";
+import {
+  createDefaultRegistry,
+  loadRegistry,
+  reconcileRegistryWithAccounts,
+  saveRegistry,
+} from "./registry";
+import {
+  AutoSwitchRunResult,
+  RegistryData,
+  StatusReport,
+  UsageSnapshot,
+} from "./types";
+import {
+  fetchUsageFromApi,
+  fetchUsageFromLocal,
+  shouldSwitchCurrent,
+  usageScore,
+} from "./usage";
+import {
+  disableManagedService,
+  enableManagedService,
+  getManagedServiceState,
+} from "./service-manager";
 
 const ACCOUNT_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
 
+export interface AccountChoice {
+  name: string;
+  email?: string;
+  active: boolean;
+}
+
+export interface RemoveResult {
+  removed: string[];
+  activated?: string;
+}
+
 export class AccountService {
   public async listAccountNames(): Promise<string[]> {
+    const accountsDir = resolveAccountsDir();
     if (!(await this.pathExists(accountsDir))) {
       return [];
     }
 
     const entries = await fsp.readdir(accountsDir, { withFileTypes: true });
     return entries
-      .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
+      .filter((entry) => entry.isFile() && entry.name.endsWith(".json") && entry.name !== "registry.json")
       .map((entry) => entry.name.replace(/\.json$/i, ""))
       .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
   }
 
+  public async listAccountChoices(): Promise<AccountChoice[]> {
+    const [accounts, current, registry] = await Promise.all([
+      this.listAccountNames(),
+      this.getCurrentAccountName(),
+      this.loadReconciledRegistry(),
+    ]);
+
+    return accounts.map((name) => ({
+      name,
+      email: registry.accounts[name]?.email,
+      active: current === name,
+    }));
+  }
+
+  public async findMatchingAccounts(query: string): Promise<AccountChoice[]> {
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) return [];
+
+    const choices = await this.listAccountChoices();
+    return choices.filter((choice) => {
+      if (choice.name.toLowerCase().includes(normalized)) return true;
+      if (choice.email && choice.email.toLowerCase().includes(normalized)) return true;
+      return false;
+    });
+  }
+
   public async getCurrentAccountName(): Promise<string | null> {
-    const currentName = await this.readCurrentNameFile();
+    const currentNamePath = resolveCurrentNamePath();
+    const currentName = await this.readCurrentNameFile(currentNamePath);
     if (currentName) return currentName;
 
+    const authPath = resolveAuthPath();
     if (!(await this.pathExists(authPath))) return null;
 
     const stat = await fsp.lstat(authPath);
@@ -34,47 +105,319 @@ export class AccountService {
 
     const rawTarget = await fsp.readlink(authPath);
     const resolvedTarget = path.resolve(path.dirname(authPath), rawTarget);
-    const accountsRoot = path.resolve(accountsDir);
+    const accountsRoot = path.resolve(resolveAccountsDir());
     const relative = path.relative(accountsRoot, resolvedTarget);
     if (relative.startsWith("..")) return null;
 
     const base = path.basename(resolvedTarget);
+    if (!base.endsWith(".json") || base === "registry.json") return null;
     return base.replace(/\.json$/i, "");
   }
 
   public async saveAccount(rawName: string): Promise<string> {
     const name = this.normalizeAccountName(rawName);
-    await this.ensureAuthFileExists();
+    const authPath = resolveAuthPath();
+    const accountsDir = resolveAccountsDir();
+
+    await this.ensureAuthFileExists(authPath);
     await this.ensureDir(accountsDir);
     const destination = this.accountFilePath(name);
     await fsp.copyFile(authPath, destination);
+
     await this.writeCurrentName(name);
+
+    const registry = await this.loadReconciledRegistry();
+    await this.hydrateSnapshotMetadata(registry, name);
+    registry.activeAccountName = name;
+    await this.persistRegistry(registry);
+
     return name;
   }
 
   public async useAccount(rawName: string): Promise<string> {
     const name = this.normalizeAccountName(rawName);
-    const source = this.accountFilePath(name);
+    await this.activateSnapshot(name);
 
-    if (!(await this.pathExists(source))) {
-      throw new AccountNotFoundError(name);
-    }
+    const registry = await this.loadReconciledRegistry();
+    await this.hydrateSnapshotMetadata(registry, name);
+    registry.activeAccountName = name;
+    await this.persistRegistry(registry);
 
-    await this.ensureDir(accountsDir);
-    await this.ensureDir(codexDir);
-
-    if (process.platform === "win32") {
-      await fsp.copyFile(source, authPath);
-    } else {
-      await this.replaceSymlink(source, authPath);
-    }
-
-    await this.writeCurrentName(name);
     return name;
   }
 
+  public async removeAccounts(accountNames: string[]): Promise<RemoveResult> {
+    const uniqueNames = [...new Set(accountNames.map((name) => this.normalizeAccountName(name)))];
+    if (uniqueNames.length === 0) {
+      return { removed: [] };
+    }
+
+    const current = await this.getCurrentAccountName();
+    const registry = await this.loadReconciledRegistry();
+    const removed: string[] = [];
+
+    for (const name of uniqueNames) {
+      const snapshotPath = this.accountFilePath(name);
+      if (!(await this.pathExists(snapshotPath))) {
+        throw new AccountNotFoundError(name);
+      }
+
+      await fsp.rm(snapshotPath, { force: true });
+      delete registry.accounts[name];
+      removed.push(name);
+    }
+
+    const removedSet = new Set(removed);
+    let activated: string | undefined;
+
+    if (current && removedSet.has(current)) {
+      const remaining = (await this.listAccountNames()).filter((name) => !removedSet.has(name));
+      if (remaining.length > 0) {
+        const best = this.selectBestCandidateFromRegistry(remaining, registry);
+        await this.activateSnapshot(best);
+        activated = best;
+        registry.activeAccountName = best;
+      } else {
+        await this.clearActivePointers();
+        delete registry.activeAccountName;
+      }
+    } else if (registry.activeAccountName && removedSet.has(registry.activeAccountName)) {
+      delete registry.activeAccountName;
+    }
+
+    await this.persistRegistry(registry);
+    return {
+      removed,
+      activated,
+    };
+  }
+
+  public async removeByQuery(query: string): Promise<RemoveResult> {
+    const matches = await this.findMatchingAccounts(query);
+    if (matches.length === 0) {
+      throw new AccountNotFoundError(query);
+    }
+    if (matches.length > 1) {
+      throw new AmbiguousAccountQueryError(query);
+    }
+
+    return this.removeAccounts([matches[0].name]);
+  }
+
+  public async removeAllAccounts(): Promise<RemoveResult> {
+    const all = await this.listAccountNames();
+    return this.removeAccounts(all);
+  }
+
+  public async getStatus(): Promise<StatusReport> {
+    const registry = await this.loadReconciledRegistry();
+    return {
+      autoSwitchEnabled: registry.autoSwitch.enabled,
+      serviceState: getManagedServiceState(),
+      threshold5hPercent: registry.autoSwitch.threshold5hPercent,
+      thresholdWeeklyPercent: registry.autoSwitch.thresholdWeeklyPercent,
+      usageMode: registry.api.usage ? "api" : "local",
+    };
+  }
+
+  public async setAutoSwitchEnabled(enabled: boolean): Promise<StatusReport> {
+    const registry = await this.loadReconciledRegistry();
+    registry.autoSwitch.enabled = enabled;
+
+    if (enabled) {
+      try {
+        await enableManagedService();
+      } catch (error) {
+        registry.autoSwitch.enabled = false;
+        await this.persistRegistry(registry);
+        throw new AutoSwitchConfigError(
+          `Failed to enable managed auto-switch service: ${(error as Error).message}`,
+        );
+      }
+    } else {
+      await disableManagedService();
+    }
+
+    await this.persistRegistry(registry);
+    return this.getStatus();
+  }
+
+  public async setApiUsageEnabled(enabled: boolean): Promise<StatusReport> {
+    const registry = await this.loadReconciledRegistry();
+    registry.api.usage = enabled;
+    await this.persistRegistry(registry);
+    return this.getStatus();
+  }
+
+  public async configureAutoSwitchThresholds(input: {
+    threshold5hPercent?: number;
+    thresholdWeeklyPercent?: number;
+  }): Promise<StatusReport> {
+    const registry = await this.loadReconciledRegistry();
+
+    if (typeof input.threshold5hPercent === "number") {
+      if (!this.isValidPercent(input.threshold5hPercent)) {
+        throw new AutoSwitchConfigError("`--5h` must be an integer from 1 to 100.");
+      }
+      registry.autoSwitch.threshold5hPercent = Math.round(input.threshold5hPercent);
+    }
+
+    if (typeof input.thresholdWeeklyPercent === "number") {
+      if (!this.isValidPercent(input.thresholdWeeklyPercent)) {
+        throw new AutoSwitchConfigError("`--weekly` must be an integer from 1 to 100.");
+      }
+      registry.autoSwitch.thresholdWeeklyPercent = Math.round(input.thresholdWeeklyPercent);
+    }
+
+    await this.persistRegistry(registry);
+    return this.getStatus();
+  }
+
+  public async runAutoSwitchOnce(): Promise<AutoSwitchRunResult> {
+    const registry = await this.loadReconciledRegistry();
+    if (!registry.autoSwitch.enabled) {
+      return { switched: false, reason: "auto-switch is disabled" };
+    }
+
+    const accountNames = await this.listAccountNames();
+    if (accountNames.length === 0) {
+      return { switched: false, reason: "no saved accounts" };
+    }
+
+    const active = (await this.getCurrentAccountName()) ?? registry.activeAccountName;
+    if (!active || !accountNames.includes(active)) {
+      return { switched: false, reason: "no active account" };
+    }
+
+    const nowSeconds = Math.floor(Date.now() / 1000);
+
+    const activeUsage = await this.refreshAccountUsage(registry, active, {
+      preferApi: registry.api.usage,
+      allowLocalFallback: true,
+    });
+
+    if (!shouldSwitchCurrent(activeUsage, {
+      threshold5hPercent: registry.autoSwitch.threshold5hPercent,
+      thresholdWeeklyPercent: registry.autoSwitch.thresholdWeeklyPercent,
+    }, nowSeconds)) {
+      await this.persistRegistry(registry);
+      return { switched: false, reason: "active account is above configured thresholds" };
+    }
+
+    const currentScore = usageScore(activeUsage, nowSeconds) ?? 0;
+
+    let bestCandidate: string | undefined;
+    let bestScore = currentScore;
+
+    for (const candidate of accountNames) {
+      if (candidate === active) continue;
+
+      const usage = await this.refreshAccountUsage(registry, candidate, {
+        preferApi: registry.api.usage,
+        allowLocalFallback: false,
+      });
+
+      const score = usageScore(usage, nowSeconds) ?? 100;
+      if (!bestCandidate || score > bestScore) {
+        bestCandidate = candidate;
+        bestScore = score;
+      }
+    }
+
+    if (!bestCandidate || bestScore <= currentScore) {
+      await this.persistRegistry(registry);
+      return {
+        switched: false,
+        reason: "no candidate has better remaining quota",
+      };
+    }
+
+    await this.activateSnapshot(bestCandidate);
+    registry.activeAccountName = bestCandidate;
+    await this.hydrateSnapshotMetadata(registry, bestCandidate);
+    await this.persistRegistry(registry);
+
+    return {
+      switched: true,
+      fromAccount: active,
+      toAccount: bestCandidate,
+      reason: "switched due to low credits on active account",
+    };
+  }
+
+  public async runDaemon(mode: "once" | "watch"): Promise<void> {
+    if (mode === "once") {
+      await this.runAutoSwitchOnce();
+      return;
+    }
+
+    for (;;) {
+      try {
+        await this.runAutoSwitchOnce();
+      } catch {
+        // keep daemon alive
+      }
+      await new Promise((resolve) => setTimeout(resolve, 30_000));
+    }
+  }
+
+  private selectBestCandidateFromRegistry(candidates: string[], registry: RegistryData): string {
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    let best = candidates[0];
+    let bestScore = usageScore(registry.accounts[best]?.lastUsage, nowSeconds) ?? -1;
+
+    for (const candidate of candidates.slice(1)) {
+      const score = usageScore(registry.accounts[candidate]?.lastUsage, nowSeconds) ?? -1;
+      if (score > bestScore) {
+        best = candidate;
+        bestScore = score;
+      }
+    }
+
+    return best;
+  }
+
+  private async refreshAccountUsage(
+    registry: RegistryData,
+    accountName: string,
+    options: { preferApi: boolean; allowLocalFallback: boolean },
+  ): Promise<UsageSnapshot | undefined> {
+    const snapshotPath = this.accountFilePath(accountName);
+    const parsed = await parseAuthSnapshotFile(snapshotPath);
+
+    const entry = registry.accounts[accountName] ?? {
+      name: accountName,
+      createdAt: new Date().toISOString(),
+    };
+
+    if (parsed.email) entry.email = parsed.email;
+    if (parsed.accountId) entry.accountId = parsed.accountId;
+    if (parsed.userId) entry.userId = parsed.userId;
+    if (parsed.planType) entry.planType = parsed.planType;
+
+    let usage: UsageSnapshot | null = null;
+    if (options.preferApi) {
+      usage = await fetchUsageFromApi(parsed);
+    }
+
+    if (!usage && options.allowLocalFallback) {
+      usage = await fetchUsageFromLocal(resolveCodexDir());
+    }
+
+    if (usage) {
+      entry.lastUsage = usage;
+      entry.lastUsageAt = usage.fetchedAt;
+      if (usage.planType) {
+        entry.planType = usage.planType;
+      }
+    }
+
+    registry.accounts[accountName] = entry;
+    return entry.lastUsage;
+  }
+
   private accountFilePath(name: string): string {
-    return path.join(accountsDir, `${name}.json`);
+    return path.join(resolveAccountsDir(), `${name}.json`);
   }
 
   private normalizeAccountName(rawName: string | undefined): string {
@@ -95,7 +438,11 @@ export class AccountService {
     return withoutExtension;
   }
 
-  private async ensureAuthFileExists(): Promise<void> {
+  private isValidPercent(value: number): boolean {
+    return Number.isFinite(value) && Number.isInteger(value) && value >= 1 && value <= 100;
+  }
+
+  private async ensureAuthFileExists(authPath: string): Promise<void> {
     if (!(await this.pathExists(authPath))) {
       throw new AuthFileMissingError(authPath);
     }
@@ -123,11 +470,12 @@ export class AccountService {
   }
 
   private async writeCurrentName(name: string): Promise<void> {
-    await this.ensureDir(codexDir);
+    const currentNamePath = resolveCurrentNamePath();
+    await this.ensureDir(path.dirname(currentNamePath));
     await fsp.writeFile(currentNamePath, `${name}\n`, "utf8");
   }
 
-  private async readCurrentNameFile(): Promise<string | null> {
+  private async readCurrentNameFile(currentNamePath: string): Promise<string | null> {
     try {
       const contents = await fsp.readFile(currentNamePath, "utf8");
       const trimmed = contents.trim();
@@ -148,5 +496,59 @@ export class AccountService {
     } catch {
       return false;
     }
+  }
+
+  private async hydrateSnapshotMetadata(registry: RegistryData, accountName: string): Promise<void> {
+    const parsed = await parseAuthSnapshotFile(this.accountFilePath(accountName));
+    const entry = registry.accounts[accountName] ?? {
+      name: accountName,
+      createdAt: new Date().toISOString(),
+    };
+
+    if (parsed.email) entry.email = parsed.email;
+    if (parsed.accountId) entry.accountId = parsed.accountId;
+    if (parsed.userId) entry.userId = parsed.userId;
+    if (parsed.planType) entry.planType = parsed.planType;
+
+    registry.accounts[accountName] = entry;
+  }
+
+  private async loadReconciledRegistry(): Promise<RegistryData> {
+    const accountNames = await this.listAccountNames();
+    const loaded = await loadRegistry();
+    const base = loaded.version === 1 ? loaded : createDefaultRegistry();
+    return reconcileRegistryWithAccounts(base, accountNames);
+  }
+
+  private async persistRegistry(registry: RegistryData): Promise<void> {
+    const reconciled = reconcileRegistryWithAccounts(registry, await this.listAccountNames());
+    await saveRegistry(reconciled);
+  }
+
+  private async activateSnapshot(accountName: string): Promise<void> {
+    const name = this.normalizeAccountName(accountName);
+    const source = this.accountFilePath(name);
+
+    if (!(await this.pathExists(source))) {
+      throw new AccountNotFoundError(name);
+    }
+
+    const authPath = resolveAuthPath();
+    await this.ensureDir(path.dirname(authPath));
+
+    if (process.platform === "win32") {
+      await fsp.copyFile(source, authPath);
+    } else {
+      await this.replaceSymlink(source, authPath);
+    }
+
+    await this.writeCurrentName(name);
+  }
+
+  private async clearActivePointers(): Promise<void> {
+    const currentPath = resolveCurrentNamePath();
+    const authPath = resolveAuthPath();
+    await this.removeIfExists(currentPath);
+    await this.removeIfExists(authPath);
   }
 }
