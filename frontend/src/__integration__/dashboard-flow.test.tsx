@@ -144,8 +144,8 @@ describe("dashboard flow integration", () => {
     expect(
       await screen.findByText("Using live usage fallback because recent request logs are empty."),
     ).toBeInTheDocument();
-    expect(screen.getAllByText("0.9K").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("1.5K").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("900K").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("1.5M").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Top: fallback@example.com · 100%").length).toBeGreaterThanOrEqual(2);
     expect(screen.getAllByText("fallback@example.com").length).toBeGreaterThanOrEqual(2);
   });

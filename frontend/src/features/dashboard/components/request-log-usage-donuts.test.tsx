@@ -44,8 +44,8 @@ describe("RequestLogUsageDonuts", () => {
     expect(screen.getByText("5h EUR")).toBeInTheDocument();
     expect(screen.getByText("7d EUR")).toBeInTheDocument();
     expect(screen.getByText("Recent intensity")).toBeInTheDocument();
-    expect(screen.getAllByText("0.3K").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("1.5K").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("300K").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("1.5M").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("€0.39").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("€2.23").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("Top: alpha@example.com · 67%")).toBeInTheDocument();
@@ -108,8 +108,8 @@ describe("RequestLogUsageDonuts", () => {
     expect(
       screen.getByText("Using live usage fallback because recent request logs are empty."),
     ).toBeInTheDocument();
-    expect(screen.getAllByText("0.64K").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("1.2K").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("640K").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("1.2M").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("€1.29").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText("Unavailable in live fallback")).not.toBeInTheDocument();
     expect(screen.getAllByText("Estimated from live fallback tokens").length).toBeGreaterThanOrEqual(1);

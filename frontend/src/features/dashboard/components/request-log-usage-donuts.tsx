@@ -4,7 +4,7 @@ import { DonutChart } from "@/components/donut-chart";
 import type { RequestLogUsageFallbackState } from "@/features/dashboard/request-log-usage-fallback";
 import type { AccountSummary, RequestLogUsageSummary } from "@/features/dashboard/schemas";
 import { buildDuplicateAccountIdSet, formatCompactAccountId } from "@/utils/account-identifiers";
-import { formatEuro } from "@/utils/formatters";
+import { formatCompactNumber, formatEuro } from "@/utils/formatters";
 
 export type RequestLogUsageDonutsProps = {
   accounts: AccountSummary[];
@@ -30,16 +30,12 @@ type UsageWindowStats = {
   topAccountShare: number;
 };
 
-const thousandUnitFormatter = new Intl.NumberFormat("en-US", {
-  maximumFractionDigits: 2,
-});
-
 function formatTokensAsThousands(value: number): string {
   if (!Number.isFinite(value)) {
     return "--";
   }
-  const normalized = Math.max(0, value) / 1000;
-  return `${thousandUnitFormatter.format(normalized)}K`;
+  const normalized = Math.max(0, value);
+  return formatCompactNumber(normalized * 1000);
 }
 
 function buildDonutItems(accounts: AccountSummary[], window: UsageSummaryWindow): DonutLegendItem[] {
