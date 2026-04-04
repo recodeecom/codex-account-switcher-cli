@@ -165,6 +165,31 @@
   animation: fade-in-up 0.35s ease-out both;
 }
 
+/* Premium card entrance for live "Working now" accounts. */
+@keyframes working-account-enter {
+  0% {
+    opacity: 0;
+    transform: translateY(18px) scale(0.985);
+    filter: saturate(0.9);
+  }
+  45% {
+    opacity: 1;
+    transform: translateY(-3px) scale(1.003);
+    filter: saturate(1);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: saturate(1);
+  }
+}
+
+.animate-working-account-enter {
+  animation: working-account-enter 0.56s cubic-bezier(0.2, 0.85, 0.24, 1)
+    both;
+  will-change: transform, opacity;
+}
+
 .animate-delay-75 { animation-delay: 75ms; }
 .animate-delay-150 { animation-delay: 150ms; }
 .animate-delay-225 { animation-delay: 225ms; }
@@ -221,6 +246,9 @@
 
 @media (prefers-reduced-motion: reduce) {
   .animate-fade-in-up {
+    animation: none;
+  }
+  .animate-working-account-enter {
     animation: none;
   }
   .animate-delay-75, .animate-delay-150, .animate-delay-225, .animate-delay-300 {

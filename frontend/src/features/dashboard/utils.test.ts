@@ -20,6 +20,7 @@ function account(overrides: Partial<AccountSummary> & Pick<AccountSummary, "acco
     resetAtPrimary: overrides.resetAtPrimary ?? null,
     resetAtSecondary: overrides.resetAtSecondary ?? null,
     auth: overrides.auth ?? null,
+    codexAuth: overrides.codexAuth ?? null,
     additionalQuotas: overrides.additionalQuotas ?? [],
   };
 }
@@ -210,6 +211,49 @@ describe("applySecondaryConstraint", () => {
 });
 
 describe("buildRemainingItems", () => {
+  it("skips disconnected accounts from donut legend data", () => {
+    const items = buildRemainingItems(
+      [
+        account({ accountId: "acc-1", email: "active@example.com", status: "active" }),
+        account({ accountId: "acc-2", email: "offline@example.com", status: "deactivated" }),
+      ],
+      {
+        windowKey: "primary",
+        windowMinutes: 300,
+        accounts: [
+          { accountId: "acc-1", remainingPercentAvg: 80, capacityCredits: 100, remainingCredits: 80 },
+          { accountId: "acc-2", remainingPercentAvg: 50, capacityCredits: 100, remainingCredits: 50 },
+        ],
+      },
+      "primary",
+    );
+
+    expect(items).toHaveLength(1);
+    expect(items[0]?.accountId).toBe("acc-1");
+  });
+
+  it("keeps deactivated accounts in donut legend data when they are active snapshots", () => {
+    const items = buildRemainingItems(
+      [
+        account({
+          accountId: "acc-1",
+          email: "active@example.com",
+          status: "deactivated",
+          codexAuth: { hasSnapshot: true, isActiveSnapshot: true },
+        }),
+      ],
+      {
+        windowKey: "primary",
+        windowMinutes: 300,
+        accounts: [{ accountId: "acc-1", remainingPercentAvg: 80, capacityCredits: 100, remainingCredits: 80 }],
+      },
+      "primary",
+    );
+
+    expect(items).toHaveLength(1);
+    expect(items[0]?.accountId).toBe("acc-1");
+  });
+
   it("keeps default labels for non-duplicate accounts", () => {
     const items = buildRemainingItems(
       [

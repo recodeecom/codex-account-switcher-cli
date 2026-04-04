@@ -84,6 +84,7 @@ const PIE_CX = 71;
 const PIE_CY = 71;
 const INNER_R = 53;
 const OUTER_R = 71;
+const COLLAPSED_LEGEND_PREVIEW_COUNT = 4;
 
 export function DonutChart({
   items,
@@ -129,6 +130,11 @@ export function DonutChart({
   const [legendCollapsed, setLegendCollapsed] = useState(
     legendCollapsible ? legendDefaultCollapsed : false,
   );
+  const collapsedLegendItems = normalizedItems.slice(0, COLLAPSED_LEGEND_PREVIEW_COUNT);
+  const visibleLegendItems =
+    legendCollapsible && legendCollapsed ? collapsedLegendItems : normalizedItems;
+  const hasCollapsedLegendOverflow =
+    legendCollapsible && normalizedItems.length > COLLAPSED_LEGEND_PREVIEW_COUNT;
 
   if (!hasData) {
     chartData.length = 0;
@@ -202,9 +208,8 @@ export function DonutChart({
             </button>
           ) : null}
 
-          {!legendCollapsed ? (
-            <div className={legendCollapsible ? "mt-2 space-y-2" : "space-y-2"}>
-              {normalizedItems.map((item, i) => {
+          <div className={legendCollapsible ? "mt-2 space-y-2" : "space-y-2"}>
+              {visibleLegendItems.map((item, i) => {
                 const secondaryValue = legendSecondaryFormatter
                   ? legendSecondaryFormatter(item)
                   : null;
@@ -240,8 +245,12 @@ export function DonutChart({
                   </div>
                 );
               })}
+              {hasCollapsedLegendOverflow && legendCollapsed ? (
+                <div className="px-1 text-[11px] text-muted-foreground">
+                  +{normalizedItems.length - COLLAPSED_LEGEND_PREVIEW_COUNT} more
+                </div>
+              ) : null}
             </div>
-          ) : null}
         </div>
       </div>
     </div>

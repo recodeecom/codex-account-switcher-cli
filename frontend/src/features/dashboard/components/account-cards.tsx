@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { type CSSProperties, useMemo } from "react";
 import { Users } from "lucide-react";
 
 import { EmptyState } from "@/components/empty-state";
@@ -9,8 +9,11 @@ import {
 import type { AccountSummary, UsageWindow } from "@/features/dashboard/schemas";
 import { buildDuplicateAccountIdSet } from "@/utils/account-identifiers";
 import {
+  getMergedQuotaRemainingPercent,
+  getRawQuotaWindowFallback,
   hasFreshLiveTelemetry,
   isAccountWorkingNow,
+  selectStableRemainingPercent,
 } from "@/utils/account-working";
 import { resolveEffectiveAccountStatus } from "@/utils/account-status";
 import { formatWindowLabel } from "@/utils/formatters";
@@ -32,6 +35,90 @@ function roundAveragePercent(
   return Math.round(average);
 }
 
+function compareNullableNumberDesc(left: number | null, right: number | null): number {
+  if (left == null && right == null) return 0;
+  if (left == null) return 1;
+  if (right == null) return -1;
+  return right - left;
+}
+
+function resolveSortableRemainingPercent(
+  account: AccountSummary,
+  windowKey: "primary" | "secondary",
+): number | null {
+  const mergedRemainingPercent = getMergedQuotaRemainingPercent(account, windowKey);
+  const deferredQuotaFallback = getRawQuotaWindowFallback(account, windowKey);
+  const baselineRemainingPercent =
+    windowKey === "primary"
+      ? account.usage?.primaryRemainingPercent
+      : account.usage?.secondaryRemainingPercent;
+  const baselineResetAt =
+    windowKey === "primary" ? account.resetAtPrimary : account.resetAtSecondary;
+  const baselineRecordedAt =
+    windowKey === "primary"
+      ? account.lastUsageRecordedAtPrimary
+      : account.lastUsageRecordedAtSecondary;
+  const hasLiveSession = hasFreshLiveTelemetry(account);
+
+  const remainingPercentRaw =
+    mergedRemainingPercent ??
+    selectStableRemainingPercent({
+      fallbackRemainingPercent: deferredQuotaFallback?.remainingPercent,
+      fallbackResetAt: deferredQuotaFallback?.resetAt,
+      baselineRemainingPercent,
+      baselineResetAt,
+    });
+
+  const effectiveResetAt = deferredQuotaFallback?.resetAt ?? baselineResetAt ?? null;
+  const effectiveRecordedAt =
+    deferredQuotaFallback?.recordedAt ?? baselineRecordedAt ?? null;
+
+  return normalizeRemainingPercentForDisplay({
+    accountKey: account.accountId,
+    windowKey,
+    remainingPercent: remainingPercentRaw,
+    resetAt: effectiveResetAt,
+    hasLiveSession,
+    lastRecordedAt: effectiveRecordedAt,
+    applyCycleFloor: mergedRemainingPercent == null,
+  });
+}
+
+function sortAccountsByAvailableQuota(accounts: AccountSummary[]): AccountSummary[] {
+  const sortMetricsByAccountId = new Map(
+    accounts.map((account) => [
+      account.accountId,
+      {
+        primaryRemaining: resolveSortableRemainingPercent(account, "primary"),
+        secondaryRemaining: resolveSortableRemainingPercent(account, "secondary"),
+        title: account.displayName || account.email || account.accountId,
+      },
+    ]),
+  );
+
+  return [...accounts].sort((left, right) => {
+    const leftMetrics = sortMetricsByAccountId.get(left.accountId);
+    const rightMetrics = sortMetricsByAccountId.get(right.accountId);
+    if (!leftMetrics || !rightMetrics) {
+      return left.accountId.localeCompare(right.accountId);
+    }
+
+    const primaryDiff = compareNullableNumberDesc(
+      leftMetrics.primaryRemaining,
+      rightMetrics.primaryRemaining,
+    );
+    if (primaryDiff !== 0) return primaryDiff;
+
+    const secondaryDiff = compareNullableNumberDesc(
+      leftMetrics.secondaryRemaining,
+      rightMetrics.secondaryRemaining,
+    );
+    if (secondaryDiff !== 0) return secondaryDiff;
+
+    return leftMetrics.title.localeCompare(rightMetrics.title);
+  });
+}
+
 export type AccountCardsProps = {
   accounts: AccountSummary[];
   primaryWindow: UsageWindow | null;
@@ -40,49 +127,46 @@ export type AccountCardsProps = {
   onAction?: AccountCardProps["onAction"];
 };
 
-function buildConsumedByAccount(
+function buildRemainingByAccount(
   window: UsageWindow | null,
 ): Map<string, number> {
-  const consumedByAccount = new Map<string, number>();
-  if (!window) return consumedByAccount;
+  const remainingByAccount = new Map<string, number>();
+  if (!window) return remainingByAccount;
 
   for (const row of window.accounts) {
     if (row.remainingPercentAvg == null) {
       continue;
     }
-    consumedByAccount.set(
-      row.accountId,
-      Math.max(0, row.capacityCredits - row.remainingCredits),
-    );
+    remainingByAccount.set(row.accountId, Math.max(0, row.remainingCredits));
   }
 
-  return consumedByAccount;
+  return remainingByAccount;
 }
 
-function resolveCardTokensUsed(
+function resolveCardTokensRemaining(
   account: AccountSummary,
-  primaryConsumedByAccount: Map<string, number>,
-  secondaryConsumedByAccount: Map<string, number>,
-): number {
+  primaryRemainingByAccount: Map<string, number>,
+  secondaryRemainingByAccount: Map<string, number>,
+): number | null {
   const weeklyOnly =
     account.windowMinutesPrimary == null &&
     account.windowMinutesSecondary != null;
-  const primaryConsumed = primaryConsumedByAccount.get(account.accountId);
-  const secondaryConsumed = secondaryConsumedByAccount.get(account.accountId);
+  const primaryRemaining = primaryRemainingByAccount.get(account.accountId);
+  const secondaryRemaining = secondaryRemainingByAccount.get(account.accountId);
 
-  if (weeklyOnly && secondaryConsumed != null) {
-    return secondaryConsumed;
+  if (weeklyOnly && secondaryRemaining != null) {
+    return secondaryRemaining;
   }
 
-  if (primaryConsumed != null) {
-    return primaryConsumed;
+  if (primaryRemaining != null) {
+    return primaryRemaining;
   }
 
-  if (secondaryConsumed != null) {
-    return secondaryConsumed;
+  if (secondaryRemaining != null) {
+    return secondaryRemaining;
   }
 
-  return account.requestUsage?.totalTokens ?? 0;
+  return null;
 }
 
 export function AccountCards({
@@ -100,12 +184,12 @@ export function AccountCards({
     () => buildDuplicateAccountIdSet(accounts),
     [accounts],
   );
-  const primaryConsumedByAccount = useMemo(
-    () => buildConsumedByAccount(primaryWindow),
+  const primaryRemainingByAccount = useMemo(
+    () => buildRemainingByAccount(primaryWindow),
     [primaryWindow],
   );
-  const secondaryConsumedByAccount = useMemo(
-    () => buildConsumedByAccount(secondaryWindow),
+  const secondaryRemainingByAccount = useMemo(
+    () => buildRemainingByAccount(secondaryWindow),
     [secondaryWindow],
   );
   const groupedAccounts = useMemo(() => {
@@ -133,7 +217,13 @@ export function AccountCards({
       }
     }
 
-    return { working, remaining: [...active, ...deactivated] };
+    return {
+      working: sortAccountsByAvailableQuota(working),
+      remaining: [
+        ...sortAccountsByAvailableQuota(active),
+        ...sortAccountsByAvailableQuota(deactivated),
+      ],
+    };
   }, [accounts]);
   const workingSummary = useMemo(() => {
     const liveSessions = groupedAccounts.working.reduce((sum, account) => {
@@ -187,16 +277,30 @@ export function AccountCards({
       {items.map((account, index) => (
         <div
           key={`${keyPrefix}-${account.accountId}`}
-          className="animate-fade-in-up"
-          style={{ animationDelay: `${index * 60}ms` }}
+          className={
+            keyPrefix === "working"
+              ? "animate-working-account-enter"
+              : "animate-fade-in-up"
+          }
+          style={
+            keyPrefix === "working"
+              ? ({
+                  animationDelay: `${index * 85}ms`,
+                  animationDuration: `${Math.min(640, 520 + index * 35)}ms`,
+                } satisfies CSSProperties)
+              : ({
+                  animationDelay: `${index * 60}ms`,
+                } satisfies CSSProperties)
+          }
         >
           <AccountCard
             account={account}
-            tokensUsed={resolveCardTokensUsed(
+            tokensRemaining={resolveCardTokensRemaining(
               account,
-              primaryConsumedByAccount,
-              secondaryConsumedByAccount,
+              primaryRemainingByAccount,
+              secondaryRemainingByAccount,
             )}
+            showTokensRemaining
             showAccountId={duplicateAccountIds.has(account.accountId)}
             useLocalBusy={useLocalBusy}
             onAction={onAction}

@@ -58,6 +58,8 @@ type AccountAction =
 export type AccountCardProps = {
   account: AccountSummary;
   tokensUsed?: number | null;
+  tokensRemaining?: number | null;
+  showTokensRemaining?: boolean;
   showAccountId?: boolean;
   useLocalBusy?: boolean;
   onAction?: (account: AccountSummary, action: AccountAction) => void;
@@ -268,6 +270,8 @@ function buildQuotaDebugLogLines(
 export function AccountCard({
   account,
   tokensUsed = null,
+  tokensRemaining = null,
+  showTokensRemaining = false,
   showAccountId = false,
   useLocalBusy = false,
   onAction,
@@ -425,10 +429,13 @@ export function AccountCard({
     expectedSnapshotName &&
     snapshotName !== expectedSnapshotName,
   );
-  const totalTokensUsed = tokensUsed ?? account.requestUsage?.totalTokens ?? 0;
-  const tokenUsageLabel = isWorkingNow
-    ? formatTokenUsagePrecise(totalTokensUsed)
-    : formatTokenUsageCompact(totalTokensUsed);
+  const tokenMetricLabel = showTokensRemaining ? "Tokens remaining" : "Tokens used";
+  const tokenMetricValueRaw = showTokensRemaining
+    ? tokensRemaining
+    : (tokensUsed ?? account.requestUsage?.totalTokens ?? 0);
+  const tokenMetricValue = isWorkingNow
+    ? formatTokenUsagePrecise(tokenMetricValueRaw)
+    : formatTokenUsageCompact(tokenMetricValueRaw);
   const codexLiveSessionCount = hasLiveSession
     ? Math.max(account.codexLiveSessionCount ?? 0, 1)
     : Math.max(account.codexLiveSessionCount ?? 0, 0);
@@ -512,10 +519,10 @@ export function AccountCard({
       <div className="mt-3 grid grid-cols-2 gap-2.5 rounded-lg border border-border/60 bg-background/35 px-2.5 py-2.5">
         <div>
           <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-            Tokens used
+            {tokenMetricLabel}
           </p>
           <p className="mt-0.5 flex items-center gap-1.5 text-sm font-semibold tabular-nums">
-            <span>{tokenUsageLabel}</span>
+            <span>{tokenMetricValue}</span>
             {isWorkingNow ? (
               <span className="inline-flex items-center gap-1 rounded-md border border-cyan-500/30 bg-cyan-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-700 dark:text-cyan-300">
                 live

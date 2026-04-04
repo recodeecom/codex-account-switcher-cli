@@ -55,6 +55,14 @@ export function UsageDonuts({
 			})),
 		[secondaryItems],
 	);
+	const primaryRemainingTotal = useMemo(
+		() => primaryItems.reduce((total, item) => total + Math.max(0, item.value), 0),
+		[primaryItems],
+	);
+	const secondaryRemainingTotal = useMemo(
+		() => secondaryItems.reduce((total, item) => total + Math.max(0, item.value), 0),
+		[secondaryItems],
+	);
 
 	return (
 		<div className="grid gap-4 lg:grid-cols-2">
@@ -62,7 +70,7 @@ export function UsageDonuts({
 				title={primaryTitle}
 				items={primaryChartItems}
 				total={primaryTotal}
-				centerValue={formatTokensFromCredits(primaryTotal)}
+				centerValue={formatTokensFromCredits(primaryRemainingTotal)}
 				legendValueFormatter={(item) => formatTokensFromCredits(item.value)}
 				safeLine={safeLinePrimary}
 				legendCollapsible
@@ -72,7 +80,7 @@ export function UsageDonuts({
 				title="Weekly Remaining"
 				items={secondaryChartItems}
 				total={secondaryTotal}
-				centerValue={formatTokensFromCredits(secondaryTotal)}
+				centerValue={formatTokensFromCredits(secondaryRemainingTotal)}
 				legendValueFormatter={(item) => formatTokensFromCredits(item.value)}
 				safeLine={safeLineSecondary}
 				legendCollapsible

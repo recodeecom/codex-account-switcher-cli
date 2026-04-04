@@ -83,7 +83,7 @@ describe("AccountCards", () => {
     expect(within(cards[1] as HTMLElement).getByText("idle@example.com")).toBeInTheDocument();
   });
 
-  it("uses primary window consumption for regular-account tokens used", () => {
+  it("uses primary window remaining for regular-account token balance", () => {
     const account = createAccountSummary({
       accountId: "acc_regular",
       email: "regular@example.com",
@@ -108,7 +108,7 @@ describe("AccountCards", () => {
 
     const card = screen.getByText("regular@example.com").closest(".card-hover");
     expect(card).not.toBeNull();
-    expect(within(card as HTMLElement).getByText("100k")).toBeInTheDocument();
+    expect(within(card as HTMLElement).getByText("900k")).toBeInTheDocument();
   });
 
   it("uses the primary window duration label in working summary chips", () => {
@@ -179,7 +179,7 @@ describe("AccountCards", () => {
     expect(screen.queryByText("Weekly avg 88%")).not.toBeInTheDocument();
   });
 
-  it("uses secondary window consumption for weekly-only-account tokens used", () => {
+  it("uses secondary window remaining for weekly-only-account token balance", () => {
     const account = createAccountSummary({
       accountId: "acc_weekly",
       email: "weekly@example.com",
@@ -204,7 +204,7 @@ describe("AccountCards", () => {
 
     const card = screen.getByText("weekly@example.com").closest(".card-hover");
     expect(card).not.toBeNull();
-    expect(within(card as HTMLElement).getByText("1.5m")).toBeInTheDocument();
+    expect(within(card as HTMLElement).getByText("500k")).toBeInTheDocument();
   });
 
   it("renders deactivated accounts after active accounts", () => {
@@ -240,6 +240,94 @@ describe("AccountCards", () => {
     const cards = Array.from(container.querySelectorAll(".card-hover"));
     const titles = cards.map((card) => card.querySelector("p.truncate.text-sm.font-semibold.leading-tight")?.textContent);
     expect(titles).toEqual(["active-1@example.com", "active-2@example.com", "deactivated@example.com"]);
+  });
+
+  it("orders accounts by available 5h quota, then weekly quota", () => {
+    const medium = createAccountSummary({
+      accountId: "acc_medium",
+      email: "medium@example.com",
+      displayName: "medium@example.com",
+      usage: {
+        primaryRemainingPercent: 65,
+        secondaryRemainingPercent: 95,
+      },
+    });
+    const highestWeeklyTieBreaker = createAccountSummary({
+      accountId: "acc_high_weekly",
+      email: "high-weekly@example.com",
+      displayName: "high-weekly@example.com",
+      usage: {
+        primaryRemainingPercent: 80,
+        secondaryRemainingPercent: 70,
+      },
+    });
+    const highestPrimary = createAccountSummary({
+      accountId: "acc_high_primary",
+      email: "high-primary@example.com",
+      displayName: "high-primary@example.com",
+      usage: {
+        primaryRemainingPercent: 80,
+        secondaryRemainingPercent: 55,
+      },
+    });
+
+    const { container } = render(
+      <AccountCards
+        accounts={[medium, highestPrimary, highestWeeklyTieBreaker]}
+        primaryWindow={null}
+        secondaryWindow={null}
+      />,
+    );
+
+    const cards = Array.from(container.querySelectorAll(".card-hover"));
+    const titles = cards.map((card) => card.querySelector("p.truncate.text-sm.font-semibold.leading-tight")?.textContent);
+    expect(titles).toEqual([
+      "high-weekly@example.com",
+      "high-primary@example.com",
+      "medium@example.com",
+    ]);
+  });
+
+  it("prioritizes non-zero 5h remaining accounts above zero-percent accounts", () => {
+    const zeroA = createAccountSummary({
+      accountId: "acc_zero_a",
+      email: "zero-a@example.com",
+      displayName: "zero-a@example.com",
+      usage: {
+        primaryRemainingPercent: 0,
+        secondaryRemainingPercent: 88,
+      },
+    });
+    const nonZero = createAccountSummary({
+      accountId: "acc_non_zero",
+      email: "non-zero@example.com",
+      displayName: "non-zero@example.com",
+      usage: {
+        primaryRemainingPercent: 7,
+        secondaryRemainingPercent: 68,
+      },
+    });
+    const zeroB = createAccountSummary({
+      accountId: "acc_zero_b",
+      email: "zero-b@example.com",
+      displayName: "zero-b@example.com",
+      usage: {
+        primaryRemainingPercent: 0,
+        secondaryRemainingPercent: 38,
+      },
+    });
+
+    const { container } = render(
+      <AccountCards
+        accounts={[zeroA, nonZero, zeroB]}
+        primaryWindow={null}
+        secondaryWindow={null}
+      />,
+    );
+
+    const cards = Array.from(container.querySelectorAll(".card-hover"));
+    const titles = cards.map((card) => card.querySelector("p.truncate.text-sm.font-semibold.leading-tight")?.textContent);
+    expect(titles[0]).toBe("non-zero@example.com");
   });
 
   it("places deactivated accounts in the working-now section when live telemetry is present", () => {
@@ -375,7 +463,7 @@ describe("AccountCards", () => {
     expect(screen.getByText("sampled@example.com")).toBeInTheDocument();
   });
 
-  it("falls back to request-usage tokens when window row is unknown", () => {
+  it("shows unknown token remaining when window row is unknown", () => {
     const account = createAccountSummary({
       accountId: "acc_unknown",
       email: "unknown@example.com",
@@ -400,6 +488,6 @@ describe("AccountCards", () => {
 
     const card = screen.getByText("unknown@example.com").closest(".card-hover");
     expect(card).not.toBeNull();
-    expect(within(card as HTMLElement).getByText("777k")).toBeInTheDocument();
+    expect(within(card as HTMLElement).getByText("--")).toBeInTheDocument();
   });
 });

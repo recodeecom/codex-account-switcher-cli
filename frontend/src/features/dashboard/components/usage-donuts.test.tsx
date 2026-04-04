@@ -47,7 +47,7 @@ describe("UsageDonuts", () => {
     expect(screen.getByText("secondary@example.com")).toBeInTheDocument();
   });
 
-  it("formats remaining credits as token counts with compact M/K suffixes", async () => {
+  it("shows donut center values as remaining credits, not total capacity", async () => {
     const user = userEvent.setup({ delay: null });
 
     render(
@@ -61,8 +61,8 @@ describe("UsageDonuts", () => {
 
     await user.click(screen.getByRole("button", { name: "Weekly Remaining accounts" }));
 
-    expect(screen.getByText("14.36M")).toBeInTheDocument();
-    expect(screen.getByText("189K")).toBeInTheDocument();
+    expect(screen.queryByText("14.36M")).not.toBeInTheDocument();
+    expect(screen.getAllByText("189K").length).toBeGreaterThanOrEqual(1);
   });
 
   it("handles empty data gracefully", () => {

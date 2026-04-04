@@ -83,6 +83,22 @@ describe("AccountCard", () => {
     expect(tokensValue).not.toHaveTextContent(/k$/i);
   });
 
+  it("shows remaining token label/value when configured by parent", () => {
+    const account = createAccountSummary();
+
+    render(
+      <AccountCard
+        account={account}
+        showTokensRemaining
+        tokensRemaining={225}
+      />,
+    );
+
+    expect(screen.getByText("Tokens remaining")).toBeInTheDocument();
+    expect(screen.getByText("225k")).toBeInTheDocument();
+    expect(screen.queryByText("Tokens used")).not.toBeInTheDocument();
+  });
+
   it("uses the configured primary window label when it is not 5h", () => {
     const account = createAccountSummary({
       windowMinutesPrimary: 480,

@@ -10,6 +10,7 @@ import {
   formatRate,
   formatWindowLabel,
 } from "@/utils/formatters";
+import { resolveEffectiveAccountStatus } from "@/utils/account-status";
 
 import type {
   AccountSummary,
@@ -126,8 +127,17 @@ function buildGroupedWindowEntries(
 ): GroupedWindowEntry[] {
   const usageIndex = buildWindowIndex(window);
   const grouped = new Map<string, GroupedWindowEntry>();
+  const activeAccounts = accounts.filter((account) => {
+    const effectiveStatus = resolveEffectiveAccountStatus({
+      status: account.status,
+      isActiveSnapshot: account.codexAuth?.isActiveSnapshot,
+      hasLiveSession: account.codexAuth?.hasLiveSession,
+    });
+    return effectiveStatus !== "deactivated";
+  });
+  const candidateAccounts = activeAccounts.length > 0 ? activeAccounts : accounts;
 
-  for (const account of accounts) {
+  for (const account of candidateAccounts) {
     if (windowKey === "primary" && isWeeklyOnlyAccount(account)) {
       continue;
     }
@@ -297,10 +307,20 @@ export function buildDashboardView(
     },
   ];
 
-  const rawPrimaryItems = buildRemainingItems(overview.accounts, primaryWindow, "primary", isDark);
-  const secondaryUsageItems = buildRemainingItems(overview.accounts, secondaryWindow, "secondary", isDark);
-  const primaryTotal = buildGroupedWindowTotalCapacity(overview.accounts, primaryWindow, "primary");
-  const secondaryTotal = buildGroupedWindowTotalCapacity(overview.accounts, secondaryWindow, "secondary");
+  const activeAccounts = overview.accounts.filter((account) => {
+    const effectiveStatus = resolveEffectiveAccountStatus({
+      status: account.status,
+      isActiveSnapshot: account.codexAuth?.isActiveSnapshot,
+      hasLiveSession: account.codexAuth?.hasLiveSession,
+    });
+    return effectiveStatus === "active";
+  });
+  const donutAccounts = activeAccounts.length > 0 ? activeAccounts : overview.accounts;
+
+  const rawPrimaryItems = buildRemainingItems(donutAccounts, primaryWindow, "primary", isDark);
+  const secondaryUsageItems = buildRemainingItems(donutAccounts, secondaryWindow, "secondary", isDark);
+  const primaryTotal = buildGroupedWindowTotalCapacity(donutAccounts, primaryWindow, "primary");
+  const secondaryTotal = buildGroupedWindowTotalCapacity(donutAccounts, secondaryWindow, "secondary");
 
   return {
     stats,
