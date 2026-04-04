@@ -87,6 +87,9 @@ class AccountsService:
         account_ids = [account.id for account in accounts]
         account_id_set = set(account_ids)
         primary_usage = await self._usage_repo.latest_by_account(window="primary") if self._usage_repo else {}
+        if self._usage_updater and self._usage_repo:
+            await self._usage_updater.refresh_accounts(accounts, primary_usage)
+            primary_usage = await self._usage_repo.latest_by_account(window="primary")
         secondary_usage = await self._usage_repo.latest_by_account(window="secondary") if self._usage_repo else {}
         codex_tracked_session_counts_by_account = await self._repo.list_codex_session_counts_by_account(account_ids)
         codex_live_session_counts_by_account = {account_id: 0 for account_id in account_ids}

@@ -17,6 +17,7 @@ from app.db.models import Account, AccountStatus
 from app.db.session import SessionLocal
 from app.modules.accounts.repository import AccountsRepository
 from app.modules.request_logs.repository import RequestLogsRepository
+from app.core.usage.models import RateLimitPayload, UsagePayload, UsageWindow
 from app.modules.usage.repository import UsageRepository
 
 pytestmark = pytest.mark.integration
@@ -216,6 +217,61 @@ async def test_dashboard_overview_combines_data(async_client, db_setup):
     # At least one trend point should have non-zero request count
     request_values = [p["v"] for p in trends["requests"]]
     assert any(v > 0 for v in request_values)
+
+
+@pytest.mark.asyncio
+async def test_dashboard_overview_refreshes_stale_usage_for_active_accounts(
+    async_client,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    now = utcnow().replace(microsecond=0)
+    stale_recorded_at = now - timedelta(hours=17)
+    account_id = "acc_refresh_live"
+
+    async with SessionLocal() as session:
+        accounts_repo = AccountsRepository(session)
+        usage_repo = UsageRepository(session)
+        await accounts_repo.upsert(_make_account(account_id, "refresh@example.com"))
+        await usage_repo.add_entry(
+            account_id,
+            100.0,
+            window="primary",
+            window_minutes=300,
+            recorded_at=stale_recorded_at,
+        )
+        await usage_repo.add_entry(
+            account_id,
+            100.0,
+            window="secondary",
+            window_minutes=10080,
+            recorded_at=stale_recorded_at,
+        )
+
+    async def _fake_fetch_usage(*, access_token: str, account_id: str | None = None):  # noqa: ARG001
+        return UsagePayload(
+            plan_type="plus",
+            rate_limit=RateLimitPayload(
+                primary_window=UsageWindow(used_percent=11.0, limit_window_seconds=300 * 60),
+                secondary_window=UsageWindow(used_percent=22.0, limit_window_seconds=10080 * 60),
+            ),
+        )
+
+    monkeypatch.setenv("CODEX_LB_USAGE_REFRESH_ENABLED", "true")
+    monkeypatch.setattr("app.modules.usage.updater.fetch_usage", _fake_fetch_usage)
+    from app.core.config.settings import get_settings
+
+    get_settings.cache_clear()
+
+    response = await async_client.get("/api/dashboard/overview")
+    assert response.status_code == 200
+    payload = response.json()
+    account = next(item for item in payload["accounts"] if item["accountId"] == account_id)
+
+    assert account["usage"]["primaryRemainingPercent"] == pytest.approx(89.0)
+    assert account["usage"]["secondaryRemainingPercent"] == pytest.approx(78.0)
+    assert account["lastUsageRecordedAtPrimary"] is not None
+    refreshed_primary = datetime.fromisoformat(account["lastUsageRecordedAtPrimary"].replace("Z", "+00:00"))
+    assert refreshed_primary.replace(tzinfo=None) >= now - timedelta(seconds=30)
 
 
 @pytest.mark.asyncio

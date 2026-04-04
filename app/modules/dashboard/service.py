@@ -33,6 +33,7 @@ from app.modules.usage.depletion_service import (
     compute_aggregate_depletion,
     compute_depletion_for_account,
 )
+from app.modules.usage.updater import UsageUpdater
 
 _ACTIVE_CODEX_TASK_WINDOW = timedelta(minutes=5)
 
@@ -47,6 +48,14 @@ class DashboardService:
         await sync_local_codex_auth_snapshots(repo=self._repo.accounts_repo, encryptor=self._encryptor)
         accounts = await self._repo.list_accounts()
         primary_usage = await self._repo.latest_usage_by_account("primary")
+        if accounts:
+            updater = UsageUpdater(
+                self._repo.usage_repo,
+                self._repo.accounts_repo,
+                self._repo.additional_usage_repo,
+            )
+            await updater.refresh_accounts(accounts, primary_usage)
+            primary_usage = await self._repo.latest_usage_by_account("primary")
         secondary_usage = await self._repo.latest_usage_by_account("secondary")
         account_ids = [account.id for account in accounts]
         request_usage_rows = await self._repo.list_request_usage_summary_by_account(account_ids)

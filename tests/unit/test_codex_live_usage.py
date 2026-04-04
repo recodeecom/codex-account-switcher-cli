@@ -651,7 +651,13 @@ def test_read_live_codex_process_session_counts_by_snapshot_uses_runtime_current
 
 def test_read_live_codex_process_session_counts_by_snapshot_ignores_unlabeled_processes(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
+    default_current = tmp_path / "default" / "current"
+    default_current.parent.mkdir(parents=True, exist_ok=True)
+    default_current.write_text("work", encoding="utf-8")
+    monkeypatch.setenv("CODEX_AUTH_CURRENT_PATH", str(default_current))
+
     monkeypatch.setattr(
         "app.modules.accounts.codex_live_usage._iter_running_codex_commands",
         lambda _proc_root: [(303, ["/usr/bin/codex", "model_instructions_file=agents"])],
@@ -659,6 +665,74 @@ def test_read_live_codex_process_session_counts_by_snapshot_ignores_unlabeled_pr
     monkeypatch.setattr(
         "app.modules.accounts.codex_live_usage._read_process_env",
         lambda _pid: {},
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._process_belongs_to_current_user",
+        lambda _pid: True,
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._read_process_started_at",
+        lambda _pid: default_current.stat().st_mtime - 60,
+    )
+
+    counts = read_live_codex_process_session_counts_by_snapshot()
+    assert counts == {}
+
+
+def test_read_live_codex_process_session_counts_by_snapshot_maps_unlabeled_default_scope_processes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    default_current = tmp_path / "default" / "current"
+    default_current.parent.mkdir(parents=True, exist_ok=True)
+    default_current.write_text("work", encoding="utf-8")
+    monkeypatch.setenv("CODEX_AUTH_CURRENT_PATH", str(default_current))
+
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._iter_running_codex_commands",
+        lambda _proc_root: [(404, ["/usr/bin/codex", "model_instructions_file=agents"])],
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._read_process_env",
+        lambda _pid: {},
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._process_belongs_to_current_user",
+        lambda _pid: True,
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._read_process_started_at",
+        lambda _pid: default_current.stat().st_mtime + 1,
+    )
+
+    counts = read_live_codex_process_session_counts_by_snapshot()
+    assert counts == {"work": 1}
+
+
+def test_read_live_codex_process_session_counts_by_snapshot_ignores_unlabeled_foreign_processes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    default_current = tmp_path / "default" / "current"
+    default_current.parent.mkdir(parents=True, exist_ok=True)
+    default_current.write_text("work", encoding="utf-8")
+    monkeypatch.setenv("CODEX_AUTH_CURRENT_PATH", str(default_current))
+
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._iter_running_codex_commands",
+        lambda _proc_root: [(505, ["/usr/bin/codex", "model_instructions_file=agents"])],
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._read_process_env",
+        lambda _pid: {},
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._process_belongs_to_current_user",
+        lambda _pid: False,
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._read_process_started_at",
+        lambda _pid: default_current.stat().st_mtime + 1,
     )
 
     counts = read_live_codex_process_session_counts_by_snapshot()

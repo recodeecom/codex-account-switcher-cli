@@ -14,6 +14,7 @@ from app.modules.accounts.codex_auth_switcher import build_snapshot_index
 
 _DEFAULT_ACTIVE_WINDOW_SECONDS = 300
 _DEFAULT_SWITCH_PROCESS_FALLBACK_SECONDS = 60
+_DEFAULT_UNLABELED_PROCESS_START_TOLERANCE_SECONDS = 5
 _TAIL_LINE_LIMIT = 400
 _FALLBACK_SCAN_LIMIT = 200
 _ROLLOUT_SESSION_PREFIX_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}$")
@@ -560,9 +561,7 @@ def _resolve_process_snapshot_name(
     default_current_path: Path,
     default_auth_path: Path,
 ) -> str | None:
-    env = _read_process_env(pid)
-    if not env:
-        return None
+    env = _read_process_env(pid) or {}
 
     explicit_snapshot = env.get("CODEX_AUTH_ACTIVE_SNAPSHOT", "").strip()
     if explicit_snapshot:
@@ -589,7 +588,68 @@ def _resolve_process_snapshot_name(
             auth_override if auth_override is not None else default_auth_path
         )
 
-    return None
+    # Some host terminals run against the default auth scope and do not expose
+    # explicit snapshot/runtime env metadata. In that case, cautiously attribute
+    # the process to the currently selected default snapshot only when the
+    # process appears to have started at or after the latest snapshot selection.
+    return _resolve_unlabeled_default_scope_snapshot_name(
+        pid=pid,
+        default_current_path=default_current_path,
+    )
+
+
+def _resolve_unlabeled_default_scope_snapshot_name(
+    *,
+    pid: int,
+    default_current_path: Path,
+) -> str | None:
+    if not _process_belongs_to_current_user(pid):
+        return None
+
+    snapshot_name = _read_current_snapshot_name(default_current_path)
+    if not snapshot_name:
+        return None
+
+    current_selected_at = _safe_mtime(default_current_path)
+    process_started_at = _read_process_started_at(pid)
+
+    if process_started_at is None:
+        return None
+
+    if (
+        current_selected_at > 0
+        and process_started_at + _unlabeled_process_start_tolerance_seconds() < current_selected_at
+    ):
+        return None
+
+    return snapshot_name
+
+
+def _read_process_started_at(pid: int) -> float | None:
+    process_path = Path("/proc") / str(pid)
+    try:
+        return process_path.stat().st_ctime
+    except OSError:
+        return None
+
+
+def _process_belongs_to_current_user(pid: int) -> bool:
+    process_path = Path("/proc") / str(pid)
+    try:
+        return process_path.stat().st_uid == os.getuid()
+    except OSError:
+        return False
+
+
+def _unlabeled_process_start_tolerance_seconds() -> int:
+    raw = os.environ.get("CODEX_LB_UNLABELED_PROCESS_START_TOLERANCE_SECONDS")
+    if raw is None:
+        return _DEFAULT_UNLABELED_PROCESS_START_TOLERANCE_SECONDS
+    try:
+        value = int(raw)
+    except ValueError:
+        return _DEFAULT_UNLABELED_PROCESS_START_TOLERANCE_SECONDS
+    return max(0, value)
 
 
 def _has_runtime_scoped_auth_paths(

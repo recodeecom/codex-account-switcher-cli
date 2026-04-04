@@ -730,7 +730,7 @@ async def test_accounts_list_mixed_sessions_preserves_matched_live_sessions_for_
 
 
 @pytest.mark.asyncio
-async def test_accounts_list_mixed_sessions_keeps_quota_baseline_when_reset_fingerprints_overlap(
+async def test_accounts_list_mixed_sessions_uses_lowest_sample_for_active_account_when_fingerprints_overlap(
     async_client, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
     now = datetime.now(timezone.utc).replace(microsecond=0)
@@ -810,8 +810,8 @@ async def test_accounts_list_mixed_sessions_keeps_quota_baseline_when_reset_fing
     assert accounts[work_account_id]["codexLiveSessionCount"] == 0
     assert accounts[work_account_id]["codexTrackedSessionCount"] == 0
     assert accounts[work_account_id]["codexSessionCount"] == 0
-    assert accounts[work_account_id]["usage"]["primaryRemainingPercent"] == pytest.approx(85.0)
-    assert accounts[work_account_id]["usage"]["secondaryRemainingPercent"] == pytest.approx(75.0)
+    assert accounts[work_account_id]["usage"]["primaryRemainingPercent"] == pytest.approx(78.0)
+    assert accounts[work_account_id]["usage"]["secondaryRemainingPercent"] == pytest.approx(68.0)
 
     assert accounts[personal_account_id]["codexAuth"]["hasLiveSession"] is False
     assert accounts[personal_account_id]["codexAuth"]["liveUsageConfidence"] is None
