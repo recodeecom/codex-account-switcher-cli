@@ -297,6 +297,30 @@ describe("AccountCard", () => {
     expect(screen.queryByRole("button", { name: "Re-auth" })).not.toBeInTheDocument();
   });
 
+  it("shows expired refresh token badge and re-auth action when refresh token re-login is required", () => {
+    const account = createAccountSummary({
+      status: "deactivated",
+      deactivationReason: "Refresh token expired - re-login required",
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "odin",
+        activeSnapshotName: "odin",
+        isActiveSnapshot: true,
+      },
+      auth: {
+        access: { expiresAt: null, state: null },
+        refresh: { state: "expired" },
+        idToken: { state: "parsed" },
+      },
+    });
+
+    render(<AccountCard account={account} />);
+
+    expect(screen.getByText("Active")).toBeInTheDocument();
+    expect(screen.getByText("Expired refresh token")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Re-auth" })).toBeInTheDocument();
+  });
+
   it("treats deactivated accounts with local snapshots as active in dashboard cards", () => {
     const account = createAccountSummary({
       status: "deactivated",
@@ -566,6 +590,7 @@ describe("AccountCard", () => {
     const { container } = render(<AccountCard account={account} />);
 
     expect(screen.getByText(/leaves in/i)).toBeInTheDocument();
+    expect(screen.getByText(/Leaving working now in/i)).toBeInTheDocument();
     const card = container.querySelector(".card-hover");
     expect(card).not.toBeNull();
     expect(card?.className).toContain("border-red-500/40");
@@ -815,7 +840,7 @@ describe("AccountCard", () => {
     expect(screen.queryByText(/\b40%\b/)).not.toBeInTheDocument();
   });
 
-  it("renders current task preview for working accounts when provided", () => {
+  it("renders current task preview when provided", () => {
     const account = createAccountSummary({
       codexLiveSessionCount: 2,
       codexSessionCount: 2,
@@ -835,6 +860,39 @@ describe("AccountCard", () => {
     expect(
       screen.getByText("Trace session-affinity fallback for codex websocket flow"),
     ).toBeInTheDocument();
+  });
+
+  it("renders current task preview for non-working accounts when provided", () => {
+    const account = createAccountSummary({
+      codexLiveSessionCount: 0,
+      codexSessionCount: 0,
+      codexCurrentTaskPreview: "Review sticky session cleanup edge-cases",
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "secondary",
+        activeSnapshotName: "main",
+        isActiveSnapshot: false,
+        hasLiveSession: false,
+      },
+    });
+
+    render(<AccountCard account={account} />);
+
+    expect(screen.getByText("Current task")).toBeInTheDocument();
+    expect(
+      screen.getByText("Review sticky session cleanup edge-cases"),
+    ).toBeInTheDocument();
+  });
+
+  it("shows a current task placeholder when no task preview is available", () => {
+    const account = createAccountSummary({
+      codexCurrentTaskPreview: null,
+    });
+
+    render(<AccountCard account={account} />);
+
+    expect(screen.getByText("Current task")).toBeInTheDocument();
+    expect(screen.getByText("No active task reported")).toBeInTheDocument();
   });
 
   it("hides working indicator when account snapshot is not active", () => {

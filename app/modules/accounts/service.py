@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import cast
 
 from pydantic import ValidationError
@@ -37,6 +37,7 @@ from app.modules.accounts.live_usage_overrides import apply_local_live_usage_ove
 from app.modules.accounts.live_usage_persistence import persist_live_usage_overrides
 from app.modules.accounts.mappers import build_account_summaries, build_account_usage_trends
 from app.modules.accounts.repository import AccountsRepository
+from app.modules.accounts.task_preview_overlay import overlay_live_codex_task_previews
 from app.modules.accounts.schemas import (
     AccountAdditionalQuota,
     AccountAdditionalWindow,
@@ -173,6 +174,13 @@ class AccountsService:
                 usage_repo=self._usage_repo,
                 candidates=persist_candidates,
             )
+        overlay_live_codex_task_previews(
+            accounts=accounts,
+            codex_auth_by_account=codex_auth_by_account,
+            codex_current_task_preview_by_account=codex_current_task_preview_by_account,
+            live_quota_debug_by_account=live_quota_debug_by_account,
+            now=utcnow(),
+        )
 
         return build_account_summaries(
             accounts=accounts,

@@ -228,6 +228,21 @@ function resolveLastSeenDisplay(label: string | null | undefined): {
   return { label, upToDate: false };
 }
 
+function hasExpiredRefreshTokenReason(reason: string | null | undefined): boolean {
+  const normalized = reason?.trim().toLowerCase();
+  if (!normalized || !normalized.includes("refresh token")) {
+    return false;
+  }
+  return (
+    normalized.includes("expired") ||
+    normalized.includes("re-login required") ||
+    normalized.includes("re-authentication") ||
+    normalized.includes("reused") ||
+    normalized.includes("revoked") ||
+    normalized.includes("invalidated")
+  );
+}
+
 function formatDebugPercent(value: number | null | undefined): string {
   if (value == null || Number.isNaN(value)) {
     return "—";
@@ -386,7 +401,6 @@ export function AccountCard({
   }, []);
 
   const [showQuotaDebug, setShowQuotaDebug] = useState(false);
-  const [showUsageDetails, setShowUsageDetails] = useState(false);
   const liveQuotaDebug = account.liveQuotaDebug ?? null;
   const mergedPrimaryRemainingPercent = getMergedQuotaRemainingPercent(
     account,
@@ -502,6 +516,12 @@ export function AccountCard({
     hasLiveSession,
     primaryRemainingPercent: primaryRemaining,
   });
+  const showUsageLimitGraceOverlay = Boolean(
+    usageLimitHit && usageLimitHitCountdownMs != null && usageLimitHitCountdownMs > 0,
+  );
+  const hasExpiredRefreshToken =
+    account.auth?.refresh?.state === "expired" ||
+    hasExpiredRefreshTokenReason(account.deactivationReason);
   const status = usageLimitHit && effectiveStatus === "active" ? "limited" : effectiveStatus;
   const canUseLocally = canUseLocalAccount({
     status: account.status,
@@ -596,11 +616,16 @@ export function AccountCard({
   return (
     <div
       className={cn(
-        "card-hover rounded-xl border border-border/70 bg-gradient-to-b from-card to-card/80 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]",
+        "card-hover relative overflow-hidden rounded-xl border border-border/70 bg-gradient-to-b from-card to-card/80 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]",
         usageLimitHit &&
           "border-red-500/40 bg-gradient-to-b from-red-500/12 via-card to-card/85",
       )}
     >
+      <div
+        className={cn(
+          showUsageLimitGraceOverlay && "blur-[1.5px] saturate-[0.82]",
+        )}
+      >
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -670,87 +695,59 @@ export function AccountCard({
               Working now
             </Badge>
           ) : null}
+          {hasExpiredRefreshToken ? (
+            <Badge
+              variant="outline"
+              className="gap-1.5 border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+              title={
+                account.deactivationReason ??
+                "Re-login is required to refresh the account token."
+              }
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden />
+              Expired refresh token
+            </Badge>
+          ) : null}
         </div>
       </div>
 
-      <div className="mt-3 rounded-lg border border-border/60 bg-background/35 px-2.5 py-2">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-            Usage details
+      <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.35fr)]">
+        <div className="min-w-0">
+          <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+            {tokenMetricLabel}
           </p>
-          <button
-            type="button"
-            className="inline-flex items-center gap-1 rounded-md border border-cyan-500/25 bg-cyan-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-700/90 transition-colors hover:bg-cyan-500/15 hover:text-cyan-800 dark:text-cyan-200/90 dark:hover:text-cyan-100"
-            aria-expanded={showUsageDetails}
-            aria-label={showUsageDetails ? "Hide usage details" : "Show usage details"}
-            onClick={() => setShowUsageDetails((current) => !current)}
-          >
-            {showUsageDetails ? "Hide details" : "Show details"}
-            <ChevronDown
-              className={cn(
-                "h-3 w-3 transition-transform duration-200",
-                showUsageDetails && "rotate-180",
-              )}
-            />
-          </button>
-        </div>
-        <div
-          className={cn(
-            "grid transition-[grid-template-rows,opacity,margin] duration-200",
-            showUsageDetails
-              ? "mt-2 grid-rows-[1fr] opacity-100"
-              : "mt-1 grid-rows-[0fr] opacity-85",
-          )}
-        >
-          <div className="overflow-hidden">
-            <div className="grid grid-cols-2 gap-2.5 rounded-lg border border-border/55 bg-background/25 px-2.5 py-2.5">
-              <div>
-                <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                  {tokenMetricLabel}
-                </p>
-                <p className="mt-0.5 flex items-center gap-1.5 text-sm font-semibold tabular-nums">
-                  <span>{tokenMetricValue}</span>
-                  {isWorkingNow ? (
-                    <span className="inline-flex items-center gap-1 rounded-md border border-cyan-500/30 bg-cyan-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-700 dark:text-cyan-300">
-                      live
-                    </span>
-                  ) : null}
-                </p>
-              </div>
-              <div>
-                <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                  Codex CLI sessions
-                </p>
-                <p className="mt-0.5 text-xs font-semibold tabular-nums">
-                  {codexLiveSessionCount}
-                </p>
-                <p className="mt-0.5 text-[11px] text-muted-foreground">
-                  Tracked: {codexTrackedSessionCount}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-        {!showUsageDetails ? (
-          <p className="mt-1 text-[11px] text-muted-foreground">
-            Showing live usage bars only.
+          <p className="mt-0.5 flex items-center gap-1.5 text-sm font-semibold tabular-nums">
+            <span>{tokenMetricValue}</span>
+            {isWorkingNow ? (
+              <span className="inline-flex items-center gap-1 rounded-md border border-cyan-500/30 bg-cyan-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-700 dark:text-cyan-300">
+                live
+              </span>
+            ) : null}
           </p>
-        ) : null}
-      </div>
-
-      {isWorkingNow && codexCurrentTaskPreview ? (
-        <div className="mt-2.5 rounded-lg border border-cyan-500/25 bg-cyan-500/[0.08] px-2.5 py-2">
-          <p className="text-[10px] font-medium uppercase tracking-wider text-cyan-700 dark:text-cyan-300">
+        </div>
+        <div className="min-w-0">
+          <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+            Codex CLI sessions
+          </p>
+          <p className="mt-0.5 text-xs font-semibold tabular-nums">
+            {codexLiveSessionCount}
+          </p>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            Tracked: {codexTrackedSessionCount}
+          </p>
+        </div>
+        <div className="min-w-0">
+          <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
             Current task
           </p>
           <p
-            className="mt-1 truncate text-xs text-cyan-800 dark:text-cyan-200"
-            title={codexCurrentTaskPreview}
+            className="mt-0.5 truncate text-xs text-muted-foreground"
+            title={codexCurrentTaskPreview ?? undefined}
           >
-            {codexCurrentTaskPreview}
+            {codexCurrentTaskPreview ?? "No active task reported"}
           </p>
         </div>
-      ) : null}
+      </div>
 
       {/* Quota bars */}
       <div
@@ -928,7 +925,7 @@ export function AccountCard({
             Resume
           </Button>
         )}
-        {status === "deactivated" && (
+        {(status === "deactivated" || hasExpiredRefreshToken) && (
           <Button
             type="button"
             size="sm"
@@ -941,6 +938,19 @@ export function AccountCard({
           </Button>
         )}
       </div>
+      </div>
+      {showUsageLimitGraceOverlay ? (
+        <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
+          <div className="rounded-xl border border-red-500/40 bg-red-500/14 px-4 py-2.5 text-center shadow-lg backdrop-blur-[2px]">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-red-700 dark:text-red-300">
+              Usage limit hit
+            </p>
+            <p className="mt-1 text-sm font-semibold tabular-nums text-red-800 dark:text-red-200">
+              Leaving working now in {usageLimitHitCountdownLabel}
+            </p>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

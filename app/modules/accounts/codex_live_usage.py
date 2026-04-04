@@ -19,7 +19,24 @@ _TAIL_LINE_LIMIT = 400
 _FALLBACK_SCAN_LIMIT = 200
 _RATE_LIMIT_SNAPSHOTS_PER_FILE = 8
 _ROLLOUT_SESSION_PREFIX_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}$")
+_ROLLOUT_SESSION_FILE_RE = re.compile(
+    r"^rollout-(?P<start>\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2})-(?P<session>[0-9a-fA-F-]{36})\.jsonl$"
+)
 _RESET_AT_MATCH_TOLERANCE_SECONDS = 30
+_TASK_PREVIEW_MAX_LENGTH = 120
+_TASK_PREVIEW_EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
+_TASK_PREVIEW_BEARER_RE = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._-]+")
+_TASK_PREVIEW_SECRET_ASSIGNMENT_RE = re.compile(
+    r"(?i)\b(api[_-]?key|token|password|secret)\b\s*[:=]\s*([^\s,;]+)"
+)
+_TASK_PREVIEW_IMAGE_TAG_RE = re.compile(r"(?is)</?image[^>]*>")
+_TASK_PREVIEW_IMAGE_LABEL_RE = re.compile(r"\[Image\s*#\d+\]", re.IGNORECASE)
+
+
+@dataclass(frozen=True)
+class LocalCodexTaskPreview:
+    text: str
+    recorded_at: datetime
 
 
 @dataclass(frozen=True)
@@ -201,6 +218,85 @@ def read_runtime_live_session_counts_by_snapshot(*, now: datetime | None = None)
         counts[snapshot_name] = counts.get(snapshot_name, 0) + live_count
 
     return counts
+
+
+def read_local_codex_task_previews_by_snapshot(
+    *,
+    now: datetime | None = None,
+) -> dict[str, LocalCodexTaskPreview]:
+    current = now or datetime.now(timezone.utc)
+    previews_by_snapshot: dict[str, LocalCodexTaskPreview] = {}
+
+    active_snapshot_name = build_snapshot_index().active_snapshot_name
+    if active_snapshot_name:
+        default_candidates = _read_local_codex_task_preview_candidates_for_sessions_dir(
+            sessions_dir=_resolve_sessions_dir(),
+            now=current,
+        )
+        _merge_task_preview_candidates_for_snapshot(
+            previews_by_snapshot=previews_by_snapshot,
+            snapshot_name=active_snapshot_name,
+            candidates=default_candidates,
+        )
+
+    runtime_root = _resolve_runtime_root()
+    if not runtime_root.exists() or not runtime_root.is_dir():
+        return previews_by_snapshot
+
+    for runtime_dir in runtime_root.iterdir():
+        if not runtime_dir.is_dir():
+            continue
+
+        snapshot_name = _read_runtime_current_snapshot(runtime_dir)
+        if not snapshot_name:
+            continue
+
+        runtime_candidates = _read_local_codex_task_preview_candidates_for_sessions_dir(
+            sessions_dir=runtime_dir / "sessions",
+            now=current,
+        )
+        _merge_task_preview_candidates_for_snapshot(
+            previews_by_snapshot=previews_by_snapshot,
+            snapshot_name=snapshot_name,
+            candidates=runtime_candidates,
+        )
+
+    return previews_by_snapshot
+
+
+def read_local_codex_task_previews_by_session_id(
+    *,
+    now: datetime | None = None,
+) -> dict[str, LocalCodexTaskPreview]:
+    current = now or datetime.now(timezone.utc)
+    previews_by_session_id: dict[str, LocalCodexTaskPreview] = {}
+
+    def merge(candidates: list[tuple[str, LocalCodexTaskPreview]]) -> None:
+        for session_id, candidate in candidates:
+            existing = previews_by_session_id.get(session_id)
+            if existing is None or candidate.recorded_at >= existing.recorded_at:
+                previews_by_session_id[session_id] = candidate
+
+    merge(
+        _read_local_codex_task_preview_candidates_for_sessions_dir(
+            sessions_dir=_resolve_sessions_dir(),
+            now=current,
+        )
+    )
+
+    runtime_root = _resolve_runtime_root()
+    if runtime_root.exists() and runtime_root.is_dir():
+        for runtime_dir in runtime_root.iterdir():
+            if not runtime_dir.is_dir():
+                continue
+            merge(
+                _read_local_codex_task_preview_candidates_for_sessions_dir(
+                    sessions_dir=runtime_dir / "sessions",
+                    now=current,
+                )
+            )
+
+    return previews_by_session_id
 
 
 def has_recent_active_snapshot_process_fallback(*, now: datetime | None = None) -> bool:
@@ -732,6 +828,20 @@ def _has_runtime_scoped_auth_paths(
     return False
 
 
+def _merge_task_preview_candidates_for_snapshot(
+    *,
+    previews_by_snapshot: dict[str, LocalCodexTaskPreview],
+    snapshot_name: str,
+    candidates: list[tuple[str, LocalCodexTaskPreview]],
+) -> None:
+    if not candidates:
+        return
+    latest = max(candidates, key=lambda candidate: candidate[1].recorded_at)[1]
+    existing = previews_by_snapshot.get(snapshot_name)
+    if existing is None or latest.recorded_at >= existing.recorded_at:
+        previews_by_snapshot[snapshot_name] = latest
+
+
 def _read_current_snapshot_name(current_path: Path | None) -> str | None:
     if current_path is None or not current_path.exists() or not current_path.is_file():
         return None
@@ -860,6 +970,155 @@ def _read_process_cwd(pid: int) -> Path | None:
         return Path(os.readlink(cwd_link)).resolve()
     except OSError:
         return None
+
+
+def _read_local_codex_task_preview_candidates_for_sessions_dir(
+    *,
+    sessions_dir: Path,
+    now: datetime,
+) -> list[tuple[str, LocalCodexTaskPreview]]:
+    if not sessions_dir.exists() or not sessions_dir.is_dir():
+        return []
+
+    candidates = _candidate_rollout_files(sessions_dir, now)
+    if not candidates:
+        return []
+
+    cutoff_ts = (now - timedelta(seconds=_active_window_seconds())).timestamp()
+    active_files = [path for path in candidates if _safe_mtime(path) >= cutoff_ts]
+    if not active_files:
+        return []
+
+    collected: list[tuple[str, LocalCodexTaskPreview]] = []
+    for path in _prefer_newest_sessions(active_files):
+        session_id = _rollout_session_id_from_path(path)
+        if session_id is None:
+            continue
+        preview = _extract_latest_task_preview_from_file(path)
+        if preview is None:
+            continue
+        collected.append((session_id, preview))
+    return collected
+
+
+def _rollout_session_id_from_path(path: Path) -> str | None:
+    match = _ROLLOUT_SESSION_FILE_RE.match(path.name)
+    if match is None:
+        return None
+    return match.group("session")
+
+
+def _extract_latest_task_preview_from_file(path: Path) -> LocalCodexTaskPreview | None:
+    tail: deque[str] = deque(maxlen=_TAIL_LINE_LIMIT)
+    try:
+        with path.open("r", encoding="utf-8", errors="ignore") as handle:
+            for line in handle:
+                tail.append(line)
+    except OSError:
+        return None
+
+    for raw_line in reversed(tail):
+        preview = _task_preview_from_line(raw_line)
+        if preview is not None:
+            return preview
+
+    try:
+        with path.open("r", encoding="utf-8", errors="ignore") as handle:
+            for raw_line in reversed(handle.readlines()):
+                preview = _task_preview_from_line(raw_line)
+                if preview is not None:
+                    return preview
+    except OSError:
+        return None
+
+    return None
+
+
+def _task_preview_from_line(raw_line: str) -> LocalCodexTaskPreview | None:
+    line = raw_line.strip()
+    if not line:
+        return None
+    try:
+        payload = json.loads(line)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+
+    if payload.get("type") != "response_item":
+        return None
+
+    message_payload = payload.get("payload")
+    if not isinstance(message_payload, dict):
+        return None
+    if message_payload.get("type") != "message" or message_payload.get("role") != "user":
+        return None
+
+    raw_text = _extract_user_message_text(message_payload.get("content"))
+    if raw_text is None or _is_bootstrap_user_message(raw_text):
+        return None
+
+    text = _sanitize_codex_task_preview(raw_text)
+    if text is None:
+        return None
+
+    timestamp = _parse_timestamp(payload.get("timestamp")) or _parse_timestamp(message_payload.get("timestamp"))
+    if timestamp is None:
+        return None
+
+    return LocalCodexTaskPreview(text=text, recorded_at=timestamp)
+
+
+def _extract_user_message_text(content: Any) -> str | None:
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list):
+        return None
+
+    parts: list[str] = []
+    for item in content:
+        if not isinstance(item, dict):
+            continue
+        text = item.get("text")
+        if isinstance(text, str):
+            parts.append(text)
+
+    if not parts:
+        return None
+    return " ".join(parts)
+
+
+def _is_bootstrap_user_message(text: str) -> bool:
+    normalized = " ".join(text.split()).lower()
+    if not normalized:
+        return True
+    if "# agents.md instructions for " in normalized:
+        return True
+    if "<instructions>" in normalized and "autonomy directive" in normalized:
+        return True
+    return False
+
+
+def _sanitize_codex_task_preview(text: str) -> str | None:
+    normalized = " ".join(text.split())
+    if not normalized:
+        return None
+
+    normalized = _TASK_PREVIEW_IMAGE_TAG_RE.sub(" ", normalized)
+    normalized = _TASK_PREVIEW_IMAGE_LABEL_RE.sub(" ", normalized)
+    normalized = " ".join(normalized.split())
+    if not normalized:
+        return None
+
+    redacted = _TASK_PREVIEW_EMAIL_RE.sub("[redacted-email]", normalized)
+    redacted = _TASK_PREVIEW_BEARER_RE.sub("bearer [redacted]", redacted)
+    redacted = _TASK_PREVIEW_SECRET_ASSIGNMENT_RE.sub(r"\1=[redacted]", redacted)
+    trimmed = redacted.strip()
+    if not trimmed:
+        return None
+    if len(trimmed) <= _TASK_PREVIEW_MAX_LENGTH:
+        return trimmed
+    return trimmed[: _TASK_PREVIEW_MAX_LENGTH - 1].rstrip() + "…"
 
 
 def _candidate_rollout_files(sessions_dir: Path, now: datetime) -> list[Path]:

@@ -18,6 +18,7 @@ from app.modules.accounts.live_usage_overrides import apply_local_live_usage_ove
 from app.modules.accounts.live_usage_persistence import persist_live_usage_overrides
 from app.modules.accounts.mappers import build_account_summaries
 from app.modules.accounts.schemas import AccountCodexAuthStatus, AccountLiveQuotaDebug, AccountRequestUsage
+from app.modules.accounts.task_preview_overlay import overlay_live_codex_task_previews
 from app.modules.dashboard.repository import DashboardRepository
 from app.modules.dashboard.schemas import (
     DashboardOverviewResponse,
@@ -98,6 +99,13 @@ class DashboardService:
                 usage_repo=self._repo.usage_repo,
                 candidates=persist_candidates,
             )
+        overlay_live_codex_task_previews(
+            accounts=accounts,
+            codex_auth_by_account=codex_auth_by_account,
+            codex_current_task_preview_by_account=codex_current_task_preview_by_account,
+            live_quota_debug_by_account=live_quota_debug_by_account,
+            now=now,
+        )
 
         account_summaries = build_account_summaries(
             accounts=accounts,
@@ -268,7 +276,6 @@ class DashboardService:
             depletion_primary=pri_depletion,
             depletion_secondary=sec_depletion,
         )
-
 
 def _build_depletion_by_window(
     primary_history: dict[str, list[UsageHistory]],

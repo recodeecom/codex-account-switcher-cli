@@ -1016,6 +1016,113 @@ def test_default_scope_debug_assignment_keeps_source_owner_stable_across_active_
     assert by_account_second[csoves.id][0].source == sample_source
 
 
+def test_default_scope_debug_assignment_keeps_cached_owner_even_without_snapshot() -> None:
+    old_owner = _make_account("acc-old", "old@example.com")
+    old_owner.status = AccountStatus.DEACTIVATED
+    active = _make_account("acc-active", "active@example.com")
+    accounts = [old_owner, active]
+    sample_source = "/tmp/rollout-cached-owner.jsonl"
+    now = datetime(2026, 4, 4, 23, 10, tzinfo=timezone.utc)
+
+    # First pass seeds sticky ownership for the old account source.
+    _build_default_sample_debug_overrides(
+        accounts=accounts,
+        snapshot_index=CodexAuthSnapshotIndex(
+            snapshots_by_account_id={old_owner.id: ["old"], active.id: ["active"]},
+            active_snapshot_name="old",
+        ),
+        codex_auth_by_account={
+            old_owner.id: AccountCodexAuthStatus(
+                has_snapshot=True,
+                snapshot_name="old",
+                active_snapshot_name="old",
+                is_active_snapshot=True,
+                has_live_session=False,
+            ),
+            active.id: AccountCodexAuthStatus(
+                has_snapshot=True,
+                snapshot_name="active",
+                active_snapshot_name="old",
+                is_active_snapshot=False,
+                has_live_session=False,
+            ),
+        },
+        baseline_primary_usage={},
+        baseline_secondary_usage={},
+        live_usage_samples_by_snapshot={
+            "old": [
+                LocalCodexLiveUsageSample(
+                    source=sample_source,
+                    recorded_at=now,
+                    primary=LocalUsageWindow(
+                        used_percent=74.0,
+                        reset_at=1_761_210_000,
+                        window_minutes=300,
+                    ),
+                    secondary=LocalUsageWindow(
+                        used_percent=41.0,
+                        reset_at=1_761_216_000,
+                        window_minutes=10_080,
+                    ),
+                    stale=False,
+                )
+            ]
+        },
+        should_defer_active_snapshot_usage=True,
+    )
+
+    by_account, _, hints = _build_default_sample_debug_overrides(
+        accounts=accounts,
+        snapshot_index=CodexAuthSnapshotIndex(
+            snapshots_by_account_id={old_owner.id: [], active.id: ["active"]},
+            active_snapshot_name="active",
+        ),
+        codex_auth_by_account={
+            old_owner.id: AccountCodexAuthStatus(
+                has_snapshot=False,
+                snapshot_name=None,
+                active_snapshot_name="active",
+                is_active_snapshot=False,
+                has_live_session=False,
+            ),
+            active.id: AccountCodexAuthStatus(
+                has_snapshot=True,
+                snapshot_name="active",
+                active_snapshot_name="active",
+                is_active_snapshot=True,
+                has_live_session=False,
+            ),
+        },
+        baseline_primary_usage={},
+        baseline_secondary_usage={},
+        live_usage_samples_by_snapshot={
+            "active": [
+                LocalCodexLiveUsageSample(
+                    source=sample_source,
+                    recorded_at=now + timedelta(seconds=30),
+                    primary=LocalUsageWindow(
+                        used_percent=74.0,
+                        reset_at=1_761_210_000,
+                        window_minutes=300,
+                    ),
+                    secondary=LocalUsageWindow(
+                        used_percent=41.0,
+                        reset_at=1_761_216_000,
+                        window_minutes=10_080,
+                    ),
+                    stale=False,
+                )
+            ]
+        },
+        should_defer_active_snapshot_usage=True,
+    )
+
+    assert hints == {old_owner.id: 1}
+    assert old_owner.id in by_account
+    assert active.id not in by_account
+    assert by_account[old_owner.id][0].source == sample_source
+
+
 def test_default_scope_debug_assignment_does_not_prime_mixed_unattributed_samples() -> None:
     old_owner = _make_account("acc-old", "old@example.com")
     active = _make_account("acc-active", "active@example.com")

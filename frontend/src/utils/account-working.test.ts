@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { createAccountSummary } from "@/test/mocks/factories";
 import {
   getWorkingNowUsageLimitHitCountdownMs,
+  hasActiveCliSessionSignal,
   getMergedQuotaRemainingPercent,
   getRawQuotaWindowFallback,
   isAccountWorkingNow,
@@ -785,5 +786,108 @@ describe("isAccountWorkingNow", () => {
         baselineResetAt: "2026-04-04T22:00:00.000Z",
       }),
     ).toBe(96);
+  });
+});
+
+describe("hasActiveCliSessionSignal", () => {
+  it("follows the locked detection cascade order", () => {
+    const nowMs = new Date("2026-04-04T12:00:00.000Z").getTime();
+
+    const authLive = createAccountSummary({
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+      codexLiveSessionCount: 0,
+      codexTrackedSessionCount: 0,
+      codexSessionCount: 0,
+      lastUsageRecordedAtPrimary: null,
+      lastUsageRecordedAtSecondary: null,
+      liveQuotaDebug: {
+        snapshotsConsidered: ["main"],
+        overrideApplied: false,
+        overrideReason: "none",
+        merged: null,
+        rawSamples: [],
+      },
+    });
+    expect(hasActiveCliSessionSignal(authLive, nowMs)).toBe(true);
+
+    const freshTelemetry = createAccountSummary({
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
+        hasLiveSession: false,
+      },
+      codexLiveSessionCount: 1,
+      codexTrackedSessionCount: 0,
+      codexSessionCount: 0,
+      lastUsageRecordedAtPrimary: null,
+      lastUsageRecordedAtSecondary: null,
+    });
+    expect(hasActiveCliSessionSignal(freshTelemetry, nowMs)).toBe(true);
+
+    const trackedOnly = createAccountSummary({
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
+        hasLiveSession: false,
+      },
+      codexLiveSessionCount: 0,
+      codexTrackedSessionCount: 2,
+      codexSessionCount: 0,
+      lastUsageRecordedAtPrimary: null,
+      lastUsageRecordedAtSecondary: null,
+    });
+    expect(hasActiveCliSessionSignal(trackedOnly, nowMs)).toBe(true);
+
+    const debugOnly = createAccountSummary({
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
+        hasLiveSession: false,
+      },
+      codexLiveSessionCount: 0,
+      codexTrackedSessionCount: 0,
+      codexSessionCount: 0,
+      lastUsageRecordedAtPrimary: null,
+      lastUsageRecordedAtSecondary: null,
+      liveQuotaDebug: {
+        snapshotsConsidered: ["main"],
+        overrideApplied: false,
+        overrideReason: "missing_live_usage_payload",
+        merged: null,
+        rawSamples: [
+          {
+            source: "/tmp/rollout-main.jsonl",
+            snapshotName: "main",
+            recordedAt: "2026-04-04T11:58:00.000Z",
+            stale: false,
+            primary: {
+              usedPercent: 44,
+              remainingPercent: 56,
+              resetAt: 1760000000,
+              windowMinutes: 300,
+            },
+            secondary: {
+              usedPercent: 22,
+              remainingPercent: 78,
+              resetAt: 1760600000,
+              windowMinutes: 10080,
+            },
+          },
+        ],
+      },
+    });
+    expect(hasActiveCliSessionSignal(debugOnly, nowMs)).toBe(true);
   });
 });

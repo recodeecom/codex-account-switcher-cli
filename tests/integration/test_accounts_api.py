@@ -99,6 +99,37 @@ def _write_rollout_without_usage(path: Path, *, timestamp: datetime) -> None:
     os.utime(path, (ts, ts))
 
 
+def _write_rollout_with_user_task(path: Path, *, timestamp: datetime, task: str) -> None:
+    payload = {
+        "timestamp": timestamp.isoformat().replace("+00:00", "Z"),
+        "type": "response_item",
+        "payload": {
+            "type": "message",
+            "role": "user",
+            "content": [{"type": "input_text", "text": task}],
+        },
+    }
+    path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+    ts = timestamp.timestamp()
+    os.utime(path, (ts, ts))
+
+
+def _append_rollout_user_task(path: Path, *, timestamp: datetime, task: str) -> None:
+    payload = {
+        "timestamp": timestamp.isoformat().replace("+00:00", "Z"),
+        "type": "response_item",
+        "payload": {
+            "type": "message",
+            "role": "user",
+            "content": [{"type": "input_text", "text": task}],
+        },
+    }
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(payload) + "\n")
+    ts = timestamp.timestamp()
+    os.utime(path, (ts, ts))
+
+
 @pytest.mark.asyncio
 async def test_import_and_list_accounts(async_client):
     email = "tester@example.com"
@@ -190,6 +221,135 @@ async def test_accounts_list_exposes_latest_active_codex_task_preview(async_clie
     assert accounts[expected_account_id]["codexLiveSessionCount"] == 0
     assert accounts[expected_account_id]["codexTrackedSessionCount"] == 1
     assert accounts[expected_account_id]["codexSessionCount"] == 0
+
+
+@pytest.mark.asyncio
+async def test_accounts_list_falls_back_to_live_rollout_task_preview_when_sticky_preview_missing(
+    async_client, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    email = "live-fallback@example.com"
+    raw_account_id = "acc_live_fallback"
+    expected_account_id = generate_unique_account_id(raw_account_id, email)
+
+    payload = {
+        "email": email,
+        "chatgpt_account_id": raw_account_id,
+        "https://api.openai.com/auth": {"chatgpt_plan_type": "plus"},
+    }
+    auth_json = {
+        "tokens": {
+            "idToken": _encode_jwt(payload),
+            "accessToken": "access",
+            "refreshToken": "refresh",
+            "accountId": raw_account_id,
+        },
+    }
+    files = {"auth_json": ("auth.json", json.dumps(auth_json), "application/json")}
+    response = await async_client.post("/api/accounts/import", files=files)
+    assert response.status_code == 200
+
+    accounts_dir = tmp_path / "accounts"
+    accounts_dir.mkdir(parents=True, exist_ok=True)
+    _write_auth_snapshot(accounts_dir / "tokio.json", email=email, account_id=raw_account_id)
+    current_path = tmp_path / "current"
+    current_path.write_text("tokio", encoding="utf-8")
+
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    sessions_root = tmp_path / "sessions"
+    day_dir = sessions_root / f"{now.year:04d}" / f"{now.month:02d}" / f"{now.day:02d}"
+    day_dir.mkdir(parents=True, exist_ok=True)
+    session_id = "019d5a6a-4665-7873-9714-9efb95b24268"
+    rollout_path = day_dir / f"rollout-{now.strftime('%Y-%m-%dT%H-%M-%S')}-{session_id}.jsonl"
+    _write_rollout_with_user_task(
+        rollout_path,
+        timestamp=now - timedelta(seconds=5),
+        task="Show live task titles from codex sessions",
+    )
+
+    monkeypatch.setenv("CODEX_AUTH_ACCOUNTS_DIR", str(accounts_dir))
+    monkeypatch.setenv("CODEX_AUTH_CURRENT_PATH", str(current_path))
+    monkeypatch.setenv("CODEX_AUTH_JSON_PATH", str(tmp_path / "missing-auth.json"))
+    monkeypatch.setenv("CODEX_SESSIONS_DIR", str(sessions_root))
+    monkeypatch.setenv("CODEX_AUTH_RUNTIME_ROOT", str(tmp_path / "runtimes"))
+
+    from app.core.config.settings import get_settings
+
+    get_settings.cache_clear()
+
+    list_response = await async_client.get("/api/accounts")
+    assert list_response.status_code == 200
+    accounts = {item["accountId"]: item for item in list_response.json()["accounts"]}
+    assert accounts[expected_account_id]["codexCurrentTaskPreview"] == "Show live task titles from codex sessions"
+
+
+@pytest.mark.asyncio
+async def test_accounts_list_sets_current_task_preview_for_each_account_in_mixed_default_sessions(
+    async_client, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    accounts_dir = tmp_path / "accounts"
+    accounts_dir.mkdir(parents=True, exist_ok=True)
+    _write_auth_snapshot(accounts_dir / "work.json", email="work@example.com", account_id="acc_work")
+    _write_auth_snapshot(accounts_dir / "personal.json", email="personal@example.com", account_id="acc_personal")
+    (tmp_path / "current").write_text("work")
+
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    sessions_root = tmp_path / "sessions"
+    day_dir = sessions_root / f"{now.year:04d}" / f"{now.month:02d}" / f"{now.day:02d}"
+    day_dir.mkdir(parents=True, exist_ok=True)
+    work_ts = now - timedelta(minutes=2)
+    personal_ts = now - timedelta(minutes=1)
+    work_rollout_path = day_dir / f"rollout-{work_ts.strftime('%Y-%m-%dT%H-%M-%S')}-019d5a6a-4665-7873-9714-9efb95b24268.jsonl"
+    personal_rollout_path = (
+        day_dir / f"rollout-{personal_ts.strftime('%Y-%m-%dT%H-%M-%S')}-019d5a6a-d136-74e2-9e55-88305d4eed83.jsonl"
+    )
+    _write_rollout_snapshot(
+        work_rollout_path,
+        timestamp=work_ts,
+        primary_used=20.0,
+        secondary_used=30.0,
+    )
+    _append_rollout_user_task(
+        work_rollout_path,
+        timestamp=work_ts + timedelta(seconds=1),
+        task="Investigate work account fallback routing",
+    )
+    _write_rollout_snapshot(
+        personal_rollout_path,
+        timestamp=personal_ts,
+        primary_used=40.0,
+        secondary_used=50.0,
+    )
+    _append_rollout_user_task(
+        personal_rollout_path,
+        timestamp=personal_ts + timedelta(seconds=1),
+        task="Prepare personal account session rollout",
+    )
+
+    monkeypatch.setenv("CODEX_LB_CODEX_AUTH_AUTO_IMPORT_ON_ACCOUNTS_LIST", "true")
+    monkeypatch.setenv("CODEX_AUTH_ACCOUNTS_DIR", str(accounts_dir))
+    monkeypatch.setenv("CODEX_AUTH_CURRENT_PATH", str(tmp_path / "current"))
+    monkeypatch.setenv("CODEX_AUTH_JSON_PATH", str(tmp_path / "missing-auth.json"))
+    monkeypatch.setenv("CODEX_SESSIONS_DIR", str(sessions_root))
+    monkeypatch.setenv("CODEX_AUTH_RUNTIME_ROOT", str(tmp_path / "runtimes"))
+    monkeypatch.setenv("CODEX_LB_LOCAL_SESSION_ACTIVE_SECONDS", "300")
+
+    from app.core.config.settings import get_settings
+
+    get_settings.cache_clear()
+
+    list_response = await async_client.get("/api/accounts")
+    assert list_response.status_code == 200
+    accounts = {item["accountId"]: item for item in list_response.json()["accounts"]}
+    work_account_id = generate_unique_account_id("acc_work", "work@example.com")
+    personal_account_id = generate_unique_account_id("acc_personal", "personal@example.com")
+    assert (
+        accounts[work_account_id]["codexCurrentTaskPreview"]
+        == "Investigate work account fallback routing"
+    )
+    assert (
+        accounts[personal_account_id]["codexCurrentTaskPreview"]
+        == "Prepare personal account session rollout"
+    )
 
 
 @pytest.mark.asyncio

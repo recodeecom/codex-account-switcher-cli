@@ -3,13 +3,19 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+import re
 
+from app.modules.accounts.codex_live_usage import (
+    LocalCodexTaskPreview,
+    read_local_codex_task_previews_by_session_id,
+)
 from app.core.utils.time import to_utc_naive, utcnow
 from app.db.models import StickySessionKind
 from app.modules.proxy.sticky_repository import StickySessionListEntryRecord, StickySessionsRepository
 from app.modules.settings.repository import SettingsRepository
 
 _ACTIVE_SESSION_WINDOW_SECONDS = 30 * 60
+_SESSION_ID_FROM_KEY_RE = re.compile(r"([0-9a-fA-F-]{36})")
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,7 +84,15 @@ class StickySessionsService:
             offset=offset,
             limit=limit,
         )
-        entries = [self._to_entry(row, ttl_seconds=ttl_seconds) for row in rows]
+        codex_session_task_previews_by_session_id = read_local_codex_task_previews_by_session_id()
+        entries = [
+            self._to_entry(
+                row,
+                ttl_seconds=ttl_seconds,
+                codex_session_task_previews_by_session_id=codex_session_task_previews_by_session_id,
+            )
+            for row in rows
+        ]
         return StickySessionListData(
             entries=entries,
             stale_prompt_cache_count=stale_prompt_cache_count,
@@ -97,7 +111,13 @@ class StickySessionsService:
         cutoff = utcnow() - timedelta(seconds=settings.openai_cache_affinity_max_age_seconds)
         return await self._repository.purge_prompt_cache_before(cutoff)
 
-    def _to_entry(self, row: StickySessionListEntryRecord, *, ttl_seconds: int) -> StickySessionEntryData:
+    def _to_entry(
+        self,
+        row: StickySessionListEntryRecord,
+        *,
+        ttl_seconds: int,
+        codex_session_task_previews_by_session_id: dict[str, LocalCodexTaskPreview],
+    ) -> StickySessionEntryData:
         sticky_session = row.sticky_session
         expires_at: datetime | None = None
         is_stale = False
@@ -105,6 +125,15 @@ class StickySessionsService:
             expires_at = to_utc_naive(sticky_session.updated_at) + timedelta(seconds=ttl_seconds)
             is_stale = expires_at <= utcnow()
         is_active = to_utc_naive(sticky_session.updated_at) >= utcnow() - timedelta(seconds=_ACTIVE_SESSION_WINDOW_SECONDS)
+        task_preview = sticky_session.task_preview
+        task_updated_at = sticky_session.task_updated_at
+        if sticky_session.kind == StickySessionKind.CODEX_SESSION and not task_preview:
+            session_id = _extract_session_id_from_key(sticky_session.key)
+            if session_id is not None:
+                preview = codex_session_task_previews_by_session_id.get(session_id)
+                if preview is not None:
+                    task_preview = preview.text
+                    task_updated_at = preview.recorded_at
         return StickySessionEntryData(
             key=sticky_session.key,
             account_id=sticky_session.account_id,
@@ -112,8 +141,8 @@ class StickySessionsService:
             kind=sticky_session.kind,
             created_at=sticky_session.created_at,
             updated_at=sticky_session.updated_at,
-            task_preview=sticky_session.task_preview,
-            task_updated_at=sticky_session.task_updated_at,
+            task_preview=task_preview,
+            task_updated_at=task_updated_at,
             is_active=is_active,
             expires_at=expires_at,
             is_stale=is_stale,
@@ -131,3 +160,10 @@ class StickySessionsService:
             kind=StickySessionKind.PROMPT_CACHE,
             updated_before=stale_cutoff,
         )
+
+
+def _extract_session_id_from_key(key: str) -> str | None:
+    match = _SESSION_ID_FROM_KEY_RE.search(key)
+    if match is None:
+        return None
+    return match.group(1)

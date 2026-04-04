@@ -15,6 +15,28 @@ The `/project-conventions` skill is auto-activated on code edits (PreToolUse gua
 | Code Conventions (Full) | `/project-conventions` skill          | On code edit (auto-enforced) |
 | Git Workflow            | `.agents/conventions/git-workflow.md` | Commit / PR                  |
 
+## CLI Session Detection Lock (Dashboard / Accounts)
+
+The current CLI session detection behavior is intentionally frozen and must stay order-sensitive.
+
+Canonical implementation:
+- `frontend/src/utils/account-working.ts`
+  - `hasActiveCliSessionSignal(...)`
+  - `hasFreshLiveTelemetry(...)`
+  - `getFreshDebugRawSampleCount(...)`
+
+Locked detection cascade (do not reorder):
+1. `codexAuth.hasLiveSession`
+2. Fresh live telemetry / live session count
+3. Tracked session counters (`codexTrackedSessionCount` / `codexSessionCount`)
+4. Fresh debug raw samples
+
+Regression lock:
+- `frontend/src/utils/account-working.test.ts` (`hasActiveCliSessionSignal` + `isAccountWorkingNow` suites)
+
+Rule for future edits:
+- Do not change this cascade unless explicitly requested by the user and accompanied by updated regression tests proving the new behavior.
+
 ## Versioning Rule
 
 ## Workflow (OpenSpec-first)

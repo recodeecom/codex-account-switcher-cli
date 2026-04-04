@@ -15,6 +15,8 @@ from app.modules.accounts.codex_live_usage import (
     read_local_codex_live_usage_by_snapshot,
     read_local_codex_live_usage_samples,
     read_local_codex_live_usage_samples_by_snapshot,
+    read_local_codex_task_previews_by_session_id,
+    read_local_codex_task_previews_by_snapshot,
     read_runtime_live_session_counts_by_snapshot,
 )
 
@@ -63,6 +65,21 @@ def _write_rollout_without_usage(path: Path, *, timestamp: datetime) -> None:
         "type": "event_msg",
         "payload": {
             "type": "task_started",
+        },
+    }
+    path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+    ts = timestamp.timestamp()
+    os.utime(path, (ts, ts))
+
+
+def _write_rollout_with_user_task(path: Path, *, timestamp: datetime, task: str) -> None:
+    payload = {
+        "timestamp": timestamp.isoformat().replace("+00:00", "Z"),
+        "type": "response_item",
+        "payload": {
+            "type": "message",
+            "role": "user",
+            "content": [{"type": "input_text", "text": task}],
         },
     }
     path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
@@ -914,3 +931,91 @@ def test_read_live_codex_process_session_counts_by_snapshot_uses_explicit_defaul
 
     counts = read_live_codex_process_session_counts_by_snapshot()
     assert counts == {"work": 1}
+
+
+def test_read_local_codex_task_previews_by_snapshot_reads_default_and_runtime_profiles(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    sessions_root = tmp_path / "sessions"
+    runtime_root = tmp_path / "runtimes"
+    monkeypatch.setenv("CODEX_SESSIONS_DIR", str(sessions_root))
+    monkeypatch.setenv("CODEX_AUTH_RUNTIME_ROOT", str(runtime_root))
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage.build_snapshot_index",
+        lambda: SimpleNamespace(active_snapshot_name="alpha"),
+    )
+
+    default_day_dir = _sessions_day_dir(sessions_root, now)
+    _write_rollout_with_user_task(
+        default_day_dir / "rollout-2026-04-04T21-33-27-019d5a6a-4665-7873-9714-9efb95b24268.jsonl",
+        timestamp=now - timedelta(seconds=5),
+        task="Investigate alpha session drift",
+    )
+
+    runtime_dir = runtime_root / "runtime-b"
+    (runtime_dir / "sessions").mkdir(parents=True, exist_ok=True)
+    (runtime_dir / "current").write_text("beta", encoding="utf-8")
+    runtime_day_dir = _sessions_day_dir(runtime_dir / "sessions", now)
+    _write_rollout_with_user_task(
+        runtime_day_dir / "rollout-2026-04-04T21-34-03-019d5a6a-d136-74e2-9e55-88305d4eed83.jsonl",
+        timestamp=now - timedelta(seconds=3),
+        task="Fix beta websocket retry task",
+    )
+
+    previews = read_local_codex_task_previews_by_snapshot(now=now)
+    assert previews["alpha"].text == "Investigate alpha session drift"
+    assert previews["beta"].text == "Fix beta websocket retry task"
+
+
+def test_read_local_codex_task_previews_by_session_id_ignores_bootstrap_and_sanitizes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    sessions_root = tmp_path / "sessions"
+    monkeypatch.setenv("CODEX_SESSIONS_DIR", str(sessions_root))
+    monkeypatch.setenv("CODEX_AUTH_RUNTIME_ROOT", str(tmp_path / "runtimes"))
+
+    day_dir = _sessions_day_dir(sessions_root, now)
+    session_id = "019d5a6a-4665-7873-9714-9efb95b24268"
+    rollout_path = day_dir / f"rollout-2026-04-04T21-33-27-{session_id}.jsonl"
+
+    task_payload = {
+        "timestamp": (now - timedelta(seconds=6)).isoformat().replace("+00:00", "Z"),
+        "type": "response_item",
+        "payload": {
+            "type": "message",
+            "role": "user",
+            "content": [
+                {
+                    "type": "input_text",
+                    "text": "<image name=[Image #1]></image> Build bridge for foo@example.com token=abc123",
+                }
+            ],
+        },
+    }
+    bootstrap_payload = {
+        "timestamp": (now - timedelta(seconds=4)).isoformat().replace("+00:00", "Z"),
+        "type": "response_item",
+        "payload": {
+            "type": "message",
+            "role": "user",
+            "content": [
+                {
+                    "type": "input_text",
+                    "text": "# AGENTS.md instructions for /repo\n<INSTRUCTIONS>\nAUTONOMY DIRECTIVE\n",
+                }
+            ],
+        },
+    }
+    rollout_path.write_text(
+        "\n".join([json.dumps(task_payload), json.dumps(bootstrap_payload)]) + "\n",
+        encoding="utf-8",
+    )
+    ts = now.timestamp()
+    os.utime(rollout_path, (ts, ts))
+
+    previews = read_local_codex_task_previews_by_session_id(now=now)
+    assert previews[session_id].text == "Build bridge for [redacted-email] token=[redacted]"

@@ -130,6 +130,37 @@ def _write_rollout_without_usage(path: Path, *, timestamp: datetime) -> None:
     os.utime(path, (ts, ts))
 
 
+def _write_rollout_with_user_task(path: Path, *, timestamp: datetime, task: str) -> None:
+    payload = {
+        "timestamp": timestamp.isoformat().replace("+00:00", "Z"),
+        "type": "response_item",
+        "payload": {
+            "type": "message",
+            "role": "user",
+            "content": [{"type": "input_text", "text": task}],
+        },
+    }
+    path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+    ts = timestamp.timestamp()
+    os.utime(path, (ts, ts))
+
+
+def _append_rollout_user_task(path: Path, *, timestamp: datetime, task: str) -> None:
+    payload = {
+        "timestamp": timestamp.isoformat().replace("+00:00", "Z"),
+        "type": "response_item",
+        "payload": {
+            "type": "message",
+            "role": "user",
+            "content": [{"type": "input_text", "text": task}],
+        },
+    }
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(payload) + "\n")
+    ts = timestamp.timestamp()
+    os.utime(path, (ts, ts))
+
+
 @pytest.mark.asyncio
 async def test_dashboard_overview_combines_data(async_client, db_setup):
     now = utcnow().replace(microsecond=0)
@@ -267,6 +298,53 @@ async def test_dashboard_overview_ignores_older_tracked_sessions_when_no_recent_
     assert account["codexTrackedSessionCount"] == 0
     # Task preview remains tied to the recent-task window.
     assert account["codexCurrentTaskPreview"] is None
+
+
+@pytest.mark.asyncio
+async def test_dashboard_overview_uses_live_rollout_task_preview_when_sticky_preview_missing(
+    async_client, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    email = "live-preview@example.com"
+    raw_account_id = "acc_live_preview"
+    expected_account_id = generate_unique_account_id(raw_account_id, email)
+    now = utcnow().replace(microsecond=0)
+
+    async with SessionLocal() as session:
+        accounts_repo = AccountsRepository(session)
+        await accounts_repo.upsert(_make_account(expected_account_id, email))
+
+    accounts_dir = tmp_path / "accounts"
+    accounts_dir.mkdir(parents=True, exist_ok=True)
+    _write_auth_snapshot(accounts_dir / "tokio.json", email=email, account_id=raw_account_id)
+    current_path = tmp_path / "current"
+    current_path.write_text("tokio", encoding="utf-8")
+
+    sessions_root = tmp_path / "sessions"
+    day_dir = sessions_root / f"{now.year:04d}" / f"{now.month:02d}" / f"{now.day:02d}"
+    day_dir.mkdir(parents=True, exist_ok=True)
+    session_id = "019d5a6a-4665-7873-9714-9efb95b24268"
+    rollout_path = day_dir / f"rollout-{now.strftime('%Y-%m-%dT%H-%M-%S')}-{session_id}.jsonl"
+    _write_rollout_with_user_task(
+        rollout_path,
+        timestamp=now - timedelta(seconds=5),
+        task="Bridge codex MCP current task titles",
+    )
+
+    monkeypatch.setenv("CODEX_AUTH_ACCOUNTS_DIR", str(accounts_dir))
+    monkeypatch.setenv("CODEX_AUTH_CURRENT_PATH", str(current_path))
+    monkeypatch.setenv("CODEX_AUTH_JSON_PATH", str(tmp_path / "missing-auth.json"))
+    monkeypatch.setenv("CODEX_SESSIONS_DIR", str(sessions_root))
+    monkeypatch.setenv("CODEX_AUTH_RUNTIME_ROOT", str(tmp_path / "runtimes"))
+
+    from app.core.config.settings import get_settings
+
+    get_settings.cache_clear()
+
+    response = await async_client.get("/api/dashboard/overview")
+    assert response.status_code == 200
+    payload = response.json()
+    account = next(item for item in payload["accounts"] if item["accountId"] == expected_account_id)
+    assert account["codexCurrentTaskPreview"] == "Bridge codex MCP current task titles"
 
 
 @pytest.mark.asyncio
@@ -818,6 +896,115 @@ async def test_dashboard_overview_matches_default_mixed_sessions_without_reset_t
     assert accounts[personal_account_id]["codexSessionCount"] == 0
     assert accounts[personal_account_id]["usage"]["primaryRemainingPercent"] == pytest.approx(60.0)
     assert accounts[personal_account_id]["usage"]["secondaryRemainingPercent"] == pytest.approx(50.0)
+
+
+@pytest.mark.asyncio
+async def test_dashboard_overview_sets_current_task_preview_for_each_account_in_mixed_default_sessions(
+    async_client,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    now = utcnow().replace(microsecond=0)
+    work_account_id = generate_unique_account_id("acc_work", "work@example.com")
+    personal_account_id = generate_unique_account_id("acc_personal", "personal@example.com")
+
+    work_ts = (now - timedelta(minutes=2)).replace(tzinfo=timezone.utc)
+    personal_ts = (now - timedelta(minutes=1)).replace(tzinfo=timezone.utc)
+
+    async with SessionLocal() as session:
+        accounts_repo = AccountsRepository(session)
+        usage_repo = UsageRepository(session)
+        await accounts_repo.upsert(_make_account(work_account_id, "work@example.com"))
+        await accounts_repo.upsert(_make_account(personal_account_id, "personal@example.com"))
+        await usage_repo.add_entry(
+            work_account_id,
+            20.0,
+            window="primary",
+            window_minutes=300,
+            recorded_at=work_ts,
+        )
+        await usage_repo.add_entry(
+            work_account_id,
+            30.0,
+            window="secondary",
+            window_minutes=10080,
+            recorded_at=work_ts,
+        )
+        await usage_repo.add_entry(
+            personal_account_id,
+            40.0,
+            window="primary",
+            window_minutes=300,
+            recorded_at=personal_ts,
+        )
+        await usage_repo.add_entry(
+            personal_account_id,
+            50.0,
+            window="secondary",
+            window_minutes=10080,
+            recorded_at=personal_ts,
+        )
+
+    accounts_dir = tmp_path / "accounts"
+    accounts_dir.mkdir(parents=True, exist_ok=True)
+    _write_auth_snapshot(accounts_dir / "work.json", email="work@example.com", account_id="acc_work")
+    _write_auth_snapshot(accounts_dir / "personal.json", email="personal@example.com", account_id="acc_personal")
+    (tmp_path / "current").write_text("work")
+    monkeypatch.setenv("CODEX_LB_CODEX_AUTH_AUTO_IMPORT_ON_ACCOUNTS_LIST", "true")
+    monkeypatch.setenv("CODEX_AUTH_ACCOUNTS_DIR", str(accounts_dir))
+    monkeypatch.setenv("CODEX_AUTH_CURRENT_PATH", str(tmp_path / "current"))
+    monkeypatch.setenv("CODEX_AUTH_JSON_PATH", str(tmp_path / "auth.json"))
+    monkeypatch.setenv("CODEX_AUTH_RUNTIME_ROOT", str(tmp_path / "runtimes"))
+
+    sessions_root = tmp_path / "sessions"
+    day_dir = sessions_root / f"{now.year:04d}" / f"{now.month:02d}" / f"{now.day:02d}"
+    day_dir.mkdir(parents=True, exist_ok=True)
+    work_rollout_path = day_dir / f"rollout-{work_ts.strftime('%Y-%m-%dT%H-%M-%S')}-019d5a6a-4665-7873-9714-9efb95b24268.jsonl"
+    personal_rollout_path = (
+        day_dir / f"rollout-{personal_ts.strftime('%Y-%m-%dT%H-%M-%S')}-019d5a6a-d136-74e2-9e55-88305d4eed83.jsonl"
+    )
+    _write_rollout_snapshot_without_reset(
+        work_rollout_path,
+        timestamp=work_ts,
+        primary_used=20.0,
+        secondary_used=30.0,
+    )
+    _append_rollout_user_task(
+        work_rollout_path,
+        timestamp=work_ts + timedelta(seconds=1),
+        task="Investigate work session websocket retry",
+    )
+    _write_rollout_snapshot_without_reset(
+        personal_rollout_path,
+        timestamp=personal_ts,
+        primary_used=40.0,
+        secondary_used=50.0,
+    )
+    _append_rollout_user_task(
+        personal_rollout_path,
+        timestamp=personal_ts + timedelta(seconds=1),
+        task="Prepare personal account release checklist",
+    )
+    monkeypatch.setenv("CODEX_SESSIONS_DIR", str(sessions_root))
+    monkeypatch.setenv("CODEX_LB_LOCAL_SESSION_ACTIVE_SECONDS", "300")
+
+    from app.core.config.settings import get_settings
+
+    get_settings.cache_clear()
+
+    response = await async_client.get("/api/dashboard/overview")
+    assert response.status_code == 200
+    payload = response.json()
+    accounts = {item["accountId"]: item for item in payload["accounts"]}
+
+    assert (
+        accounts[work_account_id]["codexCurrentTaskPreview"]
+        == "Investigate work session websocket retry"
+    )
+    assert (
+        accounts[personal_account_id]["codexCurrentTaskPreview"]
+        == "Prepare personal account release checklist"
+    )
 
 
 @pytest.mark.asyncio

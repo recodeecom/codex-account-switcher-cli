@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from datetime import timedelta
+import json
+import os
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from urllib.parse import quote
 
 import pytest
@@ -98,6 +101,26 @@ async def _insert_sticky_session(
         await session.commit()
 
 
+def _write_rollout_with_user_task(
+    path: Path,
+    *,
+    timestamp: datetime,
+    task: str,
+) -> None:
+    payload = {
+        "timestamp": timestamp.isoformat().replace("+00:00", "Z"),
+        "type": "response_item",
+        "payload": {
+            "type": "message",
+            "role": "user",
+            "content": [{"type": "input_text", "text": task}],
+        },
+    }
+    path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+    ts = timestamp.timestamp()
+    os.utime(path, (ts, ts))
+
+
 @pytest.mark.asyncio
 async def test_sticky_sessions_api_lists_metadata_and_purges_stale(async_client):
     accounts = await _create_accounts()
@@ -190,6 +213,47 @@ async def test_sticky_sessions_api_active_only_filters_codex_sessions_and_return
     assert active_entry["taskPreview"] == "Review websocket reconnect regression"
     assert active_entry["taskUpdatedAt"] is not None
     assert active_entry["isActive"] is True
+
+
+@pytest.mark.asyncio
+async def test_sticky_sessions_api_falls_back_to_local_rollout_task_preview_when_missing(async_client, monkeypatch, tmp_path):
+    accounts = await _create_accounts()
+    await _set_affinity_ttl(60)
+
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    session_id = "019d5a6a-4665-7873-9714-9efb95b24268"
+    await _insert_sticky_session(
+        key=f"{session_id}::auth:scope",
+        account_id=accounts[0].id,
+        kind=StickySessionKind.CODEX_SESSION,
+        updated_at_offset_seconds=20,
+        task_preview=None,
+    )
+
+    sessions_root = tmp_path / "sessions"
+    day_dir = sessions_root / f"{now.year:04d}" / f"{now.month:02d}" / f"{now.day:02d}"
+    day_dir.mkdir(parents=True, exist_ok=True)
+    rollout_path = day_dir / f"rollout-{now.strftime('%Y-%m-%dT%H-%M-%S')}-{session_id}.jsonl"
+    _write_rollout_with_user_task(
+        rollout_path,
+        timestamp=now - timedelta(seconds=10),
+        task="Bridge codex MCP session task titles",
+    )
+
+    monkeypatch.setenv("CODEX_SESSIONS_DIR", str(sessions_root))
+    monkeypatch.setenv("CODEX_AUTH_RUNTIME_ROOT", str(tmp_path / "runtimes"))
+
+    response = await async_client.get(
+        "/api/sticky-sessions",
+        params={"kind": "codex_session", "activeOnly": "true"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 1
+    entry = payload["entries"][0]
+    assert entry["key"] == f"{session_id}::auth:scope"
+    assert entry["taskPreview"] == "Bridge codex MCP session task titles"
+    assert entry["taskUpdatedAt"] is not None
 
 
 @pytest.mark.asyncio

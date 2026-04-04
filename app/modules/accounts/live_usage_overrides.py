@@ -1013,10 +1013,23 @@ def _build_default_sample_debug_overrides(
     if not default_scope_samples:
         return {}, {}, {}
 
+    all_account_ids = [account.id for account in accounts]
+    cached_owner_account_ids = {
+        owner_account_id
+        for sample in default_scope_samples
+        if (
+            owner_account_id := _lookup_sample_source_owner(
+                source=sample.source,
+                allowed_account_ids=all_account_ids,
+            )
+        )
+        is not None
+    }
     candidate_accounts = [
         account
         for account in accounts
         if _account_has_snapshot(codex_auth_by_account.get(account.id))
+        or account.id in cached_owner_account_ids
     ]
     if len(candidate_accounts) <= 1:
         return {}, {}, {}
@@ -1372,10 +1385,23 @@ def _apply_local_default_session_fingerprint_overrides(
     if len(default_scope_samples) <= 1:
         return
 
+    all_account_ids = [account.id for account in accounts]
+    cached_owner_account_ids = {
+        owner_account_id
+        for sample in default_scope_samples
+        if (
+            owner_account_id := _lookup_sample_source_owner(
+                source=sample.source,
+                allowed_account_ids=all_account_ids,
+            )
+        )
+        is not None
+    }
     candidate_accounts = [
         account
         for account in accounts
         if _account_has_snapshot(codex_auth_by_account.get(account.id))
+        or account.id in cached_owner_account_ids
     ]
     if len(candidate_accounts) <= 1:
         return

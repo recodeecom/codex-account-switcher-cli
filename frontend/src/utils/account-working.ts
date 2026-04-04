@@ -326,6 +326,13 @@ export function hasActiveCliSessionSignal(
   >,
   nowMs: number = Date.now(),
 ): boolean {
+  // CLI session detection flow is intentionally hard-coded and order-sensitive.
+  // Keep this as a strict cascade so the UI remains stable:
+  //   1) codexAuth.hasLiveSession
+  //   2) fresh live telemetry (including live process count)
+  //   3) tracked/compat counters
+  //   4) fresh raw debug samples
+  // Any change here must be explicitly requested and protected by regression tests.
   if (account.codexAuth?.hasLiveSession ?? false) {
     return true;
   }
