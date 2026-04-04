@@ -34,6 +34,7 @@ import {
   getFreshDebugRawSampleCount,
   getMergedQuotaRemainingPercent,
   getRawQuotaWindowFallback,
+  hasActiveCliSessionSignal,
   hasRecentUsageSignal,
   hasFreshLiveTelemetry,
   isAccountWorkingNow,
@@ -360,13 +361,14 @@ export function AccountCard({
   const blurred = usePrivacyStore((s) => s.blurred);
   const isActiveSnapshot = account.codexAuth?.isActiveSnapshot ?? false;
   const hasLiveSession = hasFreshLiveTelemetry(account);
+  const hasActiveCliSession = hasActiveCliSessionSignal(account);
   const recentUsageSignal =
     (account.codexAuth?.hasSnapshot ?? false) && hasRecentUsageSignal(account);
   const isWorkingNow = isAccountWorkingNow(account);
   const effectiveStatus = resolveEffectiveAccountStatus({
     status: account.status,
     isActiveSnapshot,
-    hasLiveSession,
+    hasLiveSession: hasActiveCliSession,
     hasRecentUsageSignal: recentUsageSignal,
   });
   const primaryRemainingRaw =
@@ -452,7 +454,7 @@ export function AccountCard({
     status: account.status,
     primaryRemainingPercent: primaryRemainingRaw,
     isActiveSnapshot,
-    hasLiveSession,
+    hasLiveSession: hasActiveCliSession,
     hasRecentUsageSignal: recentUsageSignal,
     codexSessionCount: account.codexSessionCount,
   });
@@ -460,7 +462,7 @@ export function AccountCard({
     status: account.status,
     primaryRemainingPercent: primaryRemainingRaw,
     isActiveSnapshot,
-    hasLiveSession,
+    hasLiveSession: hasActiveCliSession,
     hasRecentUsageSignal: recentUsageSignal,
     codexSessionCount: account.codexSessionCount,
   });

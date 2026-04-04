@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import type { AccountSummary } from "@/features/accounts/schemas";
 import { canUseLocalAccount, getUseLocalAccountDisabledReason } from "@/utils/use-local-account";
 import { resolveEffectiveAccountStatus } from "@/utils/account-status";
-import { hasRecentUsageSignal } from "@/utils/account-working";
+import { hasActiveCliSessionSignal, hasRecentUsageSignal } from "@/utils/account-working";
 
 export type AccountActionsProps = {
   account: AccountSummary;
@@ -32,20 +32,20 @@ export function AccountActions({
   onReauth,
 }: AccountActionsProps) {
   const isActiveSnapshot = account.codexAuth?.isActiveSnapshot ?? false;
-  const hasLiveSession = account.codexAuth?.hasLiveSession ?? false;
+  const hasActiveCliSession = hasActiveCliSessionSignal(account);
   const recentUsageSignal =
     (account.codexAuth?.hasSnapshot ?? false) && hasRecentUsageSignal(account);
   const effectiveStatus = resolveEffectiveAccountStatus({
     status: account.status,
     isActiveSnapshot,
-    hasLiveSession,
+    hasLiveSession: hasActiveCliSession,
     hasRecentUsageSignal: recentUsageSignal,
   });
   const canUseLocally = canUseLocalAccount({
     status: account.status,
     primaryRemainingPercent: account.usage?.primaryRemainingPercent,
     isActiveSnapshot,
-    hasLiveSession,
+    hasLiveSession: hasActiveCliSession,
     hasRecentUsageSignal: recentUsageSignal,
     codexSessionCount: account.codexSessionCount,
   });
@@ -53,7 +53,7 @@ export function AccountActions({
     status: account.status,
     primaryRemainingPercent: account.usage?.primaryRemainingPercent,
     isActiveSnapshot,
-    hasLiveSession,
+    hasLiveSession: hasActiveCliSession,
     hasRecentUsageSignal: recentUsageSignal,
     codexSessionCount: account.codexSessionCount,
   });

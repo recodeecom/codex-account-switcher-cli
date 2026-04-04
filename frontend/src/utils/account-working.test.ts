@@ -105,6 +105,47 @@ describe("isAccountWorkingNow", () => {
     expect(isAccountWorkingNow(account, new Date("2026-04-04T12:00:00.000Z").getTime())).toBe(false);
   });
 
+  it("returns false when no-live-telemetry fallback reports 0% even if baseline usage is higher", () => {
+    const nowMs = new Date("2026-04-04T12:00:00.000Z").getTime();
+    const account = createAccountSummary({
+      usage: {
+        primaryRemainingPercent: 28,
+        secondaryRemainingPercent: 50,
+      },
+      resetAtPrimary: "2026-04-04T14:10:00.000Z",
+      codexLiveSessionCount: 0,
+      codexTrackedSessionCount: 0,
+      codexSessionCount: 0,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "tokio",
+        activeSnapshotName: "amodeus",
+        isActiveSnapshot: false,
+        hasLiveSession: false,
+      },
+      liveQuotaDebug: {
+        snapshotsConsidered: ["tokio"],
+        overrideApplied: false,
+        overrideReason: "no_live_telemetry",
+        merged: null,
+        rawSamples: [
+          {
+            source: "/tmp/rollout-tokio.jsonl",
+            snapshotName: "tokio",
+            recordedAt: "2026-04-04T11:57:36.000Z",
+            stale: false,
+            primary: { usedPercent: 100, remainingPercent: 0, resetAt: 1760000000, windowMinutes: 300 },
+            secondary: { usedPercent: 50, remainingPercent: 50, resetAt: 1760600000, windowMinutes: 10080 },
+          },
+        ],
+      },
+      lastUsageRecordedAtPrimary: null,
+      lastUsageRecordedAtSecondary: null,
+    });
+
+    expect(isAccountWorkingNow(account, nowMs)).toBe(false);
+  });
+
   it("returns true when compatibility codexSessionCount is present", () => {
     const account = createAccountSummary({
       codexLiveSessionCount: 0,

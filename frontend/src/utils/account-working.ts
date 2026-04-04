@@ -284,6 +284,30 @@ export function hasFreshLiveTelemetry(
   );
 }
 
+export function hasActiveCliSessionSignal(
+  account: Pick<
+    AccountSummary,
+    | "codexAuth"
+    | "codexLiveSessionCount"
+    | "codexTrackedSessionCount"
+    | "codexSessionCount"
+    | "liveQuotaDebug"
+    | "lastUsageRecordedAtPrimary"
+    | "lastUsageRecordedAtSecondary"
+  >,
+  nowMs: number = Date.now(),
+): boolean {
+  if (hasFreshLiveTelemetry(account, nowMs)) {
+    return true;
+  }
+
+  if (Math.max(account.codexTrackedSessionCount ?? 0, account.codexSessionCount ?? 0, 0) > 0) {
+    return true;
+  }
+
+  return getFreshDebugRawSampleCount(account, nowMs) > 0;
+}
+
 export function hasRecentUsageSignal(
   account: Pick<
     AccountSummary,
@@ -332,10 +356,17 @@ export function isAccountWorkingNow(
   }
 
   const mergedPrimaryRemaining = getMergedQuotaRemainingPercent(account, "primary");
+  const deferredPrimaryQuotaFallback = getRawQuotaWindowFallback(account, "primary");
+  const freshDeferredPrimaryRemaining = (() => {
+    if (!deferredPrimaryQuotaFallback) return null;
+    if (!isFreshTimestamp(deferredPrimaryQuotaFallback.recordedAt, nowMs)) return null;
+    return deferredPrimaryQuotaFallback.remainingPercent;
+  })();
   const primaryRemaining =
-    typeof mergedPrimaryRemaining === "number"
-      ? mergedPrimaryRemaining
-      : account.usage?.primaryRemainingPercent ?? null;
+    mergedPrimaryRemaining ??
+    freshDeferredPrimaryRemaining ??
+    account.usage?.primaryRemainingPercent ??
+    null;
 
   // Keep the grouping logic aligned with the UI percent label (rounded).
   // When the 5h budget renders as 0%, the account should not stay in

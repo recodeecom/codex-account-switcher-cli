@@ -16,6 +16,7 @@ import { formatPercentNullable, formatSlug } from "@/utils/formatters";
 import {
   getMergedQuotaRemainingPercent,
   getRawQuotaWindowFallback,
+  hasActiveCliSessionSignal,
   hasRecentUsageSignal,
   isAccountWorkingNow,
   selectStableRemainingPercent,
@@ -105,13 +106,14 @@ export function AccountListItem({
   const blurred = usePrivacyStore((s) => s.blurred);
   const isActiveSnapshot = account.codexAuth?.isActiveSnapshot ?? false;
   const hasLiveSession = account.codexAuth?.hasLiveSession ?? false;
+  const hasActiveCliSession = hasActiveCliSessionSignal(account);
   const recentUsageSignal =
     (account.codexAuth?.hasSnapshot ?? false) && hasRecentUsageSignal(account);
   const isWorkingNow = isAccountWorkingNow(account);
   const status = resolveEffectiveAccountStatus({
     status: account.status,
     isActiveSnapshot,
-    hasLiveSession,
+    hasLiveSession: hasActiveCliSession,
     hasRecentUsageSignal: recentUsageSignal,
   });
   const title = account.displayName || account.email;
@@ -174,7 +176,7 @@ export function AccountListItem({
     status: account.status,
     primaryRemainingPercent: primaryRemainingRaw,
     isActiveSnapshot,
-    hasLiveSession,
+    hasLiveSession: hasActiveCliSession,
     hasRecentUsageSignal: recentUsageSignal,
     codexSessionCount: account.codexSessionCount,
   });
@@ -182,7 +184,7 @@ export function AccountListItem({
     status: account.status,
     primaryRemainingPercent: primaryRemainingRaw,
     isActiveSnapshot,
-    hasLiveSession,
+    hasLiveSession: hasActiveCliSession,
     hasRecentUsageSignal: recentUsageSignal,
     codexSessionCount: account.codexSessionCount,
   });

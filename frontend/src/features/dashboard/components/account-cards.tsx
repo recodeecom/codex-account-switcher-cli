@@ -11,6 +11,7 @@ import { buildDuplicateAccountIdSet } from "@/utils/account-identifiers";
 import {
   getMergedQuotaRemainingPercent,
   getRawQuotaWindowFallback,
+  hasActiveCliSessionSignal,
   hasRecentUsageSignal,
   hasFreshLiveTelemetry,
   isAccountWorkingNow,
@@ -237,11 +238,11 @@ export function AccountCards({
     const deactivated: AccountSummary[] = [];
 
     for (const account of accounts) {
-      const hasLiveSession = hasFreshLiveTelemetry(account);
+      const hasActiveCliSession = hasActiveCliSessionSignal(account);
       const effectiveStatus = resolveEffectiveAccountStatus({
         status: account.status,
         isActiveSnapshot: account.codexAuth?.isActiveSnapshot,
-        hasLiveSession,
+        hasLiveSession: hasActiveCliSession,
         hasRecentUsageSignal:
           (account.codexAuth?.hasSnapshot ?? false) && hasRecentUsageSignal(account),
       });

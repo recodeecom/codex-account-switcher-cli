@@ -168,6 +168,25 @@ class AccountsRepository:
         )
         return result.scalar_one_or_none() is not None
 
+    async def get_token_donor_by_chatgpt_account_id(
+        self,
+        chatgpt_account_id: str,
+        *,
+        exclude_account_id: str | None = None,
+    ) -> Account | None:
+        stmt = (
+            select(Account)
+            .where(Account.chatgpt_account_id == chatgpt_account_id)
+            .where(Account.status.notin_((AccountStatus.DEACTIVATED, AccountStatus.PAUSED)))
+            .order_by(Account.last_refresh.desc(), Account.created_at.asc(), Account.id.asc())
+            .limit(1)
+        )
+        if exclude_account_id:
+            stmt = stmt.where(Account.id != exclude_account_id)
+
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def upsert(self, account: Account, *, merge_by_email: bool | None = None) -> Account:
         dialect_name = self._dialect_name()
         sqlite_lock_acquired = False

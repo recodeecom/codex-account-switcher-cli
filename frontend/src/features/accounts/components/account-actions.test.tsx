@@ -158,6 +158,8 @@ describe("AccountActions", () => {
         activeSnapshotName: "different-snapshot",
         isActiveSnapshot: false,
       },
+      lastUsageRecordedAtPrimary: null,
+      lastUsageRecordedAtSecondary: null,
     });
 
     render(
@@ -177,5 +179,27 @@ describe("AccountActions", () => {
     await user.click(screen.getByRole("button", { name: "Re-authenticate" }));
 
     expect(onReauth).toHaveBeenCalledWith("acc_reauth_action");
+  });
+
+  it("does not show re-auth for deactivated snapshot accounts with recent usage", () => {
+    renderAccountActions({
+      status: "deactivated",
+      usage: {
+        primaryRemainingPercent: 44,
+        secondaryRemainingPercent: 73,
+      },
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "webubusiness",
+        activeSnapshotName: "different",
+        isActiveSnapshot: false,
+        hasLiveSession: false,
+      },
+      lastUsageRecordedAtPrimary: new Date().toISOString(),
+      lastUsageRecordedAtSecondary: new Date().toISOString(),
+    });
+
+    expect(screen.getByRole("button", { name: "Use this" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Re-authenticate" })).not.toBeInTheDocument();
   });
 });

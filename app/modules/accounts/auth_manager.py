@@ -16,6 +16,13 @@ from app.db.models import Account, AccountStatus
 class AccountsRepositoryPort(Protocol):
     async def get_by_id(self, account_id: str) -> Account | None: ...
 
+    async def get_token_donor_by_chatgpt_account_id(
+        self,
+        chatgpt_account_id: str,
+        *,
+        exclude_account_id: str | None = None,
+    ) -> Account | None: ...
+
     async def update_status(
         self,
         account_id: str,
@@ -54,6 +61,9 @@ class AuthManager:
         try:
             result = await refresh_access_token(refresh_token)
         except RefreshError as exc:
+            recovered = await self._recover_from_token_donor(account, exc)
+            if recovered is not None:
+                return recovered
             if exc.is_permanent:
                 reason = PERMANENT_FAILURE_CODES.get(exc.code, exc.message)
                 await self._repo.update_status(account.id, AccountStatus.DEACTIVATED, reason)
@@ -86,6 +96,48 @@ class AuthManager:
             plan_type=account.plan_type,
             email=account.email,
             chatgpt_account_id=account.chatgpt_account_id,
+        )
+        return account
+
+    async def _recover_from_token_donor(self, account: Account, exc: RefreshError) -> Account | None:
+        if not exc.is_permanent:
+            return None
+        if exc.code != "refresh_token_reused":
+            return None
+        if not account.chatgpt_account_id:
+            return None
+
+        donor = await self._repo.get_token_donor_by_chatgpt_account_id(
+            account.chatgpt_account_id,
+            exclude_account_id=account.id,
+        )
+        if donor is None:
+            return None
+
+        account.access_token_encrypted = donor.access_token_encrypted
+        account.refresh_token_encrypted = donor.refresh_token_encrypted
+        account.id_token_encrypted = donor.id_token_encrypted
+        account.last_refresh = donor.last_refresh
+        account.plan_type = donor.plan_type or account.plan_type
+        account.status = AccountStatus.ACTIVE
+        account.deactivation_reason = None
+
+        await self._repo.update_tokens(
+            account.id,
+            access_token_encrypted=account.access_token_encrypted,
+            refresh_token_encrypted=account.refresh_token_encrypted,
+            id_token_encrypted=account.id_token_encrypted,
+            last_refresh=account.last_refresh,
+            plan_type=account.plan_type,
+            email=account.email,
+            chatgpt_account_id=account.chatgpt_account_id,
+        )
+        await self._repo.update_status(account.id, AccountStatus.ACTIVE, None)
+        logger.info(
+            "Recovered account from sibling token donor account_id=%s donor_id=%s chatgpt_account_id=%s",
+            account.id,
+            donor.id,
+            account.chatgpt_account_id,
         )
         return account
 

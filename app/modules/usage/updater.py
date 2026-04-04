@@ -124,6 +124,7 @@ _last_successful_refresh: dict[str, datetime] = {}
 # account on every request.
 _last_failed_refresh: dict[str, datetime] = {}
 _FAILED_REFRESH_BACKOFF_SECONDS = 15
+_DEACTIVATING_REFRESH_ERROR_CODES = {"http_401", "invalid_grant", "invalid_token", "token_inactive"}
 
 
 class _UsageRefreshSingleflight:
@@ -286,7 +287,12 @@ class UsageUpdater:
                 return AccountRefreshResult(usage_written=False, fetch_succeeded=False)
             try:
                 account = await self._auth_manager.ensure_fresh(account, force=True)
-            except RefreshError:
+            except RefreshError as refresh_exc:
+                if _should_deactivate_for_refresh_error(refresh_exc):
+                    await self._deactivate_for_client_error(
+                        account,
+                        UsageFetchError(401, refresh_exc.message or "Token refresh failed"),
+                    )
                 return AccountRefreshResult(usage_written=False, fetch_succeeded=False)
             access_token = self._encryptor.decrypt(account.access_token_encrypted)
             try:
@@ -692,3 +698,7 @@ _DEACTIVATING_USAGE_STATUS_CODES = {402, 403, 404}
 
 def _should_deactivate_for_usage_error(status_code: int) -> bool:
     return status_code in _DEACTIVATING_USAGE_STATUS_CODES
+
+
+def _should_deactivate_for_refresh_error(exc: RefreshError) -> bool:
+    return exc.is_permanent or exc.code in _DEACTIVATING_REFRESH_ERROR_CODES

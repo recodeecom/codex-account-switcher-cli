@@ -449,6 +449,12 @@ async def test_usage_updater_does_not_deactivate_on_401(monkeypatch) -> None:
     usage_repo = StubUsageRepository()
     accounts_repo = StubAccountsRepository()
     updater = UsageUpdater(usage_repo, accounts_repo=accounts_repo)
+    assert updater._auth_manager is not None
+
+    async def stub_ensure_fresh(account: Account, *, force: bool = False) -> Account:
+        raise RefreshError(code="temporarily_unavailable", message="retry later", is_permanent=False)
+
+    monkeypatch.setattr(updater._auth_manager, "ensure_fresh", stub_ensure_fresh)
 
     acc = _make_account("acc_401", "workspace_401", email="auth@example.com")
     accounts_repo.accounts_by_id[acc.id] = acc
@@ -698,6 +704,10 @@ async def test_usage_updater_refresh_accounts_returns_false_on_401_retry_failure
 
     assert refreshed is False
     assert len(usage_repo.entries) == 0
+    assert len(accounts_repo.status_updates) == 1
+    update = accounts_repo.status_updates[0]
+    assert update["account_id"] == acc.id
+    assert update["status"] == AccountStatus.DEACTIVATED
 
 
 @pytest.mark.parametrize(

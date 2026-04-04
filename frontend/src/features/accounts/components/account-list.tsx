@@ -13,7 +13,7 @@ import {
 import { AccountListItem } from "@/features/accounts/components/account-list-item";
 import { WindowsOauthHelp } from "@/features/accounts/components/windows-oauth-help";
 import type { AccountSummary } from "@/features/accounts/schemas";
-import { getMergedQuotaRemainingPercent } from "@/utils/account-working";
+import { getMergedQuotaRemainingPercent, hasActiveCliSessionSignal } from "@/utils/account-working";
 import { buildDuplicateAccountIdSet } from "@/utils/account-identifiers";
 import { formatSlug } from "@/utils/formatters";
 import { normalizeRemainingPercentForDisplay } from "@/utils/quota-display";
@@ -47,7 +47,7 @@ function compareAccountsForSidebar(a: AccountSummary, b: AccountSummary): number
     primaryRemainingPercent:
       getMergedQuotaRemainingPercent(a, "primary") ?? a.usage?.primaryRemainingPercent ?? null,
     isActiveSnapshot: a.codexAuth?.isActiveSnapshot,
-    hasLiveSession: a.codexAuth?.hasLiveSession,
+    hasLiveSession: hasActiveCliSessionSignal(a),
     codexSessionCount: a.codexSessionCount,
   });
   const bCanUseLocally = canUseLocalAccount({
@@ -55,7 +55,7 @@ function compareAccountsForSidebar(a: AccountSummary, b: AccountSummary): number
     primaryRemainingPercent:
       getMergedQuotaRemainingPercent(b, "primary") ?? b.usage?.primaryRemainingPercent ?? null,
     isActiveSnapshot: b.codexAuth?.isActiveSnapshot,
-    hasLiveSession: b.codexAuth?.hasLiveSession,
+    hasLiveSession: hasActiveCliSessionSignal(b),
     codexSessionCount: b.codexSessionCount,
   });
 
