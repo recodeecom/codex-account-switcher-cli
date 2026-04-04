@@ -19,16 +19,16 @@ describe("isAccountWorkingNow", () => {
     expect(isAccountWorkingNow(account, now.getTime())).toBe(true);
   });
 
-  it("returns true when a live session has current task telemetry", () => {
+  it("returns true when a live process session count is present", () => {
     const account = createAccountSummary({
       codexAuth: {
         hasSnapshot: true,
         snapshotName: "main",
         activeSnapshotName: "main",
         isActiveSnapshot: true,
-        hasLiveSession: true,
+        hasLiveSession: false,
       },
-      codexCurrentTaskPreview: "Investigating dashboard usage sync",
+      codexLiveSessionCount: 2,
       lastUsageRecordedAtPrimary: null,
       lastUsageRecordedAtSecondary: null,
     });

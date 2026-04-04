@@ -22,18 +22,23 @@ export function hasFreshLiveTelemetry(
   account: Pick<
     AccountSummary,
     | "codexAuth"
-    | "codexCurrentTaskPreview"
+    | "codexLiveSessionCount"
+    | "codexSessionCount"
     | "lastUsageRecordedAtPrimary"
     | "lastUsageRecordedAtSecondary"
   >,
   nowMs: number = Date.now(),
 ): boolean {
-  if (!(account.codexAuth?.hasLiveSession ?? false)) {
-    return false;
+  const liveSessionCount = Math.max(
+    account.codexLiveSessionCount ?? account.codexSessionCount ?? 0,
+    0,
+  );
+  if (liveSessionCount > 0) {
+    return true;
   }
 
-  if ((account.codexCurrentTaskPreview ?? "").trim().length > 0) {
-    return true;
+  if (!(account.codexAuth?.hasLiveSession ?? false)) {
+    return false;
   }
 
   return (
@@ -46,7 +51,8 @@ export function isAccountWorkingNow(
   account: Pick<
     AccountSummary,
     | "codexAuth"
-    | "codexCurrentTaskPreview"
+    | "codexLiveSessionCount"
+    | "codexSessionCount"
     | "lastUsageRecordedAtPrimary"
     | "lastUsageRecordedAtSecondary"
   >,

@@ -213,6 +213,7 @@ export function AccountCard({
   });
   const primaryRemainingRaw = account.usage?.primaryRemainingPercent ?? null;
   const primaryRemaining = normalizeRemainingPercentForDisplay({
+    accountKey: account.accountId,
     windowKey: "primary",
     remainingPercent: primaryRemainingRaw,
     resetAt: account.resetAtPrimary ?? null,
@@ -220,6 +221,7 @@ export function AccountCard({
     lastRecordedAt: account.lastUsageRecordedAtPrimary ?? null,
   });
   const secondaryRemaining = normalizeRemainingPercentForDisplay({
+    accountKey: account.accountId,
     windowKey: "secondary",
     remainingPercent: account.usage?.secondaryRemainingPercent ?? null,
     resetAt: account.resetAtSecondary ?? null,
@@ -281,9 +283,11 @@ export function AccountCard({
   const tokenUsageLabel = isWorkingNow
     ? formatTokenUsagePrecise(totalTokensUsed)
     : formatTokenUsageCompact(totalTokensUsed);
-  const codexSessionCount = hasLiveSession
-    ? Math.max(account.codexSessionCount ?? 0, 1)
+  const codexLiveSessionCount = hasLiveSession
+    ? Math.max(account.codexLiveSessionCount ?? account.codexSessionCount ?? 0, 1)
     : 0;
+  const codexTrackedSessionCount = Math.max(account.codexTrackedSessionCount ?? 0, 0);
+  const hasSessionInventory = codexLiveSessionCount > 0 || codexTrackedSessionCount > 0;
   const codexCurrentTaskPreview = account.codexCurrentTaskPreview?.trim() || null;
   const emailSubtitle =
     account.displayName && account.displayName !== account.email
@@ -368,7 +372,10 @@ export function AccountCard({
             Codex CLI sessions
           </p>
           <p className="mt-0.5 text-xs font-semibold tabular-nums">
-            {codexSessionCount}
+            {codexLiveSessionCount}
+          </p>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            Tracked: {codexTrackedSessionCount}
           </p>
         </div>
       </div>
@@ -477,8 +484,8 @@ export function AccountCard({
           size="sm"
           variant="ghost"
           className="h-7 gap-1.5 rounded-lg text-xs text-cyan-700 hover:bg-cyan-500/10 hover:text-cyan-800 disabled:pointer-events-none disabled:text-muted-foreground dark:text-cyan-300 dark:hover:text-cyan-200"
-          disabled={codexSessionCount <= 0}
-          title={codexSessionCount <= 0 ? "No active sessions" : undefined}
+          disabled={!hasSessionInventory}
+          title={!hasSessionInventory ? "No tracked sessions" : undefined}
           onClick={() => onAction?.(account, "sessions")}
         >
           <ExternalLink className="h-3 w-3" />

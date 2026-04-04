@@ -34,7 +34,7 @@ from app.modules.usage.depletion_service import (
     compute_depletion_for_account,
 )
 
-_ACTIVE_CODEX_TASK_WINDOW = timedelta(minutes=30)
+_ACTIVE_CODEX_TASK_WINDOW = timedelta(minutes=5)
 
 
 class DashboardService:
@@ -59,10 +59,8 @@ class DashboardService:
             )
             for account_id, row in request_usage_rows.items()
         }
-        codex_session_counts_by_account = await self._repo.list_codex_session_counts_by_account(
-            account_ids,
-            active_since=utcnow() - _ACTIVE_CODEX_TASK_WINDOW,
-        )
+        codex_tracked_session_counts_by_account = await self._repo.list_codex_session_counts_by_account(account_ids)
+        codex_live_session_counts_by_account = {account_id: 0 for account_id in account_ids}
         codex_current_task_preview_by_account = await self._repo.list_codex_current_task_preview_by_account(
             account_ids,
             active_since=utcnow() - _ACTIVE_CODEX_TASK_WINDOW,
@@ -78,7 +76,7 @@ class DashboardService:
             codex_auth_by_account=codex_auth_by_account,
             primary_usage=primary_usage,
             secondary_usage=secondary_usage,
-            codex_session_counts_by_account=codex_session_counts_by_account,
+            codex_live_session_counts_by_account=codex_live_session_counts_by_account,
         )
         if persist_candidates:
             await persist_live_usage_overrides(
@@ -91,7 +89,8 @@ class DashboardService:
             primary_usage=primary_usage,
             secondary_usage=secondary_usage,
             request_usage_by_account=request_usage_by_account,
-            codex_session_counts_by_account=codex_session_counts_by_account,
+            codex_live_session_counts_by_account=codex_live_session_counts_by_account,
+            codex_tracked_session_counts_by_account=codex_tracked_session_counts_by_account,
             codex_current_task_preview_by_account=codex_current_task_preview_by_account,
             codex_auth_by_account=codex_auth_by_account,
             encryptor=self._encryptor,

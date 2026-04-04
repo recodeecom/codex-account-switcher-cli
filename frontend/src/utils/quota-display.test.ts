@@ -1,8 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
-import { normalizeRemainingPercentForDisplay } from "@/utils/quota-display";
+import {
+  normalizeRemainingPercentForDisplay,
+  resetQuotaDisplayFloorCacheForTests,
+} from "@/utils/quota-display";
 
 describe("normalizeRemainingPercentForDisplay", () => {
+  beforeEach(() => {
+    resetQuotaDisplayFloorCacheForTests();
+  });
+
   it("keeps original value for 5h window when reset is already past", () => {
     const result = normalizeRemainingPercentForDisplay({
       windowKey: "primary",
@@ -84,5 +91,115 @@ describe("normalizeRemainingPercentForDisplay", () => {
     });
 
     expect(result).toBeNull();
+  });
+
+  it("keeps the lowest remaining value per account/window within the same reset cycle", () => {
+    const first = normalizeRemainingPercentForDisplay({
+      accountKey: "acc-1",
+      windowKey: "primary",
+      remainingPercent: 98,
+      resetAt: "2026-01-01T05:00:00.000Z",
+      nowMs: new Date("2026-01-01T04:00:00.000Z").getTime(),
+    });
+    const second = normalizeRemainingPercentForDisplay({
+      accountKey: "acc-1",
+      windowKey: "primary",
+      remainingPercent: 58,
+      resetAt: "2026-01-01T05:00:00.000Z",
+      nowMs: new Date("2026-01-01T04:10:00.000Z").getTime(),
+    });
+    const third = normalizeRemainingPercentForDisplay({
+      accountKey: "acc-1",
+      windowKey: "primary",
+      remainingPercent: 79,
+      resetAt: "2026-01-01T05:00:00.000Z",
+      nowMs: new Date("2026-01-01T04:20:00.000Z").getTime(),
+    });
+
+    expect(first).toBe(98);
+    expect(second).toBe(58);
+    expect(third).toBe(58);
+  });
+
+  it("allows higher values again after reset cycle changes", () => {
+    const first = normalizeRemainingPercentForDisplay({
+      accountKey: "acc-1",
+      windowKey: "primary",
+      remainingPercent: 17,
+      resetAt: "2026-01-01T05:00:00.000Z",
+    });
+    const second = normalizeRemainingPercentForDisplay({
+      accountKey: "acc-1",
+      windowKey: "primary",
+      remainingPercent: 92,
+      resetAt: "2026-01-01T10:00:00.000Z",
+    });
+
+    expect(first).toBe(17);
+    expect(second).toBe(92);
+  });
+
+  it("allows higher values once reset time passes, even before resetAt rotates", () => {
+    const first = normalizeRemainingPercentForDisplay({
+      accountKey: "acc-1",
+      windowKey: "primary",
+      remainingPercent: 17,
+      resetAt: "2026-01-01T05:00:00.000Z",
+      nowMs: new Date("2026-01-01T04:59:00.000Z").getTime(),
+    });
+    const second = normalizeRemainingPercentForDisplay({
+      accountKey: "acc-1",
+      windowKey: "primary",
+      remainingPercent: 95,
+      resetAt: "2026-01-01T05:00:00.000Z",
+      nowMs: new Date("2026-01-01T05:01:00.000Z").getTime(),
+    });
+
+    expect(first).toBe(17);
+    expect(second).toBe(95);
+  });
+
+  it("tracks floor independently for each account and window", () => {
+    const accountOnePrimary = normalizeRemainingPercentForDisplay({
+      accountKey: "acc-1",
+      windowKey: "primary",
+      remainingPercent: 35,
+      resetAt: "2026-01-01T05:00:00.000Z",
+      nowMs: new Date("2026-01-01T04:00:00.000Z").getTime(),
+    });
+    const accountOneWeekly = normalizeRemainingPercentForDisplay({
+      accountKey: "acc-1",
+      windowKey: "secondary",
+      remainingPercent: 75,
+      resetAt: "2026-01-07T00:00:00.000Z",
+      nowMs: new Date("2026-01-01T04:00:00.000Z").getTime(),
+    });
+    const accountTwoPrimary = normalizeRemainingPercentForDisplay({
+      accountKey: "acc-2",
+      windowKey: "primary",
+      remainingPercent: 90,
+      resetAt: "2026-01-01T05:00:00.000Z",
+      nowMs: new Date("2026-01-01T04:00:00.000Z").getTime(),
+    });
+    const accountOnePrimaryAfterHigher = normalizeRemainingPercentForDisplay({
+      accountKey: "acc-1",
+      windowKey: "primary",
+      remainingPercent: 65,
+      resetAt: "2026-01-01T05:00:00.000Z",
+      nowMs: new Date("2026-01-01T04:30:00.000Z").getTime(),
+    });
+    const accountOneWeeklyAfterLower = normalizeRemainingPercentForDisplay({
+      accountKey: "acc-1",
+      windowKey: "secondary",
+      remainingPercent: 70,
+      resetAt: "2026-01-07T00:00:00.000Z",
+      nowMs: new Date("2026-01-01T04:45:00.000Z").getTime(),
+    });
+
+    expect(accountOnePrimary).toBe(35);
+    expect(accountOneWeekly).toBe(75);
+    expect(accountTwoPrimary).toBe(90);
+    expect(accountOnePrimaryAfterHigher).toBe(35);
+    expect(accountOneWeeklyAfterLower).toBe(70);
   });
 });

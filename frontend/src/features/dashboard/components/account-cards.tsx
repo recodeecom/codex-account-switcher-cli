@@ -115,7 +115,7 @@ export function AccountCards({
       if (!hasFreshLiveTelemetry(account)) {
         return sum;
       }
-      return sum + Math.max(account.codexSessionCount ?? 0, 1);
+      return sum + Math.max(account.codexLiveSessionCount ?? account.codexSessionCount ?? 0, 1);
     }, 0);
 
     return {
@@ -123,6 +123,7 @@ export function AccountCards({
       avgPrimaryRemaining: roundAveragePercent(
         groupedAccounts.working.map((account) =>
           normalizeRemainingPercentForDisplay({
+            accountKey: account.accountId,
             windowKey: "primary",
             remainingPercent: account.usage?.primaryRemainingPercent ?? null,
             resetAt: account.resetAtPrimary ?? null,
@@ -134,6 +135,7 @@ export function AccountCards({
       avgSecondaryRemaining: roundAveragePercent(
         groupedAccounts.working.map((account) =>
           normalizeRemainingPercentForDisplay({
+            accountKey: account.accountId,
             windowKey: "secondary",
             remainingPercent: account.usage?.secondaryRemainingPercent ?? null,
             resetAt: account.resetAtSecondary ?? null,

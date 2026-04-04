@@ -56,7 +56,7 @@ from app.modules.usage.updater import AdditionalUsageRepositoryPort, UsageUpdate
 
 _SPARKLINE_DAYS = 7
 _DETAIL_BUCKET_SECONDS = 3600  # 1h → 168 points
-_ACTIVE_CODEX_TASK_WINDOW = timedelta(minutes=30)
+_ACTIVE_CODEX_TASK_WINDOW = timedelta(minutes=5)
 
 
 class InvalidAuthJsonError(Exception):
@@ -87,10 +87,8 @@ class AccountsService:
         account_id_set = set(account_ids)
         primary_usage = await self._usage_repo.latest_by_account(window="primary") if self._usage_repo else {}
         secondary_usage = await self._usage_repo.latest_by_account(window="secondary") if self._usage_repo else {}
-        codex_session_counts_by_account = await self._repo.list_codex_session_counts_by_account(
-            account_ids,
-            active_since=utcnow() - _ACTIVE_CODEX_TASK_WINDOW,
-        )
+        codex_tracked_session_counts_by_account = await self._repo.list_codex_session_counts_by_account(account_ids)
+        codex_live_session_counts_by_account = {account_id: 0 for account_id in account_ids}
         codex_current_task_preview_by_account = await self._repo.list_codex_current_task_preview_by_account(
             account_ids,
             active_since=utcnow() - _ACTIVE_CODEX_TASK_WINDOW,
@@ -158,7 +156,7 @@ class AccountsService:
             codex_auth_by_account=codex_auth_by_account,
             primary_usage=primary_usage,
             secondary_usage=secondary_usage,
-            codex_session_counts_by_account=codex_session_counts_by_account,
+            codex_live_session_counts_by_account=codex_live_session_counts_by_account,
         )
         if self._usage_repo and persist_candidates:
             await persist_live_usage_overrides(
@@ -171,7 +169,8 @@ class AccountsService:
             primary_usage=primary_usage,
             secondary_usage=secondary_usage,
             request_usage_by_account=request_usage_by_account,
-            codex_session_counts_by_account=codex_session_counts_by_account,
+            codex_live_session_counts_by_account=codex_live_session_counts_by_account,
+            codex_tracked_session_counts_by_account=codex_tracked_session_counts_by_account,
             codex_current_task_preview_by_account=codex_current_task_preview_by_account,
             additional_quotas_by_account=additional_quotas_by_account,
             codex_auth_by_account=codex_auth_by_account,

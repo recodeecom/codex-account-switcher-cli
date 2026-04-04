@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, vi } from "vitest";
 
 import { resetMockState } from "@/test/mocks/handlers";
 import { server, startMockServer } from "@/test/mocks/server";
+import { resetQuotaDisplayFloorCacheForTests } from "@/utils/quota-display";
 
 if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
   Object.defineProperty(window, "matchMedia", {
@@ -44,6 +45,7 @@ afterEach(() => {
     window.history.replaceState({}, "", "/");
   }
   resetMockState();
+  resetQuotaDisplayFloorCacheForTests();
   server.resetHandlers();
   cleanup();
 });

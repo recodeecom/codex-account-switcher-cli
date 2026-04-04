@@ -26,6 +26,7 @@ class LiveUsageOverridePersistCandidate:
     window_minutes: int | None
     recorded_at: datetime
 
+
 _RESET_FINGERPRINT_MATCH_TOLERANCE_SECONDS = 30
 
 
@@ -82,6 +83,7 @@ def apply_local_live_usage_overrides(
             # from stale or cross-account default-session files.
             codex_session_counts_by_account[account_id] = 1
             continue
+
         codex_session_counts_by_account[account_id] = max(0, live_usage.active_session_count)
 
         recorded_at = to_utc_naive(live_usage.recorded_at)
@@ -129,7 +131,6 @@ def apply_local_live_usage_overrides(
         baseline_secondary_usage=baseline_secondary_usage,
         primary_usage=primary_usage,
         secondary_usage=secondary_usage,
-        codex_session_counts_by_account=codex_session_counts_by_account,
     )
     return _coalesce_persist_candidates(persist_candidates)
 

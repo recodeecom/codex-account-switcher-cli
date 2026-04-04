@@ -90,6 +90,7 @@ export function createAccountSummary(
 		lastUsageRecordedAtSecondary: offsetIso(-5),
 		windowMinutesPrimary: 300,
 		windowMinutesSecondary: 10_080,
+		codexTrackedSessionCount: 0,
 		codexSessionCount: 0,
 		auth: {
 			access: { expiresAt: offsetIso(30), state: null },

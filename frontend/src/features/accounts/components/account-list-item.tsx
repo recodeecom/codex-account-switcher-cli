@@ -118,6 +118,7 @@ export function AccountListItem({
     ? ` | ID ${formatCompactAccountId(account.accountId)}`
     : "";
   const secondary = normalizeRemainingPercentForDisplay({
+    accountKey: account.accountId,
     windowKey: "secondary",
     remainingPercent: account.usage?.secondaryRemainingPercent ?? null,
     resetAt: account.resetAtSecondary ?? null,
@@ -126,6 +127,7 @@ export function AccountListItem({
   });
   const primaryRemainingRaw = account.usage?.primaryRemainingPercent ?? null;
   const primaryRemaining = normalizeRemainingPercentForDisplay({
+    accountKey: account.accountId,
     windowKey: "primary",
     remainingPercent: primaryRemainingRaw,
     resetAt: account.resetAtPrimary ?? null,

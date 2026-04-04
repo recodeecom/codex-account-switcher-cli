@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List
+from typing import List, Literal
 
 from pydantic import Field
 
@@ -47,6 +47,7 @@ class AccountCodexAuthStatus(DashboardModel):
     active_snapshot_name: str | None = None
     is_active_snapshot: bool = False
     has_live_session: bool = False
+    live_usage_confidence: Literal["high", "low"] | None = None
     expected_snapshot_name: str | None = None
     snapshot_name_matches_email: bool = False
 

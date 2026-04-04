@@ -130,6 +130,7 @@ function AdditionalQuotaRow({
 export function AccountUsagePanel({ account, trends }: AccountUsagePanelProps) {
   const hasLiveSession = account.codexAuth?.hasLiveSession ?? false;
   const primary = normalizeRemainingPercentForDisplay({
+    accountKey: account.accountId,
     windowKey: "primary",
     remainingPercent: account.usage?.primaryRemainingPercent ?? null,
     resetAt: account.resetAtPrimary ?? null,
@@ -137,6 +138,7 @@ export function AccountUsagePanel({ account, trends }: AccountUsagePanelProps) {
     lastRecordedAt: account.lastUsageRecordedAtPrimary ?? null,
   });
   const secondary = normalizeRemainingPercentForDisplay({
+    accountKey: account.accountId,
     windowKey: "secondary",
     remainingPercent: account.usage?.secondaryRemainingPercent ?? null,
     resetAt: account.resetAtSecondary ?? null,

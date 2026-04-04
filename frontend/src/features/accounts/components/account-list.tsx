@@ -26,6 +26,7 @@ function normalizeQuotaPercent(value: number | null | undefined): number {
 
 function resolvePrimaryRemainingForDisplay(account: AccountSummary): number | null {
   return normalizeRemainingPercentForDisplay({
+    accountKey: account.accountId,
     windowKey: "primary",
     remainingPercent: account.usage?.primaryRemainingPercent ?? null,
     resetAt: account.resetAtPrimary ?? null,
@@ -64,6 +65,7 @@ function compareAccountsForSidebar(a: AccountSummary, b: AccountSummary): number
 
   const aSecondary = normalizeQuotaPercent(
     normalizeRemainingPercentForDisplay({
+      accountKey: a.accountId,
       windowKey: "secondary",
       remainingPercent: a.usage?.secondaryRemainingPercent ?? null,
       resetAt: a.resetAtSecondary ?? null,
@@ -73,6 +75,7 @@ function compareAccountsForSidebar(a: AccountSummary, b: AccountSummary): number
   );
   const bSecondary = normalizeQuotaPercent(
     normalizeRemainingPercentForDisplay({
+      accountKey: b.accountId,
       windowKey: "secondary",
       remainingPercent: b.usage?.secondaryRemainingPercent ?? null,
       resetAt: b.resetAtSecondary ?? null,

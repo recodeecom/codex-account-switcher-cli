@@ -39,6 +39,7 @@ export const AccountCodexAuthSchema = z.object({
   activeSnapshotName: z.string().nullable().optional(),
   isActiveSnapshot: z.boolean().optional(),
   hasLiveSession: z.boolean().optional(),
+  liveUsageConfidence: z.enum(["high", "low"]).nullable().optional(),
   expectedSnapshotName: z.string().nullable().optional(),
   snapshotNameMatchesEmail: z.boolean().optional(),
 });
@@ -72,6 +73,8 @@ export const AccountSummarySchema = z.object({
   windowMinutesPrimary: z.number().nullable().optional(),
   windowMinutesSecondary: z.number().nullable().optional(),
   requestUsage: AccountRequestUsageSchema.nullable().optional(),
+  codexLiveSessionCount: z.number().int().nonnegative().optional(),
+  codexTrackedSessionCount: z.number().int().nonnegative().optional(),
   codexSessionCount: z.number().int().nonnegative().optional(),
   codexCurrentTaskPreview: z.string().nullable().optional(),
   auth: AccountAuthSchema.nullable().optional(),

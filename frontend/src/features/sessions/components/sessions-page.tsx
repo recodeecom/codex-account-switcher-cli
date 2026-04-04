@@ -19,7 +19,6 @@ import { listStickySessions } from "@/features/sticky-sessions/api";
 import { Badge } from "@/components/ui/badge";
 import { usePrivacyStore } from "@/hooks/use-privacy";
 import { cn } from "@/lib/utils";
-import { resolveCodexSessionCount } from "@/utils/codex-sessions";
 import { formatLastUsageLabel } from "@/utils/formatters";
 
 const DEFAULT_LIMIT = 25;
@@ -140,10 +139,10 @@ export function SessionsPage() {
   const fallbackActivityRows = useMemo<ActivityRow[]>(() => {
     const rows = (overviewQuery.data?.accounts ?? [])
       .map((account) => {
-        const hasLiveSession = account.codexAuth?.hasLiveSession ?? false;
-        const codexSessionCount = resolveCodexSessionCount(
-          account.codexSessionCount,
-          hasLiveSession || (account.codexAuth?.isActiveSnapshot ?? false),
+        const codexSessionCount = Math.max(account.codexTrackedSessionCount ?? 0, 0);
+        const hasLiveSession = Boolean(
+          account.codexAuth?.hasLiveSession
+            ?? (account.codexLiveSessionCount ?? account.codexSessionCount ?? 0) > 0,
         );
         const progress = resolveProgressDisplay(
           hasLiveSession,

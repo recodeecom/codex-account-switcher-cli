@@ -322,7 +322,7 @@ async def test_accounts_list_sets_has_live_session_from_runtime_telemetry(
 
 
 @pytest.mark.asyncio
-async def test_accounts_list_preserves_matched_live_sessions_for_non_active_snapshot_accounts(
+async def test_accounts_list_mixed_sessions_preserves_matched_live_sessions_for_non_active_snapshot_accounts(
     async_client, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
     now = datetime.now(timezone.utc).replace(microsecond=0)
@@ -414,6 +414,93 @@ async def test_accounts_list_preserves_matched_live_sessions_for_non_active_snap
     assert accounts[personal_account_id]["codexSessionCount"] == 1
     assert accounts[personal_account_id]["usage"]["primaryRemainingPercent"] == pytest.approx(60.0)
     assert accounts[personal_account_id]["usage"]["secondaryRemainingPercent"] == pytest.approx(50.0)
+
+
+@pytest.mark.asyncio
+async def test_accounts_list_mixed_sessions_keeps_quota_baseline_when_reset_attribution_is_ambiguous(
+    async_client, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    work_raw_id = "acc_work_ambiguous"
+    personal_raw_id = "acc_personal_ambiguous"
+    work_email = "work.ambiguous@example.com"
+    personal_email = "personal.ambiguous@example.com"
+    work_account_id = generate_unique_account_id(work_raw_id, work_email)
+    personal_account_id = generate_unique_account_id(personal_raw_id, personal_email)
+
+    accounts_dir = tmp_path / "accounts"
+    accounts_dir.mkdir(parents=True, exist_ok=True)
+    _write_auth_snapshot(accounts_dir / "work.json", email=work_email, account_id=work_raw_id)
+    _write_auth_snapshot(accounts_dir / "personal.json", email=personal_email, account_id=personal_raw_id)
+    (tmp_path / "current").write_text("work")
+    monkeypatch.setenv("CODEX_LB_CODEX_AUTH_AUTO_IMPORT_ON_ACCOUNTS_LIST", "true")
+    monkeypatch.setenv("CODEX_AUTH_ACCOUNTS_DIR", str(accounts_dir))
+    monkeypatch.setenv("CODEX_AUTH_CURRENT_PATH", str(tmp_path / "current"))
+    monkeypatch.setenv("CODEX_AUTH_JSON_PATH", str(tmp_path / "missing-auth.json"))
+
+    sessions_root = tmp_path / "sessions"
+    day_dir = sessions_root / f"{now.year:04d}" / f"{now.month:02d}" / f"{now.day:02d}"
+    day_dir.mkdir(parents=True, exist_ok=True)
+    sample_ts = now - timedelta(minutes=2)
+    _write_rollout_snapshot(
+        day_dir / "rollout-work.jsonl",
+        timestamp=sample_ts,
+        primary_used=22.0,
+        secondary_used=32.0,
+    )
+    _write_rollout_snapshot(
+        day_dir / "rollout-personal.jsonl",
+        timestamp=sample_ts,
+        primary_used=23.0,
+        secondary_used=33.0,
+    )
+    monkeypatch.setenv("CODEX_SESSIONS_DIR", str(sessions_root))
+    monkeypatch.setenv("CODEX_LB_LOCAL_SESSION_ACTIVE_SECONDS", "300")
+
+    from app.core.config.settings import get_settings
+
+    get_settings.cache_clear()
+
+    first = await async_client.get("/api/accounts")
+    assert first.status_code == 200
+
+    reset_primary = int((sample_ts + timedelta(minutes=30)).timestamp())
+    reset_secondary = int((sample_ts + timedelta(days=7)).timestamp())
+    async with SessionLocal() as session:
+        await session.execute(
+            text(
+                """
+                INSERT INTO usage_history (account_id, used_percent, window, reset_at, window_minutes, recorded_at)
+                VALUES
+                    (:work_account_id, 15.0, 'primary', :reset_primary, 300, :recorded_at),
+                    (:work_account_id, 25.0, 'secondary', :reset_secondary, 10080, :recorded_at),
+                    (:personal_account_id, 65.0, 'primary', :reset_primary, 300, :recorded_at),
+                    (:personal_account_id, 75.0, 'secondary', :reset_secondary, 10080, :recorded_at)
+                """
+            ),
+            {
+                "work_account_id": work_account_id,
+                "personal_account_id": personal_account_id,
+                "reset_primary": reset_primary,
+                "reset_secondary": reset_secondary,
+                "recorded_at": sample_ts,
+            },
+        )
+        await session.commit()
+
+    response = await async_client.get("/api/accounts")
+    assert response.status_code == 200
+    accounts = {item["accountId"]: item for item in response.json()["accounts"]}
+
+    assert accounts[work_account_id]["codexAuth"]["hasLiveSession"] is True
+    assert accounts[work_account_id]["codexSessionCount"] == 1
+    assert accounts[work_account_id]["usage"]["primaryRemainingPercent"] == pytest.approx(85.0)
+    assert accounts[work_account_id]["usage"]["secondaryRemainingPercent"] == pytest.approx(75.0)
+
+    assert accounts[personal_account_id]["codexAuth"]["hasLiveSession"] is True
+    assert accounts[personal_account_id]["codexSessionCount"] == 1
+    assert accounts[personal_account_id]["usage"]["primaryRemainingPercent"] == pytest.approx(35.0)
+    assert accounts[personal_account_id]["usage"]["secondaryRemainingPercent"] == pytest.approx(25.0)
 
 
 @pytest.mark.asyncio
