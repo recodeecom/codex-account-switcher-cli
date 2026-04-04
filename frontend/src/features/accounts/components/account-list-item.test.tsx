@@ -349,6 +349,7 @@ describe("AccountListItem", () => {
   });
 
   it("shows live badge and live background when account is working now", () => {
+    const nowIso = new Date().toISOString();
     const account = createAccountSummary({
       codexAuth: {
         hasSnapshot: true,
@@ -358,6 +359,8 @@ describe("AccountListItem", () => {
         hasLiveSession: true,
       },
       codexSessionCount: 0,
+      lastUsageRecordedAtPrimary: nowIso,
+      lastUsageRecordedAtSecondary: nowIso,
     });
 
     render(

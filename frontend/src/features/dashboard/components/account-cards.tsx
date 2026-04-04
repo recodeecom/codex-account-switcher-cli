@@ -5,7 +5,7 @@ import { EmptyState } from "@/components/empty-state";
 import { AccountCard, type AccountCardProps } from "@/features/dashboard/components/account-card";
 import type { AccountSummary, UsageWindow } from "@/features/dashboard/schemas";
 import { buildDuplicateAccountIdSet } from "@/utils/account-identifiers";
-import { isAccountWorkingNow } from "@/utils/account-working";
+import { hasFreshLiveTelemetry, isAccountWorkingNow } from "@/utils/account-working";
 import { resolveEffectiveAccountStatus } from "@/utils/account-status";
 import { formatWindowLabel } from "@/utils/formatters";
 import { normalizeRemainingPercentForDisplay } from "@/utils/quota-display";
@@ -98,7 +98,7 @@ export function AccountCards({
         resolveEffectiveAccountStatus({
           status: account.status,
           isActiveSnapshot: account.codexAuth?.isActiveSnapshot,
-          hasLiveSession: account.codexAuth?.hasLiveSession,
+          hasLiveSession: hasFreshLiveTelemetry(account),
         }) === "deactivated";
 
       if (isDeactivated) {
@@ -112,7 +112,7 @@ export function AccountCards({
   }, [accounts]);
   const workingSummary = useMemo(() => {
     const liveSessions = groupedAccounts.working.reduce((sum, account) => {
-      if (!account.codexAuth?.hasLiveSession) {
+      if (!hasFreshLiveTelemetry(account)) {
         return sum;
       }
       return sum + Math.max(account.codexSessionCount ?? 0, 1);
@@ -126,7 +126,7 @@ export function AccountCards({
             windowKey: "primary",
             remainingPercent: account.usage?.primaryRemainingPercent ?? null,
             resetAt: account.resetAtPrimary ?? null,
-            hasLiveSession: account.codexAuth?.hasLiveSession ?? false,
+            hasLiveSession: hasFreshLiveTelemetry(account),
             lastRecordedAt: account.lastUsageRecordedAtPrimary ?? null,
           }),
         ),
@@ -137,7 +137,7 @@ export function AccountCards({
             windowKey: "secondary",
             remainingPercent: account.usage?.secondaryRemainingPercent ?? null,
             resetAt: account.resetAtSecondary ?? null,
-            hasLiveSession: account.codexAuth?.hasLiveSession ?? false,
+            hasLiveSession: hasFreshLiveTelemetry(account),
             lastRecordedAt: account.lastUsageRecordedAtSecondary ?? null,
           }),
         ),

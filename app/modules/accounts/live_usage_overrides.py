@@ -10,6 +10,7 @@ from app.modules.accounts.codex_auth_switcher import CodexAuthSnapshotIndex
 from app.modules.accounts.codex_live_usage import (
     LocalCodexLiveUsage,
     LocalUsageWindow,
+    has_recent_active_snapshot_process_fallback,
     read_local_codex_live_usage_by_snapshot,
     read_local_codex_live_usage_samples,
 )
@@ -25,7 +26,7 @@ class LiveUsageOverridePersistCandidate:
     window_minutes: int | None
     recorded_at: datetime
 
-_RESET_FINGERPRINT_TIE_BREAK_SECONDS = 300
+_RESET_FINGERPRINT_MATCH_TOLERANCE_SECONDS = 30
 
 
 def apply_local_live_usage_overrides(
@@ -41,6 +42,7 @@ def apply_local_live_usage_overrides(
     baseline_secondary_usage = dict(secondary_usage)
     persist_candidates: list[LiveUsageOverridePersistCandidate] = []
     live_usage_by_snapshot = read_local_codex_live_usage_by_snapshot()
+    has_recent_process_fallback = has_recent_active_snapshot_process_fallback()
     should_defer_active_snapshot_usage = _should_defer_active_snapshot_usage_override(
         accounts=accounts,
         snapshot_index=snapshot_index,
@@ -61,10 +63,16 @@ def apply_local_live_usage_overrides(
         )
         has_live_telemetry = bool(live_usage and live_usage.active_session_count > 0)
         codex_auth_status.has_live_session = has_live_telemetry
+        account_id = account.id
         if not has_live_telemetry or live_usage is None:
+            if has_recent_process_fallback and codex_auth_status.is_active_snapshot:
+                codex_auth_status.has_live_session = True
+                codex_session_counts_by_account[account_id] = max(
+                    1,
+                    codex_session_counts_by_account.get(account_id, 0),
+                )
             continue
 
-        account_id = account.id
         if should_defer_active_snapshot_usage and codex_auth_status.is_active_snapshot:
             # The default sessions directory can include active sessions from
             # multiple snapshots. When that mixed telemetry cannot be reliably
@@ -232,12 +240,10 @@ def _apply_local_default_session_fingerprint_overrides(
     if len(candidate_accounts) <= 1:
         return
 
-    active_account_id = _resolve_active_account_id(codex_auth_by_account)
-
     matched_counts_by_account: dict[str, int] = {}
     latest_sample_by_account: dict[str, LocalCodexLiveUsage] = {}
     for sample in fingerprint_samples:
-        account_id = _match_sample_to_account(
+        account_id = _resolve_unique_reset_match_account_id(
             sample=sample,
             accounts=candidate_accounts,
             baseline_primary_usage=baseline_primary_usage,
@@ -250,15 +256,8 @@ def _apply_local_default_session_fingerprint_overrides(
         if previous_sample is None or sample.recorded_at >= previous_sample.recorded_at:
             latest_sample_by_account[account_id] = sample
 
-    if len(matched_counts_by_account) <= 1:
-        if len(matched_counts_by_account) != 1:
-            return
-        if active_account_id is None:
-            return
-        only_account_id = next(iter(matched_counts_by_account))
-        matched_sample_count = matched_counts_by_account[only_account_id]
-        if only_account_id != active_account_id or matched_sample_count != len(fingerprint_samples):
-            return
+    if not matched_counts_by_account:
+        return
 
     for account in accounts:
         account_id = account.id
@@ -305,15 +304,6 @@ def _apply_local_default_session_fingerprint_overrides(
 
 def _account_has_snapshot(status: AccountCodexAuthStatus | None) -> bool:
     return bool(status and status.has_snapshot)
-
-
-def _resolve_active_account_id(
-    codex_auth_by_account: dict[str, AccountCodexAuthStatus],
-) -> str | None:
-    for account_id, status in codex_auth_by_account.items():
-        if status.is_active_snapshot:
-            return account_id
-    return None
 
 
 def _should_defer_active_snapshot_usage_override(
@@ -385,7 +375,7 @@ def _has_unique_reset_fingerprint_match(
             account_reset_at = account_usage.reset_at if account_usage is not None else None
             if account_reset_at is None:
                 continue
-            if abs(reset_at - account_reset_at) <= _RESET_FINGERPRINT_TIE_BREAK_SECONDS:
+            if abs(reset_at - account_reset_at) <= _RESET_FINGERPRINT_MATCH_TOLERANCE_SECONDS:
                 matches.add(account.id)
         return matches
 
@@ -413,15 +403,6 @@ def _sample_has_fingerprint(sample: LocalCodexLiveUsage) -> bool:
     )
 
 
-@dataclass(frozen=True)
-class _SampleMatchMetrics:
-    total_pairs: int
-    percent_pairs: int
-    reset_pairs: int
-    percent_score: float
-    reset_score: int
-
-
 def _match_sample_to_account(
     *,
     sample: LocalCodexLiveUsage,
@@ -429,114 +410,54 @@ def _match_sample_to_account(
     baseline_primary_usage: dict[str, UsageHistory],
     baseline_secondary_usage: dict[str, UsageHistory],
 ) -> str | None:
-    sample_primary_used = sample.primary.used_percent if sample.primary is not None else None
-    sample_secondary_used = sample.secondary.used_percent if sample.secondary is not None else None
+    return _resolve_unique_reset_match_account_id(
+        sample=sample,
+        accounts=accounts,
+        baseline_primary_usage=baseline_primary_usage,
+        baseline_secondary_usage=baseline_secondary_usage,
+    )
+
+
+def _resolve_unique_reset_match_account_id(
+    *,
+    sample: LocalCodexLiveUsage,
+    accounts: list[Account],
+    baseline_primary_usage: dict[str, UsageHistory],
+    baseline_secondary_usage: dict[str, UsageHistory],
+) -> str | None:
     primary_reset = sample.primary.reset_at if sample.primary is not None else None
     secondary_reset = sample.secondary.reset_at if sample.secondary is not None else None
-    if (
-        sample_primary_used is None
-        and sample_secondary_used is None
-        and primary_reset is None
-        and secondary_reset is None
-    ):
-        return None
 
-    best_account_id: str | None = None
-    best_metrics: _SampleMatchMetrics | None = None
-    best_key: tuple[float, float, float, float, float] | None = None
-    second_metrics: _SampleMatchMetrics | None = None
-    for account in accounts:
-        account_id = account.id
-        account_primary = baseline_primary_usage.get(account_id)
-        account_secondary = baseline_secondary_usage.get(account_id)
-
-        total_pairs = 0
-        percent_pairs = 0
-        reset_pairs = 0
-        percent_score = 0.0
-        reset_score = 0
-
-        account_primary_used = account_primary.used_percent if account_primary is not None else None
-        account_secondary_used = account_secondary.used_percent if account_secondary is not None else None
-        account_primary_reset = account_primary.reset_at if account_primary is not None else None
-        account_secondary_reset = account_secondary.reset_at if account_secondary is not None else None
-
-        if sample_primary_used is not None and account_primary_used is not None:
-            total_pairs += 1
-            percent_pairs += 1
-            percent_score += abs(sample_primary_used - account_primary_used)
-        if sample_secondary_used is not None and account_secondary_used is not None:
-            total_pairs += 1
-            percent_pairs += 1
-            percent_score += abs(sample_secondary_used - account_secondary_used)
-        if primary_reset is not None and account_primary_reset is not None:
-            total_pairs += 1
-            reset_pairs += 1
-            reset_score += abs(primary_reset - account_primary_reset)
-        if secondary_reset is not None and account_secondary_reset is not None:
-            total_pairs += 1
-            reset_pairs += 1
-            reset_score += abs(secondary_reset - account_secondary_reset)
-
-        if total_pairs == 0:
-            continue
-
-        metrics = _SampleMatchMetrics(
-            total_pairs=total_pairs,
-            percent_pairs=percent_pairs,
-            reset_pairs=reset_pairs,
-            percent_score=percent_score,
-            reset_score=reset_score,
-        )
-        sort_key = (
-            -float(metrics.total_pairs),
-            -float(metrics.percent_pairs),
-            metrics.percent_score,
-            -float(metrics.reset_pairs),
-            float(metrics.reset_score),
-        )
-
-        if best_key is None or sort_key < best_key:
-            if best_metrics is not None:
-                second_metrics = best_metrics
-            best_account_id = account_id
-            best_metrics = metrics
-            best_key = sort_key
-        elif best_key is not None and sort_key == best_key:
-            return None
-        elif second_metrics is None:
-            second_metrics = metrics
-
-    if best_account_id is None or best_metrics is None:
-        return None
-
-    if best_metrics.percent_pairs > 0 and second_metrics is not None:
-        comparable_shape = (
-            best_metrics.total_pairs == second_metrics.total_pairs
-            and best_metrics.percent_pairs == second_metrics.percent_pairs
-        )
-        if comparable_shape:
-            margin = second_metrics.percent_score - best_metrics.percent_score
-            reset_margin = second_metrics.reset_score - best_metrics.reset_score
-            reset_fingerprint_breaks_tie = (
-                best_metrics.reset_pairs > 0
-                and second_metrics.reset_pairs > 0
-                and reset_margin >= _RESET_FINGERPRINT_TIE_BREAK_SECONDS
+    def _match_accounts_for_reset(*, window: Literal["primary", "secondary"], reset_at: int) -> set[str]:
+        matches: set[str] = set()
+        for account in accounts:
+            usage_entry = (
+                baseline_primary_usage.get(account.id)
+                if window == "primary"
+                else baseline_secondary_usage.get(account.id)
             )
-            if margin < 2.0 and not reset_fingerprint_breaks_tie:
-                return None
+            usage_reset_at = usage_entry.reset_at if usage_entry is not None else None
+            if usage_reset_at is None:
+                continue
+            if abs(reset_at - usage_reset_at) <= _RESET_FINGERPRINT_MATCH_TOLERANCE_SECONDS:
+                matches.add(account.id)
+        return matches
 
-    if best_metrics.percent_pairs == 0:
-        if best_metrics.reset_pairs == 1 and best_metrics.reset_score > 300:
-            return None
-        if best_metrics.reset_pairs >= 2 and best_metrics.reset_score > 900:
-            return None
-        return best_account_id
+    primary_unique: str | None = None
+    if primary_reset is not None:
+        primary_matches = _match_accounts_for_reset(window="primary", reset_at=primary_reset)
+        if len(primary_matches) == 1:
+            primary_unique = next(iter(primary_matches))
 
-    avg_percent_delta = best_metrics.percent_score / best_metrics.percent_pairs
-    if best_metrics.percent_pairs == 1 and avg_percent_delta > 20.0:
+    secondary_unique: str | None = None
+    if secondary_reset is not None:
+        secondary_matches = _match_accounts_for_reset(window="secondary", reset_at=secondary_reset)
+        if len(secondary_matches) == 1:
+            secondary_unique = next(iter(secondary_matches))
+
+    if primary_unique and secondary_unique:
+        if primary_unique == secondary_unique:
+            return primary_unique
         return None
-    if best_metrics.percent_pairs >= 2 and avg_percent_delta > 30.0:
-        return None
 
-    return best_account_id
+    return primary_unique or secondary_unique

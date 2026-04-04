@@ -208,6 +208,7 @@ describe("dashboard flow integration", () => {
   });
 
   it("shows Working now when runtime telemetry marks account as live", async () => {
+    const nowIso = new Date().toISOString();
     server.use(
       http.get("/api/dashboard/overview", () =>
         HttpResponse.json(
@@ -225,6 +226,8 @@ describe("dashboard flow integration", () => {
                   isActiveSnapshot: false,
                   hasLiveSession: true,
                 },
+                lastUsageRecordedAtPrimary: nowIso,
+                lastUsageRecordedAtSecondary: nowIso,
               }),
             ],
           }),
@@ -405,6 +408,7 @@ describe("dashboard flow integration", () => {
 
   it("opens sessions page from account card when codex sessions are present", async () => {
     const user = userEvent.setup({ delay: null });
+    const nowIso = new Date().toISOString();
 
     server.use(
       http.get("/api/dashboard/overview", () =>
@@ -423,6 +427,8 @@ describe("dashboard flow integration", () => {
                   isActiveSnapshot: true,
                   hasLiveSession: true,
                 },
+                lastUsageRecordedAtPrimary: nowIso,
+                lastUsageRecordedAtSecondary: nowIso,
               }),
             ],
           }),

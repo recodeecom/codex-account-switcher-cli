@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from app.modules.accounts.codex_live_usage import (
+    has_recent_active_snapshot_process_fallback,
     read_local_codex_live_usage,
     read_local_codex_live_usage_samples,
     read_local_codex_live_usage_by_snapshot,
@@ -326,3 +327,23 @@ def test_read_local_codex_live_usage_by_snapshot_merges_same_snapshot_across_run
     assert merged.secondary is not None
     assert merged.primary.used_percent == 33.0
     assert merged.secondary.used_percent == 44.0
+
+
+def test_recent_active_snapshot_process_fallback_requires_recent_snapshot_switch(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    now = datetime.now(timezone.utc)
+    current_path = tmp_path / "current"
+    current_path.write_text("work", encoding="utf-8")
+    monkeypatch.setenv("CODEX_AUTH_CURRENT_PATH", str(current_path))
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._has_running_default_scope_codex_process",
+        lambda: True,
+    )
+
+    assert has_recent_active_snapshot_process_fallback(now=now) is True
+
+    stale = now - timedelta(minutes=10)
+    os.utime(current_path, (stale.timestamp(), stale.timestamp()))
+    assert has_recent_active_snapshot_process_fallback(now=now) is False

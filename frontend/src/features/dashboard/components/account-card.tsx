@@ -27,7 +27,7 @@ import {
   formatWindowLabel,
   formatSlug,
 } from "@/utils/formatters";
-import { isAccountWorkingNow } from "@/utils/account-working";
+import { hasFreshLiveTelemetry, isAccountWorkingNow } from "@/utils/account-working";
 import { normalizeRemainingPercentForDisplay } from "@/utils/quota-display";
 import {
   canUseLocalAccount,
@@ -145,7 +145,11 @@ function QuotaBar({
       <div
         className={cn(
           "relative h-2 w-full overflow-hidden rounded-full ring-1 ring-white/5",
-          tone === "deactivated" ? "bg-zinc-500/10" : quotaBarTrack(clamped),
+          tone === "deactivated"
+            ? "bg-zinc-500/10"
+            : tone === "unknown"
+              ? "bg-muted/40"
+              : quotaBarTrack(clamped),
         )}
       >
         <div className={fillClass} style={{ width: `${clamped}%` }} />
@@ -200,7 +204,7 @@ export function AccountCard({
 }: AccountCardProps) {
   const blurred = usePrivacyStore((s) => s.blurred);
   const isActiveSnapshot = account.codexAuth?.isActiveSnapshot ?? false;
-  const hasLiveSession = account.codexAuth?.hasLiveSession ?? false;
+  const hasLiveSession = hasFreshLiveTelemetry(account);
   const isWorkingNow = isAccountWorkingNow(account);
   const status = resolveEffectiveAccountStatus({
     status: account.status,

@@ -4,7 +4,8 @@ import { createAccountSummary } from "@/test/mocks/factories";
 import { isAccountWorkingNow } from "@/utils/account-working";
 
 describe("isAccountWorkingNow", () => {
-  it("returns true when codex auth reports a live session", () => {
+  it("returns true when codex auth reports a live session with fresh telemetry", () => {
+    const now = new Date("2026-04-04T12:00:00.000Z");
     const account = createAccountSummary({
       codexAuth: {
         hasSnapshot: true,
@@ -13,8 +14,25 @@ describe("isAccountWorkingNow", () => {
         isActiveSnapshot: false,
         hasLiveSession: true,
       },
-      codexSessionCount: 0,
+      lastUsageRecordedAtPrimary: "2026-04-04T11:57:00.000Z",
     });
+    expect(isAccountWorkingNow(account, now.getTime())).toBe(true);
+  });
+
+  it("returns true when a live session has current task telemetry", () => {
+    const account = createAccountSummary({
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+      codexCurrentTaskPreview: "Investigating dashboard usage sync",
+      lastUsageRecordedAtPrimary: null,
+      lastUsageRecordedAtSecondary: null,
+    });
+
     expect(isAccountWorkingNow(account)).toBe(true);
   });
 
@@ -27,23 +45,26 @@ describe("isAccountWorkingNow", () => {
         isActiveSnapshot: true,
         hasLiveSession: false,
       },
-      codexSessionCount: 0,
+      lastUsageRecordedAtPrimary: null,
+      lastUsageRecordedAtSecondary: null,
     });
     expect(isAccountWorkingNow(account)).toBe(false);
   });
 
-  it("returns true when account has tracked codex sessions", () => {
+  it("returns false when live telemetry is stale", () => {
+    const now = new Date("2026-04-04T12:00:00.000Z");
     const account = createAccountSummary({
       codexAuth: {
         hasSnapshot: true,
         snapshotName: "secondary",
         activeSnapshotName: "main",
         isActiveSnapshot: false,
-        hasLiveSession: false,
+        hasLiveSession: true,
       },
-      codexSessionCount: 2,
+      lastUsageRecordedAtPrimary: "2026-04-04T11:45:00.000Z",
+      lastUsageRecordedAtSecondary: "2026-04-04T11:40:00.000Z",
     });
-    expect(isAccountWorkingNow(account)).toBe(true);
+    expect(isAccountWorkingNow(account, now.getTime())).toBe(false);
   });
 
   it("returns false when none of the working conditions apply", () => {
@@ -55,7 +76,8 @@ describe("isAccountWorkingNow", () => {
         isActiveSnapshot: false,
         hasLiveSession: false,
       },
-      codexSessionCount: 0,
+      lastUsageRecordedAtPrimary: null,
+      lastUsageRecordedAtSecondary: null,
     });
     expect(isAccountWorkingNow(account)).toBe(false);
   });

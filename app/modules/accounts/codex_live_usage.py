@@ -12,7 +12,8 @@ from typing import Any
 from app.modules.accounts.codex_auth_switcher import build_snapshot_index
 
 
-_DEFAULT_ACTIVE_WINDOW_SECONDS = 1800
+_DEFAULT_ACTIVE_WINDOW_SECONDS = 300
+_DEFAULT_SWITCH_PROCESS_FALLBACK_SECONDS = 60
 _TAIL_LINE_LIMIT = 400
 _FALLBACK_SCAN_LIMIT = 200
 _ROLLOUT_SESSION_PREFIX_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}$")
@@ -81,6 +82,13 @@ def read_local_codex_live_usage_by_snapshot(*, now: datetime | None = None) -> d
         usage_by_snapshot[snapshot_name] = _merge_live_usage(previous, runtime_usage)
 
     return usage_by_snapshot
+
+
+def has_recent_active_snapshot_process_fallback(*, now: datetime | None = None) -> bool:
+    current = now or datetime.now(timezone.utc)
+    if not _active_snapshot_selection_changed_recently(current):
+        return False
+    return _has_running_default_scope_codex_process()
 
 
 def _read_local_codex_live_usage_for_sessions_dir(
@@ -263,6 +271,20 @@ def _resolve_runtime_root() -> Path:
     return (Path.home() / ".codex" / "runtimes").resolve()
 
 
+def _resolve_current_path() -> Path:
+    raw = os.environ.get("CODEX_AUTH_CURRENT_PATH")
+    if raw:
+        return _resolve_path(raw)
+    return (Path.home() / ".codex" / "current").resolve()
+
+
+def _resolve_auth_path() -> Path:
+    raw = os.environ.get("CODEX_AUTH_JSON_PATH")
+    if raw:
+        return _resolve_path(raw)
+    return (Path.home() / ".codex" / "auth.json").resolve()
+
+
 def _read_runtime_current_snapshot(runtime_dir: Path) -> str | None:
     current_path = runtime_dir / "current"
     if not current_path.exists() or not current_path.is_file():
@@ -279,6 +301,150 @@ def _resolve_path(raw: str) -> Path:
     if not path.is_absolute():
         path = Path.cwd() / path
     return path.resolve()
+
+
+def _active_snapshot_selection_changed_recently(now: datetime) -> bool:
+    current_path = _resolve_current_path()
+    if not current_path.exists() or not current_path.is_file():
+        return False
+
+    changed_at = _safe_mtime(current_path)
+    if changed_at <= 0:
+        return False
+
+    age_seconds = max(0.0, now.timestamp() - changed_at)
+    return age_seconds <= _switch_process_fallback_seconds()
+
+
+def _switch_process_fallback_seconds() -> int:
+    raw = os.environ.get("CODEX_LB_SWITCH_SESSION_FALLBACK_SECONDS")
+    if raw is None:
+        return _DEFAULT_SWITCH_PROCESS_FALLBACK_SECONDS
+    try:
+        value = int(raw)
+    except ValueError:
+        return _DEFAULT_SWITCH_PROCESS_FALLBACK_SECONDS
+    return max(30, value)
+
+
+def _has_running_default_scope_codex_process() -> bool:
+    proc_root = Path("/proc")
+    if not proc_root.exists() or not proc_root.is_dir():
+        return False
+
+    default_current_path = _resolve_current_path()
+    default_auth_path = _resolve_auth_path()
+    for pid, command in _iter_running_codex_commands(proc_root):
+        if _is_non_default_auth_scope_process(
+            pid,
+            default_current_path=default_current_path,
+            default_auth_path=default_auth_path,
+        ):
+            continue
+        if command:
+            return True
+    return False
+
+
+def _iter_running_codex_commands(proc_root: Path) -> list[tuple[int, list[str]]]:
+    running: list[tuple[int, list[str]]] = []
+    for entry in proc_root.iterdir():
+        if not entry.name.isdigit():
+            continue
+        pid = int(entry.name)
+        command = _read_process_cmdline(pid)
+        if not command:
+            continue
+        if _is_codex_session_command(command):
+            running.append((pid, command))
+    return running
+
+
+def _read_process_cmdline(pid: int) -> list[str]:
+    cmdline_path = Path("/proc") / str(pid) / "cmdline"
+    try:
+        raw = cmdline_path.read_bytes()
+    except OSError:
+        return []
+    if not raw:
+        return []
+    parts = [chunk.decode("utf-8", errors="ignore") for chunk in raw.split(b"\x00") if chunk]
+    return [part for part in parts if part]
+
+
+def _is_codex_session_command(command: list[str]) -> bool:
+    if not command:
+        return False
+
+    has_codex_binary = any(Path(part).name == "codex" for part in command[:3])
+    if not has_codex_binary:
+        return False
+
+    return any("model_instructions_file=" in part for part in command)
+
+
+def _is_non_default_auth_scope_process(
+    pid: int,
+    *,
+    default_current_path: Path,
+    default_auth_path: Path,
+) -> bool:
+    env = _read_process_env(pid)
+    if not env:
+        return False
+
+    current_override = _resolve_process_path(env.get("CODEX_AUTH_CURRENT_PATH"), pid)
+    auth_override = _resolve_process_path(env.get("CODEX_AUTH_JSON_PATH"), pid)
+
+    if current_override is not None and current_override != default_current_path:
+        return True
+    if auth_override is not None and auth_override != default_auth_path:
+        return True
+    return False
+
+
+def _read_process_env(pid: int) -> dict[str, str]:
+    environ_path = Path("/proc") / str(pid) / "environ"
+    try:
+        raw = environ_path.read_bytes()
+    except OSError:
+        return {}
+
+    parsed: dict[str, str] = {}
+    for entry in raw.split(b"\x00"):
+        if not entry or b"=" not in entry:
+            continue
+        key, value = entry.split(b"=", 1)
+        parsed[key.decode("utf-8", errors="ignore")] = value.decode("utf-8", errors="ignore")
+    return parsed
+
+
+def _resolve_process_path(raw_value: str | None, pid: int) -> Path | None:
+    if not raw_value:
+        return None
+
+    candidate = Path(raw_value).expanduser()
+    if candidate.is_absolute():
+        try:
+            return candidate.resolve()
+        except OSError:
+            return candidate
+
+    cwd = _read_process_cwd(pid)
+    if cwd is not None:
+        candidate = cwd / candidate
+    try:
+        return candidate.resolve()
+    except OSError:
+        return candidate
+
+
+def _read_process_cwd(pid: int) -> Path | None:
+    cwd_link = Path("/proc") / str(pid) / "cwd"
+    try:
+        return Path(os.readlink(cwd_link)).resolve()
+    except OSError:
+        return None
 
 
 def _candidate_rollout_files(sessions_dir: Path, now: datetime) -> list[Path]:

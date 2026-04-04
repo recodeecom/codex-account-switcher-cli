@@ -1,0 +1,4 @@
+- [x] Add backend fallback detection for recently switched active snapshots when default-scope Codex CLI processes are running but rollout telemetry has not appeared yet.
+- [x] Ensure runtime-scoped CODEX_AUTH paths are excluded from the active-snapshot fallback.
+- [x] Add/extend unit tests for fallback activation behavior and recency gating.
+- [x] Validate specs with `openspec validate --specs`.

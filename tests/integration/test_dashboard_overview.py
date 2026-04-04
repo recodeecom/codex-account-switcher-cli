@@ -315,6 +315,7 @@ async def test_dashboard_overview_prefers_local_active_snapshot_usage_and_sessio
         secondary_used=14.0,
     )
     monkeypatch.setenv("CODEX_SESSIONS_DIR", str(sessions_root))
+    monkeypatch.setenv("CODEX_LB_LOCAL_SESSION_ACTIVE_SECONDS", "600")
 
     from app.core.config.settings import get_settings
 
@@ -703,8 +704,121 @@ async def test_dashboard_overview_matches_default_mixed_sessions_without_reset_t
     assert accounts[work_account_id]["usage"]["primaryRemainingPercent"] == pytest.approx(80.0)
     assert accounts[work_account_id]["usage"]["secondaryRemainingPercent"] == pytest.approx(70.0)
 
-    assert accounts[personal_account_id]["codexAuth"]["hasLiveSession"] is True
-    assert accounts[personal_account_id]["codexSessionCount"] == 1
+    assert accounts[personal_account_id]["codexAuth"]["hasLiveSession"] is False
+    assert accounts[personal_account_id]["codexSessionCount"] == 0
+    assert accounts[personal_account_id]["usage"]["primaryRemainingPercent"] == pytest.approx(60.0)
+    assert accounts[personal_account_id]["usage"]["secondaryRemainingPercent"] == pytest.approx(50.0)
+
+
+@pytest.mark.asyncio
+async def test_dashboard_overview_ignores_stale_token_count_fingerprints_in_mixed_default_sessions(
+    async_client,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    now = utcnow().replace(microsecond=0)
+    work_account_id = generate_unique_account_id("acc_work", "work@example.com")
+    personal_account_id = generate_unique_account_id("acc_personal", "personal@example.com")
+
+    work_ts = (now - timedelta(minutes=1)).replace(tzinfo=timezone.utc)
+    stale_ts = (now - timedelta(hours=2)).replace(tzinfo=timezone.utc)
+
+    work_primary_reset = int((work_ts + timedelta(minutes=30)).timestamp())
+    work_secondary_reset = int((work_ts + timedelta(days=7)).timestamp())
+    personal_primary_reset = int((now + timedelta(minutes=20)).timestamp())
+    personal_secondary_reset = int((now + timedelta(days=6)).timestamp())
+
+    async with SessionLocal() as session:
+        accounts_repo = AccountsRepository(session)
+        usage_repo = UsageRepository(session)
+        await accounts_repo.upsert(_make_account(work_account_id, "work@example.com"))
+        await accounts_repo.upsert(_make_account(personal_account_id, "personal@example.com"))
+        await usage_repo.add_entry(
+            work_account_id,
+            20.0,
+            window="primary",
+            window_minutes=300,
+            reset_at=work_primary_reset,
+            recorded_at=work_ts,
+        )
+        await usage_repo.add_entry(
+            work_account_id,
+            30.0,
+            window="secondary",
+            window_minutes=10080,
+            reset_at=work_secondary_reset,
+            recorded_at=work_ts,
+        )
+        await usage_repo.add_entry(
+            personal_account_id,
+            40.0,
+            window="primary",
+            window_minutes=300,
+            reset_at=personal_primary_reset,
+            recorded_at=now - timedelta(minutes=2),
+        )
+        await usage_repo.add_entry(
+            personal_account_id,
+            50.0,
+            window="secondary",
+            window_minutes=10080,
+            reset_at=personal_secondary_reset,
+            recorded_at=now - timedelta(minutes=2),
+        )
+
+    accounts_dir = tmp_path / "accounts"
+    accounts_dir.mkdir(parents=True, exist_ok=True)
+    _write_auth_snapshot(accounts_dir / "work.json", email="work@example.com", account_id="acc_work")
+    _write_auth_snapshot(accounts_dir / "personal.json", email="personal@example.com", account_id="acc_personal")
+    (tmp_path / "current").write_text("work")
+    monkeypatch.setenv("CODEX_LB_CODEX_AUTH_AUTO_IMPORT_ON_ACCOUNTS_LIST", "true")
+    monkeypatch.setenv("CODEX_AUTH_ACCOUNTS_DIR", str(accounts_dir))
+    monkeypatch.setenv("CODEX_AUTH_CURRENT_PATH", str(tmp_path / "current"))
+    monkeypatch.setenv("CODEX_AUTH_JSON_PATH", str(tmp_path / "auth.json"))
+    monkeypatch.setenv("CODEX_AUTH_RUNTIME_ROOT", str(tmp_path / "runtimes"))
+
+    sessions_root = tmp_path / "sessions"
+    day_dir = sessions_root / f"{now.year:04d}" / f"{now.month:02d}" / f"{now.day:02d}"
+    day_dir.mkdir(parents=True, exist_ok=True)
+
+    fresh = day_dir / "rollout-fresh.jsonl"
+    stale = day_dir / "rollout-stale.jsonl"
+    _write_rollout_snapshot(
+        fresh,
+        timestamp=work_ts,
+        primary_used=20.0,
+        secondary_used=30.0,
+    )
+    _write_rollout_snapshot(
+        stale,
+        timestamp=stale_ts,
+        primary_used=97.0,
+        secondary_used=75.0,
+    )
+    # Non-token writes can keep file mtime fresh even when token_count payload
+    # is stale; mixed-session attribution should ignore that stale fingerprint.
+    fresh_mtime = (now - timedelta(seconds=15)).timestamp()
+    os.utime(stale, (fresh_mtime, fresh_mtime))
+
+    monkeypatch.setenv("CODEX_SESSIONS_DIR", str(sessions_root))
+    monkeypatch.setenv("CODEX_LB_LOCAL_SESSION_ACTIVE_SECONDS", "300")
+
+    from app.core.config.settings import get_settings
+
+    get_settings.cache_clear()
+
+    response = await async_client.get("/api/dashboard/overview")
+    assert response.status_code == 200
+    payload = response.json()
+    accounts = {item["accountId"]: item for item in payload["accounts"]}
+
+    assert accounts[work_account_id]["codexAuth"]["hasLiveSession"] is True
+    assert accounts[work_account_id]["codexSessionCount"] == 1
+    assert accounts[work_account_id]["usage"]["primaryRemainingPercent"] == pytest.approx(80.0)
+    assert accounts[work_account_id]["usage"]["secondaryRemainingPercent"] == pytest.approx(70.0)
+
+    assert accounts[personal_account_id]["codexAuth"]["hasLiveSession"] is False
+    assert accounts[personal_account_id]["codexSessionCount"] == 0
     assert accounts[personal_account_id]["usage"]["primaryRemainingPercent"] == pytest.approx(60.0)
     assert accounts[personal_account_id]["usage"]["secondaryRemainingPercent"] == pytest.approx(50.0)
 

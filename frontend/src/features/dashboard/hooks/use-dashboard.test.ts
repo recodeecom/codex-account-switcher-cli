@@ -27,6 +27,7 @@ function createWrapper(queryClient: QueryClient) {
 
 describe("useDashboard", () => {
   it("loads dashboard overview via MSW and configures fast polling for working accounts", async () => {
+    const nowIso = new Date().toISOString();
     server.use(
       http.get("/api/dashboard/overview", () =>
         HttpResponse.json(
@@ -44,6 +45,8 @@ describe("useDashboard", () => {
                   isActiveSnapshot: true,
                   hasLiveSession: true,
                 },
+                lastUsageRecordedAtPrimary: nowIso,
+                lastUsageRecordedAtSecondary: nowIso,
               }),
             ],
           }),

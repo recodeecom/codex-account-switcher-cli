@@ -14,6 +14,7 @@ afterEach(() => {
 
 describe("AccountCard", () => {
   it("renders both 5h and weekly quota bars for regular accounts", () => {
+    const nowIso = new Date().toISOString();
     const account = createAccountSummary({
       requestUsage: {
         requestCount: 12,
@@ -29,6 +30,8 @@ describe("AccountCard", () => {
         isActiveSnapshot: true,
         hasLiveSession: true,
       },
+      lastUsageRecordedAtPrimary: nowIso,
+      lastUsageRecordedAtSecondary: nowIso,
     });
     render(<AccountCard account={account} />);
 
@@ -195,6 +198,7 @@ describe("AccountCard", () => {
   });
 
   it("enables use this account button for working-now accounts even with depleted 5h quota", () => {
+    const nowIso = new Date().toISOString();
     const account = createAccountSummary({
       status: "paused",
       usage: {
@@ -209,6 +213,8 @@ describe("AccountCard", () => {
         hasLiveSession: true,
       },
       codexSessionCount: 0,
+      lastUsageRecordedAtPrimary: nowIso,
+      lastUsageRecordedAtSecondary: nowIso,
     });
 
     render(<AccountCard account={account} />);
@@ -264,6 +270,7 @@ describe("AccountCard", () => {
 
   it("calls sessions action when sessions button is clicked", async () => {
     const user = userEvent.setup({ delay: null });
+    const nowIso = new Date().toISOString();
     const account = createAccountSummary({
       codexSessionCount: 6,
       codexAuth: {
@@ -273,6 +280,8 @@ describe("AccountCard", () => {
         isActiveSnapshot: true,
         hasLiveSession: true,
       },
+      lastUsageRecordedAtPrimary: nowIso,
+      lastUsageRecordedAtSecondary: nowIso,
     });
     const onAction = vi.fn();
 
@@ -381,6 +390,7 @@ describe("AccountCard", () => {
   });
 
   it("shows working indicator when runtime session is live even if snapshot is not globally active", () => {
+    const nowIso = new Date().toISOString();
     const account = createAccountSummary({
       codexAuth: {
         hasSnapshot: true,
@@ -389,6 +399,8 @@ describe("AccountCard", () => {
         isActiveSnapshot: false,
         hasLiveSession: true,
       },
+      lastUsageRecordedAtPrimary: nowIso,
+      lastUsageRecordedAtSecondary: nowIso,
     });
 
     render(<AccountCard account={account} />);
@@ -396,7 +408,7 @@ describe("AccountCard", () => {
     expect(screen.getByText("Working now")).toBeInTheDocument();
   });
 
-  it("shows working indicator when tracked codex sessions exist", () => {
+  it("does not show working indicator when only tracked codex sessions exist", () => {
     const account = createAccountSummary({
       codexSessionCount: 2,
       codexAuth: {
@@ -410,7 +422,7 @@ describe("AccountCard", () => {
 
     render(<AccountCard account={account} />);
 
-    expect(screen.getByText("Working now")).toBeInTheDocument();
+    expect(screen.queryByText("Working now")).not.toBeInTheDocument();
   });
 
   it("keeps card codex sessions at zero when only active snapshot is present without live telemetry", () => {
@@ -438,6 +450,7 @@ describe("AccountCard", () => {
   });
 
   it("shows at least one codex session when runtime reports a live session", () => {
+    const nowIso = new Date().toISOString();
     const account = createAccountSummary({
       email: "runtime@example.com",
       displayName: "runtime@example.com",
@@ -449,6 +462,8 @@ describe("AccountCard", () => {
         isActiveSnapshot: false,
         hasLiveSession: true,
       },
+      lastUsageRecordedAtPrimary: nowIso,
+      lastUsageRecordedAtSecondary: nowIso,
     });
 
     render(<AccountCard account={account} />);

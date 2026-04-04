@@ -28,6 +28,7 @@ function createWrapper(queryClient: QueryClient) {
 
 describe("useAccounts", () => {
   it("uses fast polling while any account is working now", () => {
+    const nowIso = new Date().toISOString();
     const workingAccounts = [
       createAccountSummary({
         codexAuth: {
@@ -37,7 +38,8 @@ describe("useAccounts", () => {
           isActiveSnapshot: true,
           hasLiveSession: true,
         },
-        codexSessionCount: 0,
+        lastUsageRecordedAtPrimary: nowIso,
+        lastUsageRecordedAtSecondary: nowIso,
       }),
     ];
 
