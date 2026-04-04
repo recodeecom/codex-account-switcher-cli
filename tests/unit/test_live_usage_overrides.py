@@ -353,7 +353,7 @@ def test_apply_local_live_usage_overrides_disables_default_session_fingerprint_f
 
     assert codex_session_counts_by_account[account_a.id] == 0
     assert codex_session_counts_by_account[account_b.id] == 0
-    assert codex_auth_by_account[account_a.id].has_live_session is True
+    assert codex_auth_by_account[account_a.id].has_live_session is False
     assert codex_auth_by_account[account_b.id].has_live_session is False
 
 
@@ -442,7 +442,7 @@ def test_apply_local_live_usage_overrides_uses_recent_switch_process_fallback_wi
     assert codex_session_counts_by_account[account_a.id] == 0
     assert codex_session_counts_by_account[account_b.id] == 0
     assert codex_auth_by_account[account_a.id].has_live_session is True
-    assert codex_auth_by_account[account_b.id].has_live_session is True
+    assert codex_auth_by_account[account_b.id].has_live_session is False
 
 
 def test_apply_local_live_usage_overrides_uses_mixed_default_session_fallback_without_process_visibility(
@@ -564,7 +564,7 @@ def test_apply_local_live_usage_overrides_uses_mixed_default_session_fallback_wi
 
     assert codex_session_counts_by_account[account_a.id] == 0
     assert codex_session_counts_by_account[account_b.id] == 0
-    assert codex_auth_by_account[account_a.id].has_live_session is False
+    assert codex_auth_by_account[account_a.id].has_live_session is True
     assert codex_auth_by_account[account_b.id].has_live_session is True
 
 
@@ -674,7 +674,7 @@ def test_apply_local_live_usage_overrides_uses_mixed_default_session_fallback_wi
     assert codex_session_counts_by_account[account_a.id] == 2
     assert codex_session_counts_by_account[account_b.id] == 0
     assert codex_auth_by_account[account_a.id].has_live_session is True
-    assert codex_auth_by_account[account_b.id].has_live_session is False
+    assert codex_auth_by_account[account_b.id].has_live_session is True
 
 
 def test_match_sample_prefers_unique_reset_fingerprint_over_percent_similarity() -> None:
@@ -810,7 +810,7 @@ def test_fallback_mapping_updates_live_session_counts_but_keeps_quota_baseline_f
 
     assert codex_session_counts_by_account == {account_a.id: 2, account_b.id: 0}
     assert codex_auth_by_account[account_a.id].has_live_session is True
-    assert codex_auth_by_account[account_b.id].has_live_session is True
+    assert codex_auth_by_account[account_b.id].has_live_session is False
     assert primary_usage[account_a.id].used_percent == baseline_primary[account_a.id].used_percent
     assert secondary_usage[account_a.id].used_percent == baseline_secondary[account_a.id].used_percent
     assert primary_usage[account_b.id].used_percent == baseline_primary[account_b.id].used_percent
@@ -895,7 +895,7 @@ def test_fallback_mapping_keeps_low_confidence_fingerprint_samples_on_active_sna
 
     assert codex_session_counts_by_account == {account_a.id: 0, account_b.id: 2}
     assert codex_auth_by_account[account_a.id].has_live_session is False
-    assert codex_auth_by_account[account_b.id].has_live_session is False
+    assert codex_auth_by_account[account_b.id].has_live_session is True
     assert primary_usage[account_a.id].used_percent == baseline_primary[account_a.id].used_percent
     assert secondary_usage[account_a.id].used_percent == baseline_secondary[account_a.id].used_percent
     assert primary_usage[account_b.id].used_percent == baseline_primary[account_b.id].used_percent

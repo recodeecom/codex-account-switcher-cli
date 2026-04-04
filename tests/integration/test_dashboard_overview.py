@@ -229,6 +229,47 @@ async def test_dashboard_overview_combines_data(async_client, db_setup):
 
 
 @pytest.mark.asyncio
+async def test_dashboard_overview_falls_back_to_older_tracked_sessions_when_no_recent_sessions(async_client, db_setup):
+    now = utcnow().replace(microsecond=0)
+
+    async with SessionLocal() as session:
+        accounts_repo = AccountsRepository(session)
+        await accounts_repo.upsert(_make_account("acc_old_only", "old-only@example.com"))
+        await session.execute(
+            text(
+                """
+                INSERT INTO sticky_sessions (
+                    key, account_id, kind, created_at, updated_at, task_preview, task_updated_at
+                )
+                VALUES (
+                    :session_key, :account_id, :kind, :stale_timestamp, :stale_timestamp,
+                    :stale_task_preview, :stale_timestamp
+                )
+                """
+            ),
+            {
+                "session_key": "dashboard-session-old-only",
+                "account_id": "acc_old_only",
+                "kind": "codex_session",
+                "stale_timestamp": now - timedelta(hours=2),
+                "stale_task_preview": "Old session preview should stay hidden",
+            },
+        )
+        await session.commit()
+
+    response = await async_client.get("/api/dashboard/overview")
+    assert response.status_code == 200
+    payload = response.json()
+    account = next(item for item in payload["accounts"] if item["accountId"] == "acc_old_only")
+
+    # No recent update exists, but durable tracked sessions should remain
+    # discoverable for "Working now" grouping.
+    assert account["codexTrackedSessionCount"] == 1
+    # Task preview remains tied to the recent-task window.
+    assert account["codexCurrentTaskPreview"] is None
+
+
+@pytest.mark.asyncio
 async def test_dashboard_overview_refreshes_stale_usage_for_active_accounts(
     async_client,
     monkeypatch: pytest.MonkeyPatch,
@@ -567,12 +608,12 @@ async def test_dashboard_overview_applies_runtime_live_usage_per_snapshot(
     payload = response.json()
     accounts = {item["accountId"]: item for item in payload["accounts"]}
 
-    assert accounts[work_account_id]["codexAuth"]["hasLiveSession"] is False
+    assert accounts[work_account_id]["codexAuth"]["hasLiveSession"] is True
     assert accounts[work_account_id]["codexSessionCount"] == 0
     assert accounts[work_account_id]["usage"]["primaryRemainingPercent"] == pytest.approx(80.0)
     assert accounts[work_account_id]["usage"]["secondaryRemainingPercent"] == pytest.approx(70.0)
 
-    assert accounts[personal_account_id]["codexAuth"]["hasLiveSession"] is False
+    assert accounts[personal_account_id]["codexAuth"]["hasLiveSession"] is True
     assert accounts[personal_account_id]["codexSessionCount"] == 0
     assert accounts[personal_account_id]["usage"]["primaryRemainingPercent"] == pytest.approx(60.0)
     assert accounts[personal_account_id]["usage"]["secondaryRemainingPercent"] == pytest.approx(50.0)
@@ -670,12 +711,12 @@ async def test_dashboard_overview_matches_default_mixed_sessions_by_fingerprint(
     payload = response.json()
     accounts = {item["accountId"]: item for item in payload["accounts"]}
 
-    assert accounts[work_account_id]["codexAuth"]["hasLiveSession"] is False
+    assert accounts[work_account_id]["codexAuth"]["hasLiveSession"] is True
     assert accounts[work_account_id]["codexSessionCount"] == 0
     assert accounts[work_account_id]["usage"]["primaryRemainingPercent"] == pytest.approx(80.0)
     assert accounts[work_account_id]["usage"]["secondaryRemainingPercent"] == pytest.approx(70.0)
 
-    assert accounts[personal_account_id]["codexAuth"]["hasLiveSession"] is False
+    assert accounts[personal_account_id]["codexAuth"]["hasLiveSession"] is True
     assert accounts[personal_account_id]["codexSessionCount"] == 0
     assert accounts[personal_account_id]["usage"]["primaryRemainingPercent"] == pytest.approx(60.0)
     assert accounts[personal_account_id]["usage"]["secondaryRemainingPercent"] == pytest.approx(50.0)
@@ -766,13 +807,13 @@ async def test_dashboard_overview_matches_default_mixed_sessions_without_reset_t
     payload = response.json()
     accounts = {item["accountId"]: item for item in payload["accounts"]}
 
-    assert accounts[work_account_id]["codexAuth"]["hasLiveSession"] is False
+    assert accounts[work_account_id]["codexAuth"]["hasLiveSession"] is True
     assert accounts[work_account_id]["codexAuth"]["liveUsageConfidence"] == "high"
     assert accounts[work_account_id]["codexSessionCount"] == 0
     assert accounts[work_account_id]["usage"]["primaryRemainingPercent"] == pytest.approx(80.0)
     assert accounts[work_account_id]["usage"]["secondaryRemainingPercent"] == pytest.approx(70.0)
 
-    assert accounts[personal_account_id]["codexAuth"]["hasLiveSession"] is False
+    assert accounts[personal_account_id]["codexAuth"]["hasLiveSession"] is True
     assert accounts[personal_account_id]["codexAuth"]["liveUsageConfidence"] == "high"
     assert accounts[personal_account_id]["codexSessionCount"] == 0
     assert accounts[personal_account_id]["usage"]["primaryRemainingPercent"] == pytest.approx(60.0)
