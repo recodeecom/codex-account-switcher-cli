@@ -817,7 +817,7 @@ def test_fallback_mapping_updates_live_session_counts_but_keeps_quota_baseline_f
     assert secondary_usage[account_b.id].used_percent == baseline_secondary[account_b.id].used_percent
 
 
-def test_fallback_mapping_keeps_low_confidence_fingerprint_samples_on_active_snapshot() -> None:
+def test_fallback_mapping_distributes_low_confidence_fingerprint_samples_deterministically() -> None:
     account_a = _make_account("acc-a", "a@example.com")
     account_b = _make_account("acc-b", "b@example.com")
     accounts = [account_a, account_b]
@@ -872,15 +872,15 @@ def test_fallback_mapping_keeps_low_confidence_fingerprint_samples_on_active_sna
                 LocalCodexLiveUsageSample(
                     source="rollout-low-confidence-active-a.jsonl",
                     recorded_at=datetime(2026, 4, 3, 12, 0, tzinfo=timezone.utc),
-                    primary=LocalUsageWindow(used_percent=41.0, reset_at=shared_primary_reset, window_minutes=300),
-                    secondary=LocalUsageWindow(used_percent=41.0, reset_at=shared_secondary_reset, window_minutes=10_080),
+                    primary=LocalUsageWindow(used_percent=40.9, reset_at=shared_primary_reset, window_minutes=300),
+                    secondary=LocalUsageWindow(used_percent=40.9, reset_at=shared_secondary_reset, window_minutes=10_080),
                     stale=False,
                 ),
                 LocalCodexLiveUsageSample(
                     source="rollout-low-confidence-active-b.jsonl",
                     recorded_at=datetime(2026, 4, 3, 12, 1, tzinfo=timezone.utc),
-                    primary=LocalUsageWindow(used_percent=41.0, reset_at=shared_primary_reset, window_minutes=300),
-                    secondary=LocalUsageWindow(used_percent=41.0, reset_at=shared_secondary_reset, window_minutes=10_080),
+                    primary=LocalUsageWindow(used_percent=41.9, reset_at=shared_primary_reset, window_minutes=300),
+                    secondary=LocalUsageWindow(used_percent=41.9, reset_at=shared_secondary_reset, window_minutes=10_080),
                     stale=False,
                 ),
             ]
@@ -893,8 +893,8 @@ def test_fallback_mapping_keeps_low_confidence_fingerprint_samples_on_active_sna
         codex_session_counts_by_account=codex_session_counts_by_account,
     )
 
-    assert codex_session_counts_by_account == {account_a.id: 0, account_b.id: 2}
-    assert codex_auth_by_account[account_a.id].has_live_session is False
+    assert codex_session_counts_by_account == {account_a.id: 1, account_b.id: 1}
+    assert codex_auth_by_account[account_a.id].has_live_session is True
     assert codex_auth_by_account[account_b.id].has_live_session is True
     assert primary_usage[account_a.id].used_percent == baseline_primary[account_a.id].used_percent
     assert secondary_usage[account_a.id].used_percent == baseline_secondary[account_a.id].used_percent

@@ -21,19 +21,6 @@ describe("sessions flow integration", () => {
         return HttpResponse.json({
           entries: [
             {
-              key: "session-alpha",
-              accountId: "acc_alpha",
-              displayName: "alpha@example.com",
-              kind: "codex_session",
-              createdAt: "2026-03-10T12:00:00Z",
-              updatedAt: "2026-03-10T12:05:00Z",
-              taskPreview: "Investigate alpha session stream retry bug",
-              taskUpdatedAt: "2026-03-10T12:05:00Z",
-              isActive: true,
-              expiresAt: null,
-              isStale: false,
-            },
-            {
               key: "session-beta",
               accountId: "acc_beta",
               displayName: "beta@example.com",
@@ -42,6 +29,19 @@ describe("sessions flow integration", () => {
               updatedAt: "2026-03-10T13:02:00Z",
               taskPreview: "Review beta account quota depletion warnings",
               taskUpdatedAt: "2026-03-10T13:02:00Z",
+              isActive: true,
+              expiresAt: null,
+              isStale: false,
+            },
+            {
+              key: "session-alpha",
+              accountId: "acc_alpha",
+              displayName: "alpha@example.com",
+              kind: "codex_session",
+              createdAt: "2026-03-10T12:00:00Z",
+              updatedAt: "2026-03-10T12:05:00Z",
+              taskPreview: "Investigate alpha session stream retry bug",
+              taskUpdatedAt: "2026-03-10T12:05:00Z",
               isActive: true,
               expiresAt: null,
               isStale: false,
@@ -70,6 +70,9 @@ describe("sessions flow integration", () => {
     expect(screen.getAllByText("Up to date").length).toBeGreaterThan(0);
     expect(screen.getByText("Investigate alpha session stream retry bug")).toBeInTheDocument();
     expect(screen.getByText("Review beta account quota depletion warnings")).toBeInTheDocument();
+    const alphaAccount = screen.getByText("alpha@example.com");
+    const betaAccount = screen.getByText("beta@example.com");
+    expect(alphaAccount.compareDocumentPosition(betaAccount) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(requestUrl).toContain("activeOnly=true");
   });
 
@@ -235,5 +238,70 @@ describe("sessions flow integration", () => {
     expect(screen.getByText("Idle")).toBeInTheDocument();
     expect(screen.getByText("telemetry pending")).toBeInTheDocument();
     expect(screen.getByText("—")).toBeInTheDocument();
+  });
+
+  it("fallback mode detects fresh live quota samples without tracked sessions", async () => {
+    const nowIso = new Date().toISOString();
+    server.use(
+      http.get("/api/sticky-sessions", () =>
+        HttpResponse.json({
+          entries: [],
+          stalePromptCacheCount: 0,
+          total: 0,
+          hasMore: false,
+        }),
+      ),
+      http.get("/api/dashboard/overview", () =>
+        HttpResponse.json(
+          createDashboardOverview({
+            accounts: [
+              createAccountSummary({
+                accountId: "acc_sample",
+                email: "sample@example.com",
+                displayName: "sample@example.com",
+                codexLiveSessionCount: 0,
+                codexTrackedSessionCount: 0,
+                codexSessionCount: 0,
+                codexCurrentTaskPreview: "Investigate sample attribution",
+                lastUsageRecordedAtPrimary: nowIso,
+                lastUsageRecordedAtSecondary: nowIso,
+                codexAuth: {
+                  hasSnapshot: true,
+                  snapshotName: "sample",
+                  activeSnapshotName: "sample",
+                  isActiveSnapshot: true,
+                  hasLiveSession: false,
+                },
+                liveQuotaDebug: {
+                  snapshotsConsidered: ["sample"],
+                  overrideApplied: false,
+                  overrideReason: "deferred_active_snapshot_mixed_default_sessions",
+                  merged: null,
+                  rawSamples: [
+                    {
+                      source: "/tmp/rollout-sample.jsonl",
+                      snapshotName: "sample",
+                      recordedAt: nowIso,
+                      stale: false,
+                      primary: { usedPercent: 41, remainingPercent: 59, resetAt: 1760000000, windowMinutes: 300 },
+                      secondary: { usedPercent: 25, remainingPercent: 75, resetAt: 1760600000, windowMinutes: 10080 },
+                    },
+                  ],
+                },
+              }),
+            ],
+          }),
+        ),
+      ),
+    );
+
+    window.history.pushState({}, "", "/sessions?accountId=acc_sample");
+    renderWithProviders(<App />);
+
+    expect(await screen.findByRole("heading", { name: "Sessions" })).toBeInTheDocument();
+    expect(await screen.findByText("sample@example.com")).toBeInTheDocument();
+    expect(screen.getByText("1 fresh sample")).toBeInTheDocument();
+    expect(screen.getByText("Idle")).toBeInTheDocument();
+    expect(screen.getByText("Investigate sample attribution")).toBeInTheDocument();
   });
 });

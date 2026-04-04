@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useRef, useMemo } from "react";
+import { useCallback, useEffect, useRef, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -9,15 +9,12 @@ import { AccountDetail } from "@/features/accounts/components/account-detail";
 import { AccountList } from "@/features/accounts/components/account-list";
 import { AccountsSkeleton } from "@/features/accounts/components/accounts-skeleton";
 import { ImportDialog } from "@/features/accounts/components/import-dialog";
+import { OauthDialog } from "@/features/accounts/components/oauth-dialog";
 import { useAccounts } from "@/features/accounts/hooks/use-accounts";
 import { useOauth } from "@/features/accounts/hooks/use-oauth";
 import { buildDuplicateAccountIdSet } from "@/utils/account-identifiers";
 import { getErrorMessageOrNull } from "@/utils/errors";
 import { isCodexAuthSnapshotMissingError } from "@/utils/use-local-account";
-
-const OauthDialog = lazy(() =>
-  import("@/features/accounts/components/oauth-dialog").then((m) => ({ default: m.OauthDialog })),
-);
 
 export function AccountsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -178,24 +175,22 @@ export function AccountsPage() {
         }}
       />
 
-      <Suspense fallback={null}>
-        <OauthDialog
-          open={oauthDialog.open}
-          state={oauth.state}
-          onOpenChange={oauthDialog.onOpenChange}
-          onStart={async (method) => {
-            await oauth.start(method);
-          }}
-          onComplete={async () => {
-            await oauth.complete();
-            await accountsQuery.refetch();
-          }}
-          onManualCallback={async (callbackUrl) => {
-            await oauth.manualCallback(callbackUrl);
-          }}
-          onReset={oauth.reset}
-        />
-      </Suspense>
+      <OauthDialog
+        open={oauthDialog.open}
+        state={oauth.state}
+        onOpenChange={oauthDialog.onOpenChange}
+        onStart={async (method) => {
+          await oauth.start(method);
+        }}
+        onComplete={async () => {
+          await oauth.complete();
+          await accountsQuery.refetch();
+        }}
+        onManualCallback={async (callbackUrl) => {
+          await oauth.manualCallback(callbackUrl);
+        }}
+        onReset={oauth.reset}
+      />
 
       <ConfirmDialog
         open={deleteDialog.open}

@@ -241,17 +241,46 @@ def _select_snapshot_name_for_account(
 ) -> str | None:
     snapshot_names_by_account_id = _snapshot_names_by_account_id(accounts_dir)
     existing_names = snapshot_names_by_account_id.get(account_id, [])
+    base_name = build_email_snapshot_name(email)
     if existing_names:
+        existing_email_aliases = [
+            snapshot_name
+            for snapshot_name in existing_names
+            if _is_email_snapshot_alias(snapshot_name, base_name=base_name)
+        ]
+        if existing_email_aliases:
+            selected = select_snapshot_name(existing_email_aliases, None, email=email)
+            return selected or existing_email_aliases[0]
         selected = select_snapshot_name(existing_names, None, email=email)
         return selected or existing_names[0]
 
-    base_name = build_email_snapshot_name(email)
+    snapshot_names_by_email = _snapshot_names_by_email(accounts_dir)
+    normalized_email = email.strip().lower()
+    existing_email_names = snapshot_names_by_email.get(normalized_email, [])
+    if existing_email_names:
+        selected = select_snapshot_name(existing_email_names, None, email=email)
+        return selected or existing_email_names[0]
+
+    return _next_available_email_snapshot_name(base_name=base_name, accounts_dir=accounts_dir)
+
+
+def _next_available_email_snapshot_name(*, base_name: str, accounts_dir: Path) -> str:
     candidate = base_name
     suffix = 2
     while (accounts_dir / f"{candidate}.json").exists():
         candidate = f"{base_name}-{suffix}"
         suffix += 1
     return candidate
+
+
+def _is_email_snapshot_alias(snapshot_name: str, *, base_name: str) -> bool:
+    if snapshot_name == base_name:
+        return True
+    prefix = f"{base_name}-"
+    if not snapshot_name.startswith(prefix):
+        return False
+    suffix = snapshot_name[len(prefix) :]
+    return suffix.isdigit()
 
 
 def _snapshot_names_by_account_id(accounts_dir: Path) -> dict[str, list[str]]:
@@ -270,6 +299,25 @@ def _snapshot_names_by_account_id(accounts_dir: Path) -> dict[str, list[str]]:
     for snapshot_names in names_by_account_id.values():
         snapshot_names.sort()
     return names_by_account_id
+
+
+def _snapshot_names_by_email(accounts_dir: Path) -> dict[str, list[str]]:
+    names_by_email: dict[str, list[str]] = {}
+    for snapshot_path in _collect_snapshot_files(accounts_dir):
+        try:
+            auth = parse_auth_json(snapshot_path.read_bytes())
+        except (json.JSONDecodeError, ValidationError, UnicodeDecodeError, TypeError, OSError):
+            continue
+
+        claims = claims_from_auth(auth)
+        email = (claims.email or DEFAULT_EMAIL).strip().lower()
+        if not email or email == DEFAULT_EMAIL:
+            continue
+        names_by_email.setdefault(email, []).append(snapshot_path.stem)
+
+    for snapshot_names in names_by_email.values():
+        snapshot_names.sort()
+    return names_by_email
 
 
 def _should_reactivate_deactivated_account(account: Account) -> bool:

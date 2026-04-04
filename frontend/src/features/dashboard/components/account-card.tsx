@@ -240,32 +240,75 @@ function formatDebugSource(source: string): string {
   return parts[parts.length - 1] || normalized;
 }
 
+function normalizeDebugSnapshotName(value: string | null | undefined): string | null {
+  const normalized = value?.trim().toLowerCase();
+  return normalized ? normalized : null;
+}
+
+function scopeQuotaDebugSamplesToAccount(
+  liveQuotaDebug: NonNullable<AccountSummary["liveQuotaDebug"]>,
+  accountSnapshotName: string | null | undefined,
+) {
+  const targetSnapshot = normalizeDebugSnapshotName(accountSnapshotName);
+  const rawSamples = liveQuotaDebug.rawSamples;
+  if (!targetSnapshot) {
+    return rawSamples;
+  }
+
+  const exactSnapshotMatch = rawSamples.filter(
+    (sample) => normalizeDebugSnapshotName(sample.snapshotName) === targetSnapshot,
+  );
+  if (exactSnapshotMatch.length > 0) {
+    return exactSnapshotMatch;
+  }
+
+  const unnamedSamples = rawSamples.filter(
+    (sample) => normalizeDebugSnapshotName(sample.snapshotName) == null,
+  );
+  if (unnamedSamples.length === 0) {
+    return [];
+  }
+
+  const consideredSnapshots = (liveQuotaDebug.snapshotsConsidered ?? [])
+    .map((value) => normalizeDebugSnapshotName(value))
+    .filter((value): value is string => value != null);
+  const consideredOnlyTarget =
+    consideredSnapshots.length === 0 ||
+    consideredSnapshots.every((snapshot) => snapshot === targetSnapshot);
+  return consideredOnlyTarget ? unnamedSamples : [];
+}
+
 function buildQuotaDebugLogLines(
   liveQuotaDebug: NonNullable<AccountSummary["liveQuotaDebug"]>,
+  accountSnapshotName: string | null | undefined,
 ): string[] {
   const merged = liveQuotaDebug.merged;
+  const scopedSamples = scopeQuotaDebugSamplesToAccount(
+    liveQuotaDebug,
+    accountSnapshotName,
+  );
   const lines: string[] = [
     `$ merged 5h=${formatDebugPercent(merged?.primary?.remainingPercent)} weekly=${formatDebugPercent(merged?.secondary?.remainingPercent)}`,
     `$ override=${liveQuotaDebug.overrideReason ?? (liveQuotaDebug.overrideApplied ? "applied" : "none")}`,
-    `$ flow=collect_raw -> merge -> ${liveQuotaDebug.overrideApplied ? "apply_override" : "no_override"}`,
+    `$ flow=collect_cli_sessions -> merge -> ${liveQuotaDebug.overrideApplied ? "apply_override" : "no_override"}`,
   ];
 
   if (liveQuotaDebug.snapshotsConsidered.length > 0) {
     lines.push(`$ snapshots=${liveQuotaDebug.snapshotsConsidered.join(", ")}`);
   }
 
-  if (liveQuotaDebug.rawSamples.length === 0) {
-    lines.push("$ no raw terminal samples");
+  if (scopedSamples.length === 0) {
+    lines.push("$ no cli sessions sampled");
     return lines;
   }
 
-  liveQuotaDebug.rawSamples.slice(0, 24).forEach((sample, index) => {
+  scopedSamples.slice(0, 24).forEach((sample, index) => {
     const staleSuffix = sample.stale ? " stale=true" : "";
     const snapshotSuffix = sample.snapshotName
       ? ` snapshot=${sample.snapshotName}`
       : "";
     lines.push(
-      `$ sample#${index + 1} src=${formatDebugSource(sample.source)} 5h=${formatDebugPercent(sample.primary?.remainingPercent)} weekly=${formatDebugPercent(sample.secondary?.remainingPercent)}${snapshotSuffix}${staleSuffix}`,
+      `$ cli-session#${index + 1} src=${formatDebugSource(sample.source)} 5h=${formatDebugPercent(sample.primary?.remainingPercent)} weekly=${formatDebugPercent(sample.secondary?.remainingPercent)}${snapshotSuffix}${staleSuffix}`,
     );
   });
   return lines;
@@ -472,8 +515,13 @@ export function AccountCard({
     account.codexCurrentTaskPreview?.trim() || null;
   const quotaDebugLogText = useMemo(
     () =>
-      liveQuotaDebug ? buildQuotaDebugLogLines(liveQuotaDebug).join("\n") : "",
-    [liveQuotaDebug],
+      liveQuotaDebug
+        ? buildQuotaDebugLogLines(
+            liveQuotaDebug,
+            account.codexAuth?.snapshotName ?? null,
+          ).join("\n")
+        : "",
+    [account.codexAuth?.snapshotName, liveQuotaDebug],
   );
   const emailSubtitle =
     account.displayName && account.displayName !== account.email
@@ -643,7 +691,7 @@ export function AccountCard({
             <div className="mt-2 space-y-2 rounded-lg border border-cyan-500/25 bg-[#061325] px-2.5 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-300">
-                  Quota logs
+                  CLI session logs
                 </p>
                 <div className="origin-right scale-90">
                   <CopyButton value={quotaDebugLogText} label="Copy logs" />

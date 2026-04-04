@@ -19,6 +19,7 @@ import { listStickySessions } from "@/features/sticky-sessions/api";
 import { Badge } from "@/components/ui/badge";
 import { usePrivacyStore } from "@/hooks/use-privacy";
 import { cn } from "@/lib/utils";
+import { getFreshDebugRawSampleCount } from "@/utils/account-working";
 import { formatLastUsageLabel } from "@/utils/formatters";
 
 const DEFAULT_LIMIT = 25;
@@ -36,6 +37,7 @@ type ActivityRow = {
   progressLabel: string;
   progressTone: ProgressTone;
   codexSessionCount: number;
+  sortTimestampMs: number;
 };
 
 function resolveProgressDisplay(
@@ -79,6 +81,81 @@ function resolveLatestUsageTimestamp(
   }
 
   return primaryMs >= secondaryMs ? primary ?? null : secondary ?? null;
+}
+
+function parseIsoToMs(value: string | null | undefined): number {
+  if (!value) {
+    return 0;
+  }
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) {
+    return 0;
+  }
+  return parsed;
+}
+
+function sortActivityRowsByAccount(rows: ActivityRow[]): ActivityRow[] {
+  return [...rows].sort((left, right) => {
+    const displayNameOrder = left.displayName.localeCompare(right.displayName, undefined, {
+      sensitivity: "base",
+      numeric: true,
+    });
+    if (displayNameOrder !== 0) {
+      return displayNameOrder;
+    }
+
+    const accountIdOrder = left.accountId.localeCompare(right.accountId, undefined, {
+      sensitivity: "base",
+      numeric: true,
+    });
+    if (accountIdOrder !== 0) {
+      return accountIdOrder;
+    }
+
+    if (left.status !== right.status) {
+      return left.status === "live" ? -1 : 1;
+    }
+
+    if (left.sortTimestampMs !== right.sortTimestampMs) {
+      return right.sortTimestampMs - left.sortTimestampMs;
+    }
+
+    return left.identity.localeCompare(right.identity, undefined, {
+      sensitivity: "base",
+      numeric: true,
+    });
+  });
+}
+
+function formatTrackedSessionLabel(sessionCount: number): string {
+  return `${sessionCount} tracked ${sessionCount === 1 ? "session" : "sessions"}`;
+}
+
+function buildFallbackSourceLabel({
+  trackedSessionCount,
+  freshSampleCount,
+  hasLiveSession,
+}: {
+  trackedSessionCount: number;
+  freshSampleCount: number;
+  hasLiveSession: boolean;
+}): string {
+  if (trackedSessionCount > 0 && freshSampleCount > 0) {
+    return `${formatTrackedSessionLabel(trackedSessionCount)} · ${freshSampleCount} fresh ${freshSampleCount === 1 ? "sample" : "samples"}`;
+  }
+  if (trackedSessionCount > 0) {
+    return formatTrackedSessionLabel(trackedSessionCount);
+  }
+  if (freshSampleCount > 0 && hasLiveSession) {
+    return `${freshSampleCount} fresh ${freshSampleCount === 1 ? "sample" : "samples"} · live heartbeat`;
+  }
+  if (freshSampleCount > 0) {
+    return `${freshSampleCount} fresh ${freshSampleCount === 1 ? "sample" : "samples"}`;
+  }
+  if (hasLiveSession) {
+    return "Live session heartbeat";
+  }
+  return "Session telemetry pending";
 }
 
 export function SessionsPage() {
@@ -127,46 +204,68 @@ export function SessionsPage() {
         progressLabel: progress.label,
         progressTone: progress.tone,
         codexSessionCount: 1,
+        sortTimestampMs: parseIsoToMs(entry.taskUpdatedAt ?? entry.updatedAt),
       };
     });
 
-    if (selectedAccountId) {
-      return rows.filter((row) => row.accountId === selectedAccountId);
-    }
+    const scopedRows = selectedAccountId
+      ? rows.filter((row) => row.accountId === selectedAccountId)
+      : rows;
 
-    return rows;
+    return sortActivityRowsByAccount(scopedRows);
   }, [entries, selectedAccountId]);
   const fallbackActivityRows = useMemo<ActivityRow[]>(() => {
     const rows = (overviewQuery.data?.accounts ?? [])
       .map((account) => {
-        const codexSessionCount = Math.max(account.codexTrackedSessionCount ?? 0, 0);
+        const trackedSessionCount = Math.max(
+          account.codexTrackedSessionCount ?? 0,
+          account.codexSessionCount ?? 0,
+          0,
+        );
+        const freshSampleCount = getFreshDebugRawSampleCount(account);
         const hasLiveSession = Boolean(
           account.codexAuth?.hasLiveSession
             ?? (account.codexLiveSessionCount ?? 0) > 0,
         );
+        const latestUsageTimestamp = resolveLatestUsageTimestamp(
+          account.lastUsageRecordedAtPrimary,
+          account.lastUsageRecordedAtSecondary,
+        );
+        const detectedSessionCount =
+          trackedSessionCount > 0
+            ? trackedSessionCount
+            : hasLiveSession || freshSampleCount > 0
+              ? 1
+              : 0;
         const progress = resolveProgressDisplay(
           hasLiveSession,
-          resolveLatestUsageTimestamp(account.lastUsageRecordedAtPrimary, account.lastUsageRecordedAtSecondary),
+          latestUsageTimestamp,
         );
         return {
           rowKey: `overview:${account.accountId}`,
           accountId: account.accountId,
           displayName: account.displayName,
           identity: "Dashboard overview",
-          sourceLabel: `${codexSessionCount} tracked ${codexSessionCount === 1 ? "session" : "sessions"}`,
+          sourceLabel: buildFallbackSourceLabel({
+            trackedSessionCount,
+            freshSampleCount,
+            hasLiveSession,
+          }),
           status: hasLiveSession ? ("live" as const) : ("idle" as const),
           currentTask: account.codexCurrentTaskPreview?.trim() || null,
           progressLabel: progress.label,
           progressTone: progress.tone,
-          codexSessionCount,
+          codexSessionCount: detectedSessionCount,
+          sortTimestampMs: parseIsoToMs(latestUsageTimestamp),
         };
       })
       .filter((row) => row.codexSessionCount > 0);
 
-    if (selectedAccountId) {
-      return rows.filter((row) => row.accountId === selectedAccountId);
-    }
-    return rows;
+    const scopedRows = selectedAccountId
+      ? rows.filter((row) => row.accountId === selectedAccountId)
+      : rows;
+
+    return sortActivityRowsByAccount(scopedRows);
   }, [overviewQuery.data?.accounts, selectedAccountId]);
   const shouldUseFallbackOverview = stickyActivityRows.length === 0 && fallbackActivityRows.length > 0;
   const activityRows = shouldUseFallbackOverview ? fallbackActivityRows : stickyActivityRows;

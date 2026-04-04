@@ -1635,16 +1635,16 @@ def _resolve_sample_account_assignments(
 
     # Pass 3: deterministic cost-based assignment for remaining fingerprint samples.
     #
-    # Only keep high-confidence matches here. Low-confidence matches are left
-    # unresolved so Pass 4 can conservatively pin them to the preferred
-    # account (typically the active snapshot) instead of spreading ambiguous
-    # samples across unrelated accounts.
+    # Keep high-confidence matches. For low-confidence matches, only keep
+    # "nearby but not tied" candidates (small absolute distance with a strict
+    # winner). Fully ambiguous ties and far-off matches stay unresolved for
+    # Pass 4's conservative preferred-account fallback.
     for sample_index in _sorted_sample_indexes(samples, unresolved_sample_indexes):
         sample = samples[sample_index]
         if not _sample_has_fingerprint(sample):
             continue
 
-        best_match: tuple[float, float, str, _SampleMatchResult] | None = None
+        best_match: tuple[float, float, int, str, _SampleMatchResult] | None = None
         for account_id in account_ids:
             match_metrics = _build_sample_match_metrics(
                 sample=sample,
@@ -1659,6 +1659,7 @@ def _resolve_sample_account_assignments(
             candidate = (
                 distance,
                 -margin,
+                assigned_counts[account_id],
                 account_id,
                 _SampleMatchResult(
                     account_id=account_id,
@@ -1672,8 +1673,14 @@ def _resolve_sample_account_assignments(
         if best_match is None:
             continue
 
-        _, _, account_id, match = best_match
-        if match.confidence != "high":
+        distance, neg_margin, _, account_id, match = best_match
+        margin = -neg_margin
+        allow_low_confidence_assignment = (
+            match.confidence == "low"
+            and distance <= _PERCENT_PATTERN_HIGH_CONFIDENCE_MAX_DISTANCE
+            and margin > 0
+        )
+        if match.confidence != "high" and not allow_low_confidence_assignment:
             continue
         assignments[sample_index] = match
         assigned_counts[account_id] += 1

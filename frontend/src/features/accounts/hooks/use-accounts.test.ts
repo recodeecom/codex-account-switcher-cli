@@ -86,7 +86,7 @@ describe("useAccounts", () => {
     expect(resolveAccountsPollInterval(trackedAccounts)).toBe(1_000);
   });
 
-  it("uses default polling when only fresh debug raw samples are present", () => {
+  it("uses fast polling when only fresh debug raw samples are present", () => {
     const sampledAccounts = [
       createAccountSummary({
         codexLiveSessionCount: 0,
@@ -120,7 +120,7 @@ describe("useAccounts", () => {
       }),
     ];
 
-    expect(resolveAccountsPollInterval(sampledAccounts)).toBe(30_000);
+    expect(resolveAccountsPollInterval(sampledAccounts)).toBe(1_000);
   });
 
   it("loads accounts and invalidates related queries after mutations", async () => {

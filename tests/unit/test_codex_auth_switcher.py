@@ -340,7 +340,7 @@ def test_resolve_snapshot_names_for_account_prefers_canonical_id_over_stale_pers
     assert resolved == ["main-snapshot"]
 
 
-def test_resolve_snapshot_names_for_account_prefers_email_named_snapshot_on_conflict() -> None:
+def test_resolve_snapshot_names_for_account_does_not_steal_email_named_snapshot_from_other_account() -> None:
     canonical_admin_id = generate_unique_account_id("shared-acc", "admin@edixai.com")
     canonical_other_id = generate_unique_account_id("shared-acc", "denver@edixai.com")
     index = CodexAuthSnapshotIndex(
@@ -358,10 +358,10 @@ def test_resolve_snapshot_names_for_account_prefers_email_named_snapshot_on_conf
         email="admin@edixai.com",
     )
 
-    assert resolved == ["admin-edixai-com"]
+    assert resolved == ["viktoredix"]
 
 
-def test_resolve_snapshot_names_for_account_prefers_email_prefix_snapshot_on_conflict() -> None:
+def test_resolve_snapshot_names_for_account_does_not_steal_email_prefix_snapshot_from_other_account() -> None:
     canonical_admin_id = generate_unique_account_id("shared-acc", "admin@edixai.com")
     canonical_other_id = generate_unique_account_id("shared-acc", "denver@edixai.com")
     index = CodexAuthSnapshotIndex(
@@ -379,7 +379,7 @@ def test_resolve_snapshot_names_for_account_prefers_email_prefix_snapshot_on_con
         email="admin@edixai.com",
     )
 
-    assert resolved == ["admin-snapshot"]
+    assert resolved == ["viktoredix"]
 
 
 def test_switch_snapshot_falls_back_without_codex_auth(

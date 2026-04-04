@@ -172,7 +172,7 @@ export function getRawQuotaWindowFallback(
   // Keep UI fallback ordering aligned with backend debug ordering.
   // Backend already emits rawSamples in priority order (newest/most reliable
   // candidate first), and re-sorting here can make the quota bar disagree with
-  // the "sample#1" line shown in QUOTA LOGS.
+  // the "cli-session#1" line shown in CLI SESSION LOGS.
 
   if (candidates.length === 0) {
     return null;
@@ -315,6 +315,20 @@ export function isAccountWorkingNow(
 
   if (hasFreshLiveTelemetry(account, nowMs)) {
     return true;
+  }
+
+  const freshDebugRawSampleCount = getFreshDebugRawSampleCount(account, nowMs);
+  if (freshDebugRawSampleCount > 0) {
+    const primaryFallbackRecordedAt = getRawQuotaWindowFallback(account, "primary")?.recordedAt;
+    if (isFreshTimestamp(primaryFallbackRecordedAt, nowMs)) {
+      return true;
+    }
+
+    const secondaryFallbackRecordedAt =
+      getRawQuotaWindowFallback(account, "secondary")?.recordedAt;
+    if (isFreshTimestamp(secondaryFallbackRecordedAt, nowMs)) {
+      return true;
+    }
   }
 
   return Math.max(account.codexTrackedSessionCount ?? 0, account.codexSessionCount ?? 0, 0) > 0;

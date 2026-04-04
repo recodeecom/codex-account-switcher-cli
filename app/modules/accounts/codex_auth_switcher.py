@@ -84,6 +84,11 @@ def resolve_snapshot_names_for_account(
 
     resolved: list[str] = []
     seen: set[str] = set()
+    expected_account_ids = _expected_account_ids_for_account(
+        account_id=account_id,
+        chatgpt_account_id=chatgpt_account_id,
+        email=email,
+    )
 
     def _add(snapshot_names: list[str] | None) -> None:
         if not snapshot_names:
@@ -94,28 +99,10 @@ def resolve_snapshot_names_for_account(
             seen.add(snapshot_name)
             resolved.append(snapshot_name)
 
-    # Prefer explicit email-shaped snapshot names first. This keeps dashboard
-    # mapping stable even when snapshot payload metadata drifts.
-    available_snapshot_names = {
-        snapshot_name
-        for snapshot_names in snapshot_index.snapshots_by_account_id.values()
-        for snapshot_name in snapshot_names
-    }
-    email_named_matches = [
-        name
-        for name in _email_snapshot_name_candidates(email)
-        if name in available_snapshot_names
-    ]
-    email_named_matches.extend(
-        name
-        for name in _email_prefix_snapshot_name_candidates(
-            email=email,
-            snapshot_names=available_snapshot_names,
-        )
-        if name not in email_named_matches
-    )
-    _add(email_named_matches)
-
+    # Prefer account-owned snapshot mappings first so snapshot names remain
+    # unique per email/account and cannot be stolen by same-local-part aliases
+    # from another account (for example `name@example.com` vs
+    # `name+work@example.com`).
     canonical_candidate_ids: list[str] = []
     if chatgpt_account_id and email:
         normalized_email = email.strip()
@@ -137,6 +124,43 @@ def resolve_snapshot_names_for_account(
     # is raw ChatGPT account id or where canonical metadata is missing.
     if not deduped_candidate_ids or not resolved:
         _add(snapshot_index.snapshots_by_account_id.get(account_id))
+
+    # Last-resort fallback for metadata drift: use email-shaped names only when
+    # account-owned lookups found nothing. If a candidate is explicitly owned by
+    # another account, do not resolve it here.
+    if not resolved:
+        snapshot_owner_ids: dict[str, set[str]] = {}
+        for owner_account_id, owner_snapshot_names in snapshot_index.snapshots_by_account_id.items():
+            for snapshot_name in owner_snapshot_names:
+                snapshot_owner_ids.setdefault(snapshot_name, set()).add(owner_account_id)
+
+        available_snapshot_names = {
+            snapshot_name
+            for snapshot_names in snapshot_index.snapshots_by_account_id.values()
+            for snapshot_name in snapshot_names
+        }
+        email_named_matches = [
+            name
+            for name in _email_snapshot_name_candidates(email)
+            if name in available_snapshot_names
+        ]
+        email_named_matches.extend(
+            name
+            for name in _email_prefix_snapshot_name_candidates(
+                email=email,
+                snapshot_names=available_snapshot_names,
+            )
+            if name not in email_named_matches
+        )
+
+        filtered_email_named_matches: list[str] = []
+        for snapshot_name in email_named_matches:
+            owner_ids = snapshot_owner_ids.get(snapshot_name, set())
+            if owner_ids and owner_ids.isdisjoint(expected_account_ids):
+                continue
+            filtered_email_named_matches.append(snapshot_name)
+
+        _add(filtered_email_named_matches)
 
     selected_snapshot_name = select_snapshot_name(
         resolved,

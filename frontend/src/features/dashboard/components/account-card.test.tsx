@@ -700,7 +700,7 @@ describe("AccountCard", () => {
     expect(screen.getByText("Working now")).toBeInTheDocument();
   });
 
-  it("does not show working indicator when only fresh debug raw samples exist", () => {
+  it("shows working indicator when only fresh debug raw samples exist", () => {
     const account = createAccountSummary({
       codexLiveSessionCount: 0,
       codexTrackedSessionCount: 0,
@@ -734,7 +734,7 @@ describe("AccountCard", () => {
 
     render(<AccountCard account={account} />);
 
-    expect(screen.queryByText("Working now")).not.toBeInTheDocument();
+    expect(screen.getByText("Working now")).toBeInTheDocument();
   });
 
   it("does not infer codex session count from debug raw samples when counters are zero", () => {
@@ -1145,6 +1145,12 @@ describe("AccountCard", () => {
   it("keeps live quota debug collapsed by default and expands on demand", async () => {
     const user = userEvent.setup();
     const account = createAccountSummary({
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "snap-a",
+        activeSnapshotName: "snap-a",
+        isActiveSnapshot: true,
+      },
       liveQuotaDebug: {
         snapshotsConsidered: ["snap-a"],
         overrideApplied: true,
@@ -1193,14 +1199,77 @@ describe("AccountCard", () => {
     render(<AccountCard account={account} />);
 
     expect(screen.getByRole("button", { name: /debug/i })).toBeInTheDocument();
-    expect(screen.queryByText(/quota logs/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/cli session logs/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/\$ merged 5h=17% weekly=77%/)).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /debug/i }));
-    expect(screen.getByText(/quota logs/i)).toBeInTheDocument();
+    expect(screen.getByText(/cli session logs/i)).toBeInTheDocument();
     expect(screen.getByText(/\$ merged 5h=17% weekly=77%/)).toBeInTheDocument();
     expect(screen.getByText(/\$ override=applied_live_usage_windows/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /copy logs/i })).toBeInTheDocument();
-    expect(screen.queryByText(/\$ no raw terminal samples/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/\$ no cli sessions sampled/i)).not.toBeInTheDocument();
+  });
+
+  it("scopes CLI session logs to the current account snapshot", async () => {
+    const user = userEvent.setup();
+    const account = createAccountSummary({
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "csoves.com",
+        activeSnapshotName: "csoves.com",
+        isActiveSnapshot: true,
+      },
+      liveQuotaDebug: {
+        snapshotsConsidered: ["csoves.com", "viktor"],
+        overrideApplied: false,
+        overrideReason: "deferred_active_snapshot_mixed_default_sessions",
+        merged: null,
+        rawSamples: [
+          {
+            source: "/tmp/rollout-viktor.jsonl",
+            snapshotName: "viktor",
+            recordedAt: "2026-01-01T00:00:00.000Z",
+            stale: false,
+            primary: {
+              usedPercent: 80,
+              remainingPercent: 20,
+              resetAt: 1760000000,
+              windowMinutes: 300,
+            },
+            secondary: {
+              usedPercent: 10,
+              remainingPercent: 90,
+              resetAt: 1760600000,
+              windowMinutes: 10080,
+            },
+          },
+          {
+            source: "/tmp/rollout-csoves.jsonl",
+            snapshotName: "csoves.com",
+            recordedAt: "2026-01-01T00:01:00.000Z",
+            stale: false,
+            primary: {
+              usedPercent: 53,
+              remainingPercent: 47,
+              resetAt: 1760000000,
+              windowMinutes: 300,
+            },
+            secondary: {
+              usedPercent: 30,
+              remainingPercent: 70,
+              resetAt: 1760600000,
+              windowMinutes: 10080,
+            },
+          },
+        ],
+      },
+    });
+
+    render(<AccountCard account={account} />);
+    await user.click(screen.getByRole("button", { name: /debug/i }));
+
+    expect(screen.getByText(/rollout-csoves\.jsonl/i)).toBeInTheDocument();
+    expect(screen.queryByText(/rollout-viktor\.jsonl/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/snapshot=viktor/i)).not.toBeInTheDocument();
   });
 });
