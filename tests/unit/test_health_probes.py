@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -26,6 +27,29 @@ async def test_health_live_always_ok():
 
     response = await health_live()
     assert response.status == "ok"
+
+
+@pytest.mark.asyncio
+async def test_live_usage_returns_xml_payload():
+    from app.modules.health.api import live_usage
+
+    with (
+        patch(
+            "app.modules.health.api.read_live_codex_process_session_counts_by_snapshot",
+            return_value={"viktoredixaicom": 8},
+        ),
+        patch(
+            "app.modules.health.api.utcnow",
+            return_value=datetime(2026, 4, 5, 0, 0, 0),
+        ),
+    ):
+        response = await live_usage()
+
+    assert response.media_type == "application/xml"
+    assert response.headers.get("cache-control") == "no-store"
+    body = response.body.decode("utf-8")
+    assert '<live_usage generated_at="2026-04-05T00:00:00Z" total_sessions="8">' in body
+    assert '<snapshot name="viktoredixaicom" session_count="8" />' in body
 
 
 @pytest.mark.asyncio

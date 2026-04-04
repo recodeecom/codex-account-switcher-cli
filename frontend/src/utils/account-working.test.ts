@@ -343,6 +343,34 @@ describe("isAccountWorkingNow", () => {
     expect(hasActiveCliSessionSignal(account, nowMs)).toBe(false);
   });
 
+  it("returns true for active snapshot live sessions even when telemetry samples are missing", () => {
+    const nowMs = new Date("2026-04-04T12:00:00.000Z").getTime();
+    const account = createAccountSummary({
+      codexLiveSessionCount: 0,
+      codexTrackedSessionCount: 0,
+      codexSessionCount: 0,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "codexina",
+        activeSnapshotName: "codexina",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+      lastUsageRecordedAtPrimary: null,
+      lastUsageRecordedAtSecondary: null,
+      liveQuotaDebug: {
+        snapshotsConsidered: ["codexina"],
+        overrideApplied: false,
+        overrideReason: "no_live_telemetry",
+        merged: null,
+        rawSamples: [],
+      },
+    });
+
+    expect(hasActiveCliSessionSignal(account, nowMs)).toBe(true);
+    expect(isAccountWorkingNow(account, nowMs)).toBe(true);
+  });
+
   it("returns true when compatibility codexSessionCount is present", () => {
     const account = createAccountSummary({
       codexLiveSessionCount: 0,
@@ -1142,5 +1170,32 @@ describe("hasActiveCliSessionSignal", () => {
     });
 
     expect(hasActiveCliSessionSignal(account, nowMs)).toBe(false);
+  });
+
+  it("keeps active snapshot live sessions visible when no-live-telemetry samples are missing", () => {
+    const nowMs = new Date("2026-04-04T12:00:00.000Z").getTime();
+    const account = createAccountSummary({
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "codexina",
+        activeSnapshotName: "codexina",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+      codexLiveSessionCount: 0,
+      codexTrackedSessionCount: 0,
+      codexSessionCount: 0,
+      lastUsageRecordedAtPrimary: null,
+      lastUsageRecordedAtSecondary: null,
+      liveQuotaDebug: {
+        snapshotsConsidered: ["codexina"],
+        overrideApplied: false,
+        overrideReason: "no_live_telemetry",
+        merged: null,
+        rawSamples: [],
+      },
+    });
+
+    expect(hasActiveCliSessionSignal(account, nowMs)).toBe(true);
   });
 });

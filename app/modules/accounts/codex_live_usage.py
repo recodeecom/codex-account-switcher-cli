@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import pwd
 import re
 import signal
 import time
@@ -35,6 +36,7 @@ _TASK_PREVIEW_SECRET_ASSIGNMENT_RE = re.compile(
 )
 _TASK_PREVIEW_IMAGE_TAG_RE = re.compile(r"(?is)</?image[^>]*>")
 _TASK_PREVIEW_IMAGE_LABEL_RE = re.compile(r"\[Image\s*#\d+\]", re.IGNORECASE)
+_DEFAULT_PROC_ROOT = Path("/proc")
 
 
 @dataclass(frozen=True)
@@ -160,7 +162,7 @@ def read_local_codex_live_usage_samples_by_snapshot(
 
 
 def read_live_codex_process_session_counts_by_snapshot() -> dict[str, int]:
-    proc_root = Path("/proc")
+    proc_root = _resolve_proc_root()
     if not proc_root.exists() or not proc_root.is_dir():
         return {}
 
@@ -191,7 +193,7 @@ def terminate_live_codex_processes_for_snapshot(snapshot_name: str) -> int:
     if not normalized_snapshot_name:
         return 0
 
-    proc_root = Path("/proc")
+    proc_root = _resolve_proc_root()
     if not proc_root.exists() or not proc_root.is_dir():
         return 0
 
@@ -587,28 +589,39 @@ def _resolve_sessions_dir() -> Path:
         auth_path = _resolve_path(auth_raw)
         return auth_path.parent / "sessions"
 
-    return (Path.home() / ".codex" / "sessions").resolve()
+    return (_resolve_default_home_path() / ".codex" / "sessions").resolve()
 
 
 def _resolve_runtime_root() -> Path:
     raw = os.environ.get("CODEX_AUTH_RUNTIME_ROOT")
     if raw:
         return _resolve_path(raw)
-    return (Path.home() / ".codex" / "runtimes").resolve()
+    return (_resolve_default_home_path() / ".codex" / "runtimes").resolve()
 
 
 def _resolve_current_path() -> Path:
     raw = os.environ.get("CODEX_AUTH_CURRENT_PATH")
     if raw:
         return _resolve_path(raw)
-    return (Path.home() / ".codex" / "current").resolve()
+    return (_resolve_default_home_path() / ".codex" / "current").resolve()
 
 
 def _resolve_auth_path() -> Path:
     raw = os.environ.get("CODEX_AUTH_JSON_PATH")
     if raw:
         return _resolve_path(raw)
-    return (Path.home() / ".codex" / "auth.json").resolve()
+    return (_resolve_default_home_path() / ".codex" / "auth.json").resolve()
+
+
+def _resolve_default_home_path() -> Path:
+    try:
+        pw_home = pwd.getpwuid(os.getuid()).pw_dir
+    except (KeyError, PermissionError, OSError):
+        pw_home = ""
+
+    if pw_home:
+        return Path(pw_home).resolve()
+    return Path.home().resolve()
 
 
 def _read_runtime_current_snapshot(runtime_dir: Path) -> str | None:
@@ -631,6 +644,13 @@ def _resolve_path(raw: str) -> Path:
     if not path.is_absolute():
         path = Path.cwd() / path
     return path.resolve()
+
+
+def _resolve_proc_root() -> Path:
+    raw = os.environ.get("CODEX_LB_PROC_ROOT")
+    if raw:
+        return _resolve_path(raw)
+    return _DEFAULT_PROC_ROOT
 
 
 def _active_snapshot_selection_changed_recently(now: datetime) -> bool:
@@ -658,14 +678,15 @@ def _switch_process_fallback_seconds() -> int:
 
 
 def _has_running_default_scope_codex_process() -> bool:
-    proc_root = Path("/proc")
+    proc_root = _resolve_proc_root()
     if not proc_root.exists() or not proc_root.is_dir():
         return False
 
     default_current_path = _resolve_current_path()
     default_auth_path = _resolve_auth_path()
-    home_default_current_path = (Path.home() / ".codex" / "current").resolve()
-    home_default_auth_path = (Path.home() / ".codex" / "auth.json").resolve()
+    default_home_path = _resolve_default_home_path()
+    home_default_current_path = (default_home_path / ".codex" / "current").resolve()
+    home_default_auth_path = (default_home_path / ".codex" / "auth.json").resolve()
     using_custom_auth_scope = (
         default_current_path != home_default_current_path
         or default_auth_path != home_default_auth_path
@@ -803,7 +824,7 @@ def _is_eligible_unlabeled_default_scope_process(
 
 
 def _read_process_started_at(pid: int) -> float | None:
-    process_path = Path("/proc") / str(pid)
+    process_path = _resolve_proc_root() / str(pid)
     try:
         return process_path.stat().st_ctime
     except OSError:
@@ -811,7 +832,7 @@ def _read_process_started_at(pid: int) -> float | None:
 
 
 def _process_belongs_to_current_user(pid: int) -> bool:
-    process_path = Path("/proc") / str(pid)
+    process_path = _resolve_proc_root() / str(pid)
     try:
         return process_path.stat().st_uid == os.getuid()
     except OSError:
@@ -970,7 +991,7 @@ def _iter_running_codex_commands(proc_root: Path) -> list[tuple[int, list[str]]]
 
 
 def _read_process_cmdline(pid: int) -> list[str]:
-    cmdline_path = Path("/proc") / str(pid) / "cmdline"
+    cmdline_path = _resolve_proc_root() / str(pid) / "cmdline"
     try:
         raw = cmdline_path.read_bytes()
     except OSError:
@@ -1014,7 +1035,7 @@ def _is_non_default_auth_scope_process(
 
 
 def _read_process_env(pid: int) -> dict[str, str]:
-    environ_path = Path("/proc") / str(pid) / "environ"
+    environ_path = _resolve_proc_root() / str(pid) / "environ"
     try:
         raw = environ_path.read_bytes()
     except OSError:
@@ -1050,7 +1071,7 @@ def _resolve_process_path(raw_value: str | None, pid: int) -> Path | None:
 
 
 def _read_process_cwd(pid: int) -> Path | None:
-    cwd_link = Path("/proc") / str(pid) / "cwd"
+    cwd_link = _resolve_proc_root() / str(pid) / "cwd"
     try:
         return Path(os.readlink(cwd_link)).resolve()
     except OSError:

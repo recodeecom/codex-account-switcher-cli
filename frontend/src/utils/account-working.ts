@@ -97,6 +97,13 @@ function shouldSuppressNoCliSampleSessionSignal(
     return false;
   }
 
+  const isActiveSnapshotLiveSession =
+    (account.codexAuth?.hasLiveSession ?? false) &&
+    (account.codexAuth?.isActiveSnapshot ?? false);
+  if (isActiveSnapshotLiveSession) {
+    return false;
+  }
+
   return true;
 }
 
@@ -710,6 +717,13 @@ export function isAccountWorkingNow(
   }
 
   if (hasGraceLiveSessionHint) {
+    return true;
+  }
+
+  if (
+    (account.codexAuth?.hasLiveSession ?? false) &&
+    (account.codexAuth?.isActiveSnapshot ?? false)
+  ) {
     return true;
   }
 

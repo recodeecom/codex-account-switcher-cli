@@ -835,6 +835,59 @@ def test_read_live_codex_process_session_counts_by_snapshot_maps_unlabeled_defau
     assert counts == {"work": 1}
 
 
+def test_read_live_codex_process_session_counts_by_snapshot_uses_uid_home_when_home_env_differs(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    uid_home = tmp_path / "uid-home"
+    default_current = uid_home / ".codex" / "current"
+    default_current.parent.mkdir(parents=True, exist_ok=True)
+    default_current.write_text("work", encoding="utf-8")
+
+    monkeypatch.delenv("CODEX_AUTH_CURRENT_PATH", raising=False)
+    monkeypatch.delenv("CODEX_AUTH_JSON_PATH", raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path / "service-home"))
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage.pwd.getpwuid",
+        lambda _uid: SimpleNamespace(pw_dir=str(uid_home)),
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._iter_running_codex_commands",
+        lambda _proc_root: [(404, ["/usr/bin/codex", "model_instructions_file=agents"])],
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._read_process_env",
+        lambda _pid: {},
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._process_belongs_to_current_user",
+        lambda _pid: True,
+    )
+
+    counts = read_live_codex_process_session_counts_by_snapshot()
+    assert counts == {"work": 1}
+
+
+def test_read_live_codex_process_session_counts_by_snapshot_uses_configured_proc_root(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    default_current = tmp_path / "default" / "current"
+    default_current.parent.mkdir(parents=True, exist_ok=True)
+    default_current.write_text("work", encoding="utf-8")
+    monkeypatch.setenv("CODEX_AUTH_CURRENT_PATH", str(default_current))
+
+    proc_root = tmp_path / "proc"
+    pid_dir = proc_root / "123"
+    pid_dir.mkdir(parents=True, exist_ok=True)
+    (pid_dir / "cmdline").write_bytes(b"/usr/bin/codex\x00model_instructions_file=agents\x00")
+    (pid_dir / "environ").write_bytes(b"")
+    monkeypatch.setenv("CODEX_LB_PROC_ROOT", str(proc_root))
+
+    counts = read_live_codex_process_session_counts_by_snapshot()
+    assert counts == {"work": 1}
+
+
 def test_read_live_codex_process_session_counts_by_snapshot_maps_unlabeled_default_scope_processes(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

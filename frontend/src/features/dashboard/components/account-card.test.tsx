@@ -68,6 +68,20 @@ describe("AccountCard", () => {
     expect(screen.getByText("Weekly")).toBeInTheDocument();
   });
 
+  it("shows one decimal place for non-integer quota percentages", () => {
+    const account = createAccountSummary({
+      usage: {
+        primaryRemainingPercent: 43.24,
+        secondaryRemainingPercent: 77.76,
+      },
+    });
+
+    render(<AccountCard account={account} />);
+
+    expect(screen.getByText("43.2%")).toBeInTheDocument();
+    expect(screen.getByText("77.8%")).toBeInTheDocument();
+  });
+
   it("renders zero token usage without a k suffix", () => {
     const account = createAccountSummary({
       requestUsage: {

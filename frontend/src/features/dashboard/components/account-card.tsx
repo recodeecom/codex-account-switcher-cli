@@ -24,7 +24,6 @@ import {
 } from "@/utils/account-status";
 import {
   formatLastUsageLabel,
-  formatPercentNullable,
   formatQuotaResetLabel,
   formatTokenUsageCompact,
   formatTokenUsagePrecise,
@@ -162,7 +161,7 @@ function QuotaBar({
             </span>
           ) : null}
           <span className={percentPillClass}>
-            {formatPercentNullable(percent)}
+            {formatQuotaPercent(percent)}
           </span>
         </div>
       </div>
@@ -211,6 +210,19 @@ function QuotaBar({
       </div>
     </div>
   );
+}
+
+function formatQuotaPercent(value: number | null): string {
+  if (value == null || Number.isNaN(value)) {
+    return "--";
+  }
+
+  const clamped = Math.max(0, Math.min(100, value));
+  const rounded = Math.round(clamped);
+  if (Math.abs(clamped - rounded) < 0.05) {
+    return `${rounded}%`;
+  }
+  return `${clamped.toFixed(1)}%`;
 }
 
 function resolveLastSeenDisplay(label: string | null | undefined): {

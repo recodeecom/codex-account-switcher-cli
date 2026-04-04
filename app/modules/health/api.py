@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from datetime import timedelta
 from hashlib import sha256
+from html import escape
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import Response
 from sqlalchemy import select as sa_select
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +14,7 @@ from app.core.config.settings import get_settings
 from app.core.utils.time import utcnow
 from app.db.models import BridgeRingMember
 from app.db.session import get_session
+from app.modules.accounts.codex_live_usage import read_live_codex_process_session_counts_by_snapshot
 from app.modules.health.schemas import BridgeRingInfo, HealthCheckResponse, HealthResponse
 from app.modules.proxy.ring_membership import RING_STALE_THRESHOLD_SECONDS
 
@@ -26,6 +29,30 @@ async def health_check() -> HealthResponse:
 @router.get("/health/live", response_model=HealthCheckResponse)
 async def health_live() -> HealthCheckResponse:
     return HealthCheckResponse(status="ok")
+
+
+@router.get("/live_usage")
+async def live_usage() -> Response:
+    counts_by_snapshot = read_live_codex_process_session_counts_by_snapshot()
+    generated_at = utcnow().isoformat() + "Z"
+    total_sessions = sum(max(0, count) for count in counts_by_snapshot.values())
+
+    lines = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        f'<live_usage generated_at="{escape(generated_at, quote=True)}" total_sessions="{total_sessions}">',
+    ]
+    for snapshot_name, session_count in sorted(counts_by_snapshot.items()):
+        sanitized_snapshot_name = escape(snapshot_name, quote=True)
+        lines.append(
+            f'  <snapshot name="{sanitized_snapshot_name}" session_count="{max(0, session_count)}" />'
+        )
+    lines.append("</live_usage>")
+
+    return Response(
+        content="\n".join(lines),
+        media_type="application/xml",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @router.get("/health/ready", response_model=HealthCheckResponse)

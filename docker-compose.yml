@@ -8,6 +8,8 @@ services:
     environment:
       # Ensure --reload notices host bind-mount edits reliably across Docker setups.
       WATCHFILES_FORCE_POLLING: "true"
+      # Allow containerized backend to inspect host Codex processes for live session mapping.
+      CODEX_LB_PROC_ROOT: /host_proc
     ports:
       - "2455:2455"
     command:
@@ -23,6 +25,7 @@ services:
       # Bind-mount backend source for instant FastAPI reload on Python edits.
       - ./app:/app/app:rw
       - ${HOME}/.codex:/home/app/.codex:rw
+      - /proc:/host_proc:ro
       - codex-lb-data:/var/lib/codex-lb
     develop:
       watch:
