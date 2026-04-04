@@ -353,6 +353,15 @@ export function isAccountWorkingNow(
   nowMs: number = Date.now(),
 ): boolean {
   const hasFreshLiveSession = hasFreshLiveTelemetry(account, nowMs);
+  const hasActiveSessionCounterSignal =
+    Math.max(
+      account.codexLiveSessionCount ?? 0,
+      account.codexTrackedSessionCount ?? 0,
+      account.codexSessionCount ?? 0,
+      0,
+    ) > 0;
+  const hasActiveCliSessionSignal =
+    hasActiveSessionCounterSignal || (account.codexAuth?.hasLiveSession ?? false);
   // Keep disconnected accounts out of "Working now" unless they still have a
   // verifiable live session signal.
   if (account.status === "deactivated" && !hasFreshLiveSession) {
@@ -374,10 +383,11 @@ export function isAccountWorkingNow(
 
   // Keep the grouping logic aligned with the UI percent label (rounded).
   // When the 5h budget renders as 0%, the account should not stay in
-  // "Working now" even if session telemetry is still present.
+  // "Working now" unless it still has an active CLI session signal.
   if (
     typeof primaryRemaining === "number" &&
-    Math.round(Math.max(0, primaryRemaining)) <= 0
+    Math.round(Math.max(0, primaryRemaining)) <= 0 &&
+    !hasActiveCliSessionSignal
   ) {
     return false;
   }

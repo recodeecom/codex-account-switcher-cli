@@ -1,0 +1,3 @@
+- [x] Update dashboard account-card use-local gating to read the displayed normalized 5h value.
+- [x] Add regression test for displayed quota vs action-gating alignment.
+- [x] Validate specs with `openspec validate --specs`.

@@ -5,11 +5,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { AccountCard } from "@/features/dashboard/components/account-card";
 import { usePrivacyStore } from "@/hooks/use-privacy";
 import { createAccountSummary } from "@/test/mocks/factories";
+import { resetQuotaDisplayFloorCacheForTests } from "@/utils/quota-display";
 
 afterEach(() => {
   act(() => {
     usePrivacyStore.setState({ blurred: false });
   });
+  resetQuotaDisplayFloorCacheForTests();
 });
 
 describe("AccountCard", () => {
@@ -195,6 +197,40 @@ describe("AccountCard", () => {
     expect(screen.getByRole("button", { name: "Use this account" })).toBeDisabled();
   });
 
+  it("keeps use-local gating aligned with the displayed 5h value after floor-cache carryover", () => {
+    const sharedAccountId = "acc_floor_cache_alignment";
+    const sharedResetAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const { rerender } = render(
+      <AccountCard
+        account={createAccountSummary({
+          accountId: sharedAccountId,
+          resetAtPrimary: sharedResetAt,
+          usage: {
+            primaryRemainingPercent: 0,
+            secondaryRemainingPercent: 73,
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Use this account" })).toBeDisabled();
+
+    rerender(
+      <AccountCard
+        account={createAccountSummary({
+          accountId: sharedAccountId,
+          resetAtPrimary: sharedResetAt,
+          usage: {
+            primaryRemainingPercent: 80,
+            secondaryRemainingPercent: 73,
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Use this account" })).toBeDisabled();
+  });
+
   it("enables use this account button when codex-auth snapshot is unavailable but account is active with quota", () => {
     const account = createAccountSummary({
       usage: {
@@ -252,6 +288,35 @@ describe("AccountCard", () => {
         activeSnapshotName: "main",
         isActiveSnapshot: true,
       },
+    });
+
+    render(<AccountCard account={account} />);
+
+    expect(screen.getByText("Active")).toBeInTheDocument();
+    expect(screen.queryByText("Disconnected")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Re-auth" })).not.toBeInTheDocument();
+  });
+
+  it("treats deactivated accounts with local snapshots as active in dashboard cards", () => {
+    const account = createAccountSummary({
+      status: "deactivated",
+      usage: {
+        primaryRemainingPercent: 44,
+        secondaryRemainingPercent: 73,
+      },
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "webubusiness",
+        activeSnapshotName: null,
+        isActiveSnapshot: false,
+        hasLiveSession: false,
+      },
+      codexLiveSessionCount: 0,
+      codexTrackedSessionCount: 0,
+      codexSessionCount: 0,
+      lastUsageRecordedAtPrimary: null,
+      lastUsageRecordedAtSecondary: null,
+      liveQuotaDebug: null,
     });
 
     render(<AccountCard account={account} />);

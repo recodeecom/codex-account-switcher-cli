@@ -177,6 +177,7 @@ function buildGroupedWindowEntries(
   const activeAccounts = accounts.filter((account) => {
     const effectiveStatus = resolveEffectiveAccountStatus({
       status: account.status,
+      hasSnapshot: account.codexAuth?.hasSnapshot,
       isActiveSnapshot: account.codexAuth?.isActiveSnapshot,
       hasLiveSession: hasActiveCliSessionSignal(account),
       hasRecentUsageSignal:
@@ -359,6 +360,7 @@ export function buildDashboardView(
   const activeAccounts = overview.accounts.filter((account) => {
     const effectiveStatus = resolveEffectiveAccountStatus({
       status: account.status,
+      hasSnapshot: account.codexAuth?.hasSnapshot,
       isActiveSnapshot: account.codexAuth?.isActiveSnapshot,
       hasLiveSession: hasActiveCliSessionSignal(account),
       hasRecentUsageSignal:

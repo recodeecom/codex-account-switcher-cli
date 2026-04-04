@@ -65,7 +65,7 @@ export function AppHeader({
               Codexina
             </p>
             <p className="hidden truncate text-[11px] text-muted-foreground md:block">
-              Live account switchboard
+              Live account switchboard. Medicine for you codex accounts.
             </p>
           </div>
         </div>
@@ -105,7 +105,9 @@ export function AppHeader({
             size="sm"
             variant="ghost"
             onClick={togglePrivacy}
-            aria-label={blurred ? "Show sensitive values" : "Hide sensitive values"}
+            aria-label={
+              blurred ? "Show sensitive values" : "Hide sensitive values"
+            }
             className="press-scale hidden h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground sm:inline-flex"
           >
             <PrivacyIcon className="h-3.5 w-3.5" aria-hidden="true" />

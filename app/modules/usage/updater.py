@@ -191,7 +191,9 @@ class UsageUpdater:
         interval = settings.usage_refresh_interval_seconds
         for account in accounts:
             if account.status == AccountStatus.DEACTIVATED:
-                continue
+                recovered = await self._recover_deactivated_account_from_token_donor(account)
+                if not recovered:
+                    continue
             failed_at = _last_failed_refresh.get(account.id)
             if failed_at and (now - failed_at).total_seconds() < _FAILED_REFRESH_BACKOFF_SECONDS:
                 continue
@@ -459,6 +461,58 @@ class UsageUpdater:
         account.status = stored.status
         account.deactivation_reason = stored.deactivation_reason
         account.reset_at = stored.reset_at
+
+    async def _recover_deactivated_account_from_token_donor(self, account: Account) -> bool:
+        if self._accounts_repo is None:
+            return False
+        if not account.chatgpt_account_id:
+            return False
+
+        reason = (account.deactivation_reason or "").strip().lower()
+        if "usage api error: http 401" not in reason:
+            return False
+        donor_reason_markers = (
+            "refresh token",
+            "already been used",
+            "token has been invalidated",
+            "authentication token has been invalidated",
+        )
+        if not any(marker in reason for marker in donor_reason_markers):
+            return False
+
+        donor = await self._accounts_repo.get_token_donor_by_chatgpt_account_id(
+            account.chatgpt_account_id,
+            exclude_account_id=account.id,
+        )
+        if donor is None:
+            return False
+
+        await self._accounts_repo.update_tokens(
+            account.id,
+            access_token_encrypted=donor.access_token_encrypted,
+            refresh_token_encrypted=donor.refresh_token_encrypted,
+            id_token_encrypted=donor.id_token_encrypted,
+            last_refresh=donor.last_refresh,
+            plan_type=donor.plan_type or account.plan_type,
+            email=account.email,
+            chatgpt_account_id=account.chatgpt_account_id,
+        )
+        await self._accounts_repo.update_status(account.id, AccountStatus.ACTIVE, None)
+        account.status = AccountStatus.ACTIVE
+        account.deactivation_reason = None
+        account.access_token_encrypted = donor.access_token_encrypted
+        account.refresh_token_encrypted = donor.refresh_token_encrypted
+        account.id_token_encrypted = donor.id_token_encrypted
+        account.last_refresh = donor.last_refresh
+        account.plan_type = donor.plan_type or account.plan_type
+        logger.info(
+            "Recovered deactivated account from sibling token donor account_id=%s donor_id=%s chatgpt_account_id=%s request_id=%s",
+            account.id,
+            donor.id,
+            account.chatgpt_account_id,
+            get_request_id(),
+        )
+        return True
 
 
 def _credits_snapshot(payload: UsagePayload) -> tuple[bool | None, bool | None, float | None]:

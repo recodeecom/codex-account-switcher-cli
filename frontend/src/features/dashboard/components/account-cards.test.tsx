@@ -142,7 +142,7 @@ describe("AccountCards", () => {
     expect(screen.queryByText(/5h avg \d+%/i)).not.toBeInTheDocument();
   });
 
-  it("does not keep accounts in working-now when primary rounds to 0%", () => {
+  it("keeps accounts in working-now when primary rounds to 0% but sessions are active", () => {
     const nowIso = new Date().toISOString();
     const working = createAccountSummary({
       accountId: "acc_reset",
@@ -174,9 +174,44 @@ describe("AccountCards", () => {
       />,
     );
 
-    expect(screen.queryByText("Working now")).not.toBeInTheDocument();
-    expect(screen.queryByText("5h avg 0%")).not.toBeInTheDocument();
-    expect(screen.queryByText("Weekly avg 88%")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Working now" })).toBeInTheDocument();
+    expect(screen.getByText("reset@example.com")).toBeInTheDocument();
+  });
+
+  it("keeps depleted 5h accounts out of working-now when no sessions are active", () => {
+    const depletedIdle = createAccountSummary({
+      accountId: "acc_depleted_idle",
+      email: "depleted-idle@example.com",
+      displayName: "depleted-idle@example.com",
+      usage: {
+        primaryRemainingPercent: 0,
+        secondaryRemainingPercent: 88,
+      },
+      resetAtPrimary: new Date(Date.now() - 60_000).toISOString(),
+      codexLiveSessionCount: 0,
+      codexTrackedSessionCount: 0,
+      codexSessionCount: 0,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "depleted-idle",
+        activeSnapshotName: "depleted-idle",
+        isActiveSnapshot: true,
+        hasLiveSession: false,
+      },
+      lastUsageRecordedAtPrimary: null,
+      lastUsageRecordedAtSecondary: null,
+    });
+
+    render(
+      <AccountCards
+        accounts={[depletedIdle]}
+        primaryWindow={buildWindow("primary", "acc_depleted_idle", 1000, 0)}
+        secondaryWindow={buildWindow("secondary", "acc_depleted_idle", 1000, 880)}
+      />,
+    );
+
+    expect(screen.queryByRole("heading", { name: "Working now" })).not.toBeInTheDocument();
+    expect(screen.getByText("depleted-idle@example.com")).toBeInTheDocument();
   });
 
   it("uses secondary window remaining for weekly-only-account token balance", () => {

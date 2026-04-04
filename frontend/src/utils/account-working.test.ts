@@ -59,7 +59,7 @@ describe("isAccountWorkingNow", () => {
     expect(isAccountWorkingNow(account)).toBe(true);
   });
 
-  it("returns false when 5h is depleted even if tracked sessions are present", () => {
+  it("returns true when 5h is depleted but tracked sessions are still present", () => {
     const account = createAccountSummary({
       usage: {
         primaryRemainingPercent: 0,
@@ -79,10 +79,10 @@ describe("isAccountWorkingNow", () => {
       lastUsageRecordedAtSecondary: "2026-04-04T11:59:00.000Z",
     });
 
-    expect(isAccountWorkingNow(account, new Date("2026-04-04T12:00:00.000Z").getTime())).toBe(false);
+    expect(isAccountWorkingNow(account, new Date("2026-04-04T12:00:00.000Z").getTime())).toBe(true);
   });
 
-  it("returns false when 5h rounds down to 0% even if live session telemetry is present", () => {
+  it("returns true when 5h rounds down to 0% and live sessions are still present", () => {
     const account = createAccountSummary({
       usage: {
         primaryRemainingPercent: 0.4,
@@ -102,7 +102,7 @@ describe("isAccountWorkingNow", () => {
       lastUsageRecordedAtSecondary: "2026-04-04T11:59:00.000Z",
     });
 
-    expect(isAccountWorkingNow(account, new Date("2026-04-04T12:00:00.000Z").getTime())).toBe(false);
+    expect(isAccountWorkingNow(account, new Date("2026-04-04T12:00:00.000Z").getTime())).toBe(true);
   });
 
   it("returns false when no-live-telemetry fallback reports 0% even if baseline usage is higher", () => {

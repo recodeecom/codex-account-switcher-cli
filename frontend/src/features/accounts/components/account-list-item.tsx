@@ -175,7 +175,7 @@ export function AccountListItem({
   const hasResolvedSnapshot = Boolean(account.codexAuth?.snapshotName?.trim());
   const canUseLocally = canUseLocalAccount({
     status: account.status,
-    primaryRemainingPercent: primaryRemainingRaw,
+    primaryRemainingPercent: primaryRemaining,
     hasSnapshot: account.codexAuth?.hasSnapshot,
     isActiveSnapshot,
     hasLiveSession: hasActiveCliSession,
@@ -184,7 +184,7 @@ export function AccountListItem({
   });
   const disabledReason = getUseLocalAccountDisabledReason({
     status: account.status,
-    primaryRemainingPercent: primaryRemainingRaw,
+    primaryRemainingPercent: primaryRemaining,
     hasSnapshot: account.codexAuth?.hasSnapshot,
     isActiveSnapshot,
     hasLiveSession: hasActiveCliSession,

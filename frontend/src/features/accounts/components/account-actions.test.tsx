@@ -80,6 +80,32 @@ describe("AccountActions", () => {
     expect(screen.queryByRole("button", { name: "Re-authenticate" })).not.toBeInTheDocument();
   });
 
+  it("treats deactivated accounts with local snapshots as active", () => {
+    renderAccountActions({
+      status: "deactivated",
+      usage: {
+        primaryRemainingPercent: 44,
+        secondaryRemainingPercent: 73,
+      },
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "webubusiness",
+        activeSnapshotName: null,
+        isActiveSnapshot: false,
+        hasLiveSession: false,
+      },
+      codexLiveSessionCount: 0,
+      codexTrackedSessionCount: 0,
+      codexSessionCount: 0,
+      lastUsageRecordedAtPrimary: null,
+      lastUsageRecordedAtSecondary: null,
+      liveQuotaDebug: null,
+    });
+
+    expect(screen.getByRole("button", { name: "Use this" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Re-authenticate" })).not.toBeInTheDocument();
+  });
+
   it("treats deactivated accounts with fresh CLI debug samples as active", () => {
     renderAccountActions({
       status: "deactivated",
@@ -202,9 +228,9 @@ describe("AccountActions", () => {
       accountId: "acc_reauth_action",
       status: "deactivated",
       codexAuth: {
-        hasSnapshot: true,
-        snapshotName: "acc_reauth_action",
-        activeSnapshotName: "different-snapshot",
+        hasSnapshot: false,
+        snapshotName: null,
+        activeSnapshotName: null,
         isActiveSnapshot: false,
       },
       lastUsageRecordedAtPrimary: null,

@@ -367,6 +367,7 @@ export function AccountCard({
   const isWorkingNow = isAccountWorkingNow(account);
   const effectiveStatus = resolveEffectiveAccountStatus({
     status: account.status,
+    hasSnapshot: account.codexAuth?.hasSnapshot,
     isActiveSnapshot,
     hasLiveSession: hasActiveCliSession,
     hasRecentUsageSignal: recentUsageSignal,
@@ -452,7 +453,8 @@ export function AccountCard({
   const status = usageLimitHit && effectiveStatus === "active" ? "limited" : effectiveStatus;
   const canUseLocally = canUseLocalAccount({
     status: account.status,
-    primaryRemainingPercent: primaryRemainingRaw,
+    primaryRemainingPercent: primaryRemaining,
+    hasSnapshot: account.codexAuth?.hasSnapshot,
     isActiveSnapshot,
     hasLiveSession: hasActiveCliSession,
     hasRecentUsageSignal: recentUsageSignal,
@@ -460,7 +462,8 @@ export function AccountCard({
   });
   const useLocalDisabledReason = getUseLocalAccountDisabledReason({
     status: account.status,
-    primaryRemainingPercent: primaryRemainingRaw,
+    primaryRemainingPercent: primaryRemaining,
+    hasSnapshot: account.codexAuth?.hasSnapshot,
     isActiveSnapshot,
     hasLiveSession: hasActiveCliSession,
     hasRecentUsageSignal: recentUsageSignal,
