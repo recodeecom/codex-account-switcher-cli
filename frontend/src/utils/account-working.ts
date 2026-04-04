@@ -18,16 +18,16 @@ function isFreshTimestamp(
   return nowMs - recordedAtMs <= LIVE_TELEMETRY_STALE_AFTER_MS;
 }
 
-function hasFreshDebugRawSamples(
+export function getFreshDebugRawSampleCount(
   account: Pick<AccountSummary, "liveQuotaDebug">,
-  nowMs: number,
-): boolean {
+  nowMs: number = Date.now(),
+): number {
   const rawSamples = account.liveQuotaDebug?.rawSamples ?? [];
   if (rawSamples.length === 0) {
-    return false;
+    return 0;
   }
 
-  return rawSamples.some((sample) => {
+  return rawSamples.filter((sample) => {
     if (sample.stale === true) {
       return false;
     }
@@ -36,7 +36,28 @@ function hasFreshDebugRawSamples(
       return true;
     }
     return nowMs - recordedAtMs <= LIVE_TELEMETRY_STALE_AFTER_MS;
-  });
+  }).length;
+}
+
+export function getMergedQuotaRemainingPercent(
+  account: Pick<AccountSummary, "liveQuotaDebug">,
+  windowKey: "primary" | "secondary",
+): number | null {
+  const merged = account.liveQuotaDebug?.merged;
+  if (!merged || merged.stale === true) {
+    return null;
+  }
+
+  const candidate =
+    windowKey === "primary"
+      ? merged.primary?.remainingPercent
+      : merged.secondary?.remainingPercent;
+
+  if (typeof candidate !== "number" || Number.isNaN(candidate)) {
+    return null;
+  }
+
+  return candidate;
 }
 
 export function isFreshQuotaTelemetryTimestamp(
@@ -89,7 +110,7 @@ export function isAccountWorkingNow(
     return true;
   }
 
-  if (hasFreshDebugRawSamples(account, nowMs)) {
+  if (getFreshDebugRawSampleCount(account, nowMs) > 0) {
     return true;
   }
 

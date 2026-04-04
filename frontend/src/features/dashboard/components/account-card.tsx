@@ -31,6 +31,8 @@ import {
   formatSlug,
 } from "@/utils/formatters";
 import {
+  getFreshDebugRawSampleCount,
+  getMergedQuotaRemainingPercent,
   hasFreshLiveTelemetry,
   isAccountWorkingNow,
   isFreshQuotaTelemetryTimestamp,
@@ -261,9 +263,10 @@ export function AccountCard({
   const [showQuotaDebug, setShowQuotaDebug] = useState(false);
   const liveQuotaDebug = account.liveQuotaDebug ?? null;
   const mergedPrimaryRemainingPercent =
-    liveQuotaDebug?.merged?.primary?.remainingPercent ?? null;
+    getMergedQuotaRemainingPercent(account, "primary");
   const mergedSecondaryRemainingPercent =
-    liveQuotaDebug?.merged?.secondary?.remainingPercent ?? null;
+    getMergedQuotaRemainingPercent(account, "secondary");
+  const freshDebugRawSampleCount = getFreshDebugRawSampleCount(account);
   const blurred = usePrivacyStore((s) => s.blurred);
   const isActiveSnapshot = account.codexAuth?.isActiveSnapshot ?? false;
   const hasLiveSession = hasFreshLiveTelemetry(account);
@@ -360,7 +363,7 @@ export function AccountCard({
     : formatTokenUsageCompact(totalTokensUsed);
   const codexLiveSessionCount = hasLiveSession
     ? Math.max(account.codexLiveSessionCount ?? 0, 1)
-    : 0;
+    : Math.max(account.codexLiveSessionCount ?? 0, freshDebugRawSampleCount, 0);
   const codexTrackedSessionCount = Math.max(account.codexTrackedSessionCount ?? 0, 0);
   const hasSessionInventory = codexLiveSessionCount > 0 || codexTrackedSessionCount > 0;
   const codexCurrentTaskPreview = account.codexCurrentTaskPreview?.trim() || null;

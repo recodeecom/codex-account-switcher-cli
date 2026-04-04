@@ -13,6 +13,7 @@ import {
 import { AccountListItem } from "@/features/accounts/components/account-list-item";
 import { WindowsOauthHelp } from "@/features/accounts/components/windows-oauth-help";
 import type { AccountSummary } from "@/features/accounts/schemas";
+import { getMergedQuotaRemainingPercent } from "@/utils/account-working";
 import { buildDuplicateAccountIdSet } from "@/utils/account-identifiers";
 import { formatSlug } from "@/utils/formatters";
 import { normalizeRemainingPercentForDisplay } from "@/utils/quota-display";
@@ -25,13 +26,16 @@ function normalizeQuotaPercent(value: number | null | undefined): number {
 }
 
 function resolvePrimaryRemainingForDisplay(account: AccountSummary): number | null {
+  const mergedPrimaryRemainingPercent = getMergedQuotaRemainingPercent(account, "primary");
   return normalizeRemainingPercentForDisplay({
     accountKey: account.accountId,
     windowKey: "primary",
-    remainingPercent: account.usage?.primaryRemainingPercent ?? null,
+    remainingPercent:
+      mergedPrimaryRemainingPercent ?? account.usage?.primaryRemainingPercent ?? null,
     resetAt: account.resetAtPrimary ?? null,
     hasLiveSession: account.codexAuth?.hasLiveSession ?? false,
     lastRecordedAt: account.lastUsageRecordedAtPrimary ?? null,
+    applyCycleFloor: mergedPrimaryRemainingPercent == null,
   });
 }
 
@@ -40,14 +44,16 @@ function compareAccountsForSidebar(a: AccountSummary, b: AccountSummary): number
   const bPrimaryRemaining = resolvePrimaryRemainingForDisplay(b);
   const aCanUseLocally = canUseLocalAccount({
     status: a.status,
-    primaryRemainingPercent: a.usage?.primaryRemainingPercent ?? null,
+    primaryRemainingPercent:
+      getMergedQuotaRemainingPercent(a, "primary") ?? a.usage?.primaryRemainingPercent ?? null,
     isActiveSnapshot: a.codexAuth?.isActiveSnapshot,
     hasLiveSession: a.codexAuth?.hasLiveSession,
     codexSessionCount: a.codexSessionCount,
   });
   const bCanUseLocally = canUseLocalAccount({
     status: b.status,
-    primaryRemainingPercent: b.usage?.primaryRemainingPercent ?? null,
+    primaryRemainingPercent:
+      getMergedQuotaRemainingPercent(b, "primary") ?? b.usage?.primaryRemainingPercent ?? null,
     isActiveSnapshot: b.codexAuth?.isActiveSnapshot,
     hasLiveSession: b.codexAuth?.hasLiveSession,
     codexSessionCount: b.codexSessionCount,
@@ -67,20 +73,24 @@ function compareAccountsForSidebar(a: AccountSummary, b: AccountSummary): number
     normalizeRemainingPercentForDisplay({
       accountKey: a.accountId,
       windowKey: "secondary",
-      remainingPercent: a.usage?.secondaryRemainingPercent ?? null,
+      remainingPercent:
+        getMergedQuotaRemainingPercent(a, "secondary") ?? a.usage?.secondaryRemainingPercent ?? null,
       resetAt: a.resetAtSecondary ?? null,
       hasLiveSession: a.codexAuth?.hasLiveSession ?? false,
       lastRecordedAt: a.lastUsageRecordedAtSecondary ?? null,
+      applyCycleFloor: getMergedQuotaRemainingPercent(a, "secondary") == null,
     }),
   );
   const bSecondary = normalizeQuotaPercent(
     normalizeRemainingPercentForDisplay({
       accountKey: b.accountId,
       windowKey: "secondary",
-      remainingPercent: b.usage?.secondaryRemainingPercent ?? null,
+      remainingPercent:
+        getMergedQuotaRemainingPercent(b, "secondary") ?? b.usage?.secondaryRemainingPercent ?? null,
       resetAt: b.resetAtSecondary ?? null,
       hasLiveSession: b.codexAuth?.hasLiveSession ?? false,
       lastRecordedAt: b.lastUsageRecordedAtSecondary ?? null,
+      applyCycleFloor: getMergedQuotaRemainingPercent(b, "secondary") == null,
     }),
   );
   if (aSecondary !== bSecondary) {

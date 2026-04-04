@@ -13,7 +13,7 @@ import {
 } from "@/utils/account-status";
 import { formatCompactAccountId } from "@/utils/account-identifiers";
 import { formatPercentNullable, formatSlug } from "@/utils/formatters";
-import { isAccountWorkingNow } from "@/utils/account-working";
+import { getMergedQuotaRemainingPercent, isAccountWorkingNow } from "@/utils/account-working";
 import { normalizeRemainingPercentForDisplay } from "@/utils/quota-display";
 import {
   canUseLocalAccount,
@@ -117,15 +117,20 @@ export function AccountListItem({
   const idSuffix = showAccountId
     ? ` | ID ${formatCompactAccountId(account.accountId)}`
     : "";
+  const mergedPrimaryRemainingPercent = getMergedQuotaRemainingPercent(account, "primary");
+  const mergedSecondaryRemainingPercent = getMergedQuotaRemainingPercent(account, "secondary");
   const secondary = normalizeRemainingPercentForDisplay({
     accountKey: account.accountId,
     windowKey: "secondary",
-    remainingPercent: account.usage?.secondaryRemainingPercent ?? null,
+    remainingPercent:
+      mergedSecondaryRemainingPercent ?? account.usage?.secondaryRemainingPercent ?? null,
     resetAt: account.resetAtSecondary ?? null,
     hasLiveSession,
     lastRecordedAt: account.lastUsageRecordedAtSecondary ?? null,
+    applyCycleFloor: mergedSecondaryRemainingPercent == null,
   });
-  const primaryRemainingRaw = account.usage?.primaryRemainingPercent ?? null;
+  const primaryRemainingRaw =
+    mergedPrimaryRemainingPercent ?? account.usage?.primaryRemainingPercent ?? null;
   const primaryRemaining = normalizeRemainingPercentForDisplay({
     accountKey: account.accountId,
     windowKey: "primary",
@@ -133,6 +138,7 @@ export function AccountListItem({
     resetAt: account.resetAtPrimary ?? null,
     hasLiveSession,
     lastRecordedAt: account.lastUsageRecordedAtPrimary ?? null,
+    applyCycleFloor: mergedPrimaryRemainingPercent == null,
   });
   const hasResolvedSnapshot = Boolean(account.codexAuth?.snapshotName?.trim());
   const canUseLocally = canUseLocalAccount({

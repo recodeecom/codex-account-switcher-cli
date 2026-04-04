@@ -13,6 +13,7 @@ import {
   formatResetRelative,
   formatWindowLabel,
 } from "@/utils/formatters";
+import { getMergedQuotaRemainingPercent } from "@/utils/account-working";
 import { normalizeRemainingPercentForDisplay } from "@/utils/quota-display";
 
 export type AccountUsagePanelProps = {
@@ -129,21 +130,26 @@ function AdditionalQuotaRow({
 
 export function AccountUsagePanel({ account, trends }: AccountUsagePanelProps) {
   const hasLiveSession = account.codexAuth?.hasLiveSession ?? false;
+  const mergedPrimaryRemainingPercent = getMergedQuotaRemainingPercent(account, "primary");
+  const mergedSecondaryRemainingPercent = getMergedQuotaRemainingPercent(account, "secondary");
   const primary = normalizeRemainingPercentForDisplay({
     accountKey: account.accountId,
     windowKey: "primary",
-    remainingPercent: account.usage?.primaryRemainingPercent ?? null,
+    remainingPercent: mergedPrimaryRemainingPercent ?? account.usage?.primaryRemainingPercent ?? null,
     resetAt: account.resetAtPrimary ?? null,
     hasLiveSession,
     lastRecordedAt: account.lastUsageRecordedAtPrimary ?? null,
+    applyCycleFloor: mergedPrimaryRemainingPercent == null,
   });
   const secondary = normalizeRemainingPercentForDisplay({
     accountKey: account.accountId,
     windowKey: "secondary",
-    remainingPercent: account.usage?.secondaryRemainingPercent ?? null,
+    remainingPercent:
+      mergedSecondaryRemainingPercent ?? account.usage?.secondaryRemainingPercent ?? null,
     resetAt: account.resetAtSecondary ?? null,
     hasLiveSession,
     lastRecordedAt: account.lastUsageRecordedAtSecondary ?? null,
+    applyCycleFloor: mergedSecondaryRemainingPercent == null,
   });
   const requestUsage = account.requestUsage ?? null;
   const hasRequestUsage = (requestUsage?.requestCount ?? 0) > 0;
