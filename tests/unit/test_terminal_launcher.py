@@ -65,3 +65,42 @@ def test_open_linux_terminal_reports_container_hint_when_no_launcher(monkeypatch
     message = str(excinfo.value)
     assert "No supported terminal app found in PATH" in message
     assert "Detected containerized runtime" in message
+
+
+def test_open_linux_terminal_uses_override_launcher(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured_argv: list[list[str]] = []
+    monkeypatch.setenv(
+        "CODEX_LB_LINUX_TERMINAL_LAUNCHER",
+        "custom-launch --shell {shell_q} --command {command_q}",
+    )
+    monkeypatch.setattr(
+        terminal,
+        "_resolve_executable",
+        lambda name: "/opt/bin/custom-launch" if name == "custom-launch" else None,
+    )
+    monkeypatch.setattr(terminal, "_spawn_detached", lambda argv: captured_argv.append(argv))
+
+    terminal._open_linux_terminal("/bin/bash", "echo test")
+
+    assert captured_argv == [
+        ["/opt/bin/custom-launch", "--shell", "/bin/bash", "--command", "echo test"]
+    ]
+
+
+def test_open_linux_terminal_uses_host_bridge_when_containerized(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured_argv: list[list[str]] = []
+
+    def _resolve(name: str) -> str | None:
+        if name == "flatpak-spawn":
+            return "/usr/bin/flatpak-spawn"
+        return None
+
+    monkeypatch.setattr(terminal, "_resolve_executable", _resolve)
+    monkeypatch.setattr(terminal, "_is_containerized_runtime", lambda: True)
+    monkeypatch.setattr(terminal, "_spawn_detached", lambda argv: captured_argv.append(argv))
+
+    terminal._open_linux_terminal("/bin/bash", "echo test")
+
+    assert captured_argv == [
+        ["/usr/bin/flatpak-spawn", "--host", "x-terminal-emulator", "-e", "/bin/bash", "-lc", "echo test"]
+    ]

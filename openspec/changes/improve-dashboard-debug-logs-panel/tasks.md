@@ -1,0 +1,6 @@
+- [x] Refactor account-card debug payload formatter into structured log lines.
+- [x] Increase debug panel readability (size/contrast/viewport) in account cards.
+- [x] Add `Copy logs` action for expanded debug logs.
+- [x] Keep existing debug expand/collapse behavior and telemetry values intact.
+- [x] Extend account-card tests to cover the updated debug panel affordances.
+- [x] Run targeted frontend verification (`vitest`, `tsc -b`, `eslint`).

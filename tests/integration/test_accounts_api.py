@@ -249,6 +249,179 @@ async def test_deleted_auto_imported_account_is_not_resurrected(
 
 
 @pytest.mark.asyncio
+async def test_accounts_list_reactivates_deactivated_account_when_local_snapshot_exists(
+    async_client, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    accounts_dir = tmp_path / "accounts"
+    accounts_dir.mkdir()
+    _write_auth_snapshot(accounts_dir / "tokio.json", email="tokio@example.com", account_id="acc_tokio")
+    (tmp_path / "current").write_text("tokio")
+
+    monkeypatch.setenv("CODEX_LB_CODEX_AUTH_AUTO_IMPORT_ON_ACCOUNTS_LIST", "true")
+    monkeypatch.setenv("CODEX_AUTH_ACCOUNTS_DIR", str(accounts_dir))
+    monkeypatch.setenv("CODEX_AUTH_CURRENT_PATH", str(tmp_path / "current"))
+    monkeypatch.setenv("CODEX_AUTH_JSON_PATH", str(tmp_path / "missing-auth.json"))
+    from app.core.config.settings import get_settings
+
+    get_settings.cache_clear()
+
+    email = "tokio@example.com"
+    raw_account_id = "acc_tokio"
+    expected_account_id = generate_unique_account_id(raw_account_id, email)
+    payload = {
+        "email": email,
+        "chatgpt_account_id": raw_account_id,
+        "https://api.openai.com/auth": {"chatgpt_plan_type": "plus"},
+    }
+    auth_json = {
+        "tokens": {
+            "idToken": _encode_jwt(payload),
+            "accessToken": "access",
+            "refreshToken": "refresh",
+            "accountId": raw_account_id,
+        },
+    }
+    files = {"auth_json": ("auth.json", json.dumps(auth_json), "application/json")}
+    imported = await async_client.post("/api/accounts/import", files=files)
+    assert imported.status_code == 200
+
+    async with SessionLocal() as session:
+        await session.execute(
+            text(
+                """
+                UPDATE accounts
+                SET status = 'deactivated', deactivation_reason = 'manual_test_deactivated'
+                WHERE id = :account_id
+                """
+            ),
+            {"account_id": expected_account_id},
+        )
+        await session.commit()
+
+    listed = await async_client.get("/api/accounts")
+    assert listed.status_code == 200
+    accounts = {item["accountId"]: item for item in listed.json()["accounts"]}
+    assert accounts[expected_account_id]["status"] == "active"
+    assert accounts[expected_account_id]["deactivationReason"] is None
+    assert accounts[expected_account_id]["codexAuth"]["isActiveSnapshot"] is True
+
+
+@pytest.mark.asyncio
+async def test_accounts_list_reactivates_deactivated_account_from_active_auth_json(
+    async_client, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    accounts_dir = tmp_path / "accounts"
+    accounts_dir.mkdir()
+    auth_json_path = tmp_path / "auth.json"
+    _write_auth_snapshot(auth_json_path, email="denver@example.com", account_id="acc_denver")
+
+    monkeypatch.setenv("CODEX_LB_CODEX_AUTH_AUTO_IMPORT_ON_ACCOUNTS_LIST", "true")
+    monkeypatch.setenv("CODEX_AUTH_ACCOUNTS_DIR", str(accounts_dir))
+    monkeypatch.setenv("CODEX_AUTH_CURRENT_PATH", str(tmp_path / "missing-current"))
+    monkeypatch.setenv("CODEX_AUTH_JSON_PATH", str(auth_json_path))
+    from app.core.config.settings import get_settings
+
+    get_settings.cache_clear()
+
+    email = "denver@example.com"
+    raw_account_id = "acc_denver"
+    expected_account_id = generate_unique_account_id(raw_account_id, email)
+    payload = {
+        "email": email,
+        "chatgpt_account_id": raw_account_id,
+        "https://api.openai.com/auth": {"chatgpt_plan_type": "plus"},
+    }
+    auth_json = {
+        "tokens": {
+            "idToken": _encode_jwt(payload),
+            "accessToken": "access",
+            "refreshToken": "refresh",
+            "accountId": raw_account_id,
+        },
+    }
+    files = {"auth_json": ("auth.json", json.dumps(auth_json), "application/json")}
+    imported = await async_client.post("/api/accounts/import", files=files)
+    assert imported.status_code == 200
+
+    async with SessionLocal() as session:
+        await session.execute(
+            text(
+                """
+                UPDATE accounts
+                SET status = 'deactivated', deactivation_reason = 'manual_test_deactivated'
+                WHERE id = :account_id
+                """
+            ),
+            {"account_id": expected_account_id},
+        )
+        await session.commit()
+
+    listed = await async_client.get("/api/accounts")
+    assert listed.status_code == 200
+    accounts = {item["accountId"]: item for item in listed.json()["accounts"]}
+    assert accounts[expected_account_id]["status"] == "active"
+    assert accounts[expected_account_id]["deactivationReason"] is None
+
+
+@pytest.mark.asyncio
+async def test_accounts_list_keeps_usage_api_disconnected_account_deactivated(
+    async_client, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    accounts_dir = tmp_path / "accounts"
+    accounts_dir.mkdir()
+    _write_auth_snapshot(accounts_dir / "tokio.json", email="tokio@example.com", account_id="acc_tokio")
+    (tmp_path / "current").write_text("tokio")
+
+    monkeypatch.setenv("CODEX_LB_CODEX_AUTH_AUTO_IMPORT_ON_ACCOUNTS_LIST", "true")
+    monkeypatch.setenv("CODEX_AUTH_ACCOUNTS_DIR", str(accounts_dir))
+    monkeypatch.setenv("CODEX_AUTH_CURRENT_PATH", str(tmp_path / "current"))
+    monkeypatch.setenv("CODEX_AUTH_JSON_PATH", str(tmp_path / "missing-auth.json"))
+    from app.core.config.settings import get_settings
+
+    get_settings.cache_clear()
+
+    email = "tokio@example.com"
+    raw_account_id = "acc_tokio"
+    expected_account_id = generate_unique_account_id(raw_account_id, email)
+    payload = {
+        "email": email,
+        "chatgpt_account_id": raw_account_id,
+        "https://api.openai.com/auth": {"chatgpt_plan_type": "plus"},
+    }
+    auth_json = {
+        "tokens": {
+            "idToken": _encode_jwt(payload),
+            "accessToken": "access",
+            "refreshToken": "refresh",
+            "accountId": raw_account_id,
+        },
+    }
+    files = {"auth_json": ("auth.json", json.dumps(auth_json), "application/json")}
+    imported = await async_client.post("/api/accounts/import", files=files)
+    assert imported.status_code == 200
+
+    disconnected_reason = "Usage API error: HTTP 403 - Forbidden"
+    async with SessionLocal() as session:
+        await session.execute(
+            text(
+                """
+                UPDATE accounts
+                SET status = 'deactivated', deactivation_reason = :reason
+                WHERE id = :account_id
+                """
+            ),
+            {"account_id": expected_account_id, "reason": disconnected_reason},
+        )
+        await session.commit()
+
+    listed = await async_client.get("/api/accounts")
+    assert listed.status_code == 200
+    accounts = {item["accountId"]: item for item in listed.json()["accounts"]}
+    assert accounts[expected_account_id]["status"] == "deactivated"
+    assert accounts[expected_account_id]["deactivationReason"] == disconnected_reason
+
+
+@pytest.mark.asyncio
 async def test_accounts_list_sets_has_live_session_from_runtime_telemetry(
     async_client, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):

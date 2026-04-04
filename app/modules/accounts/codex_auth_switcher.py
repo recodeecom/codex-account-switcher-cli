@@ -78,6 +78,8 @@ def resolve_snapshot_names_for_account(
     leaking snapshots from a different account after merge/overwrite flows.
     Fallback to persisted account.id only when canonical lookup resolves no
     snapshots.
+
+    Policy: one account maps to at most one effective snapshot name.
     """
 
     resolved: list[str] = []
@@ -136,7 +138,14 @@ def resolve_snapshot_names_for_account(
     if not deduped_candidate_ids or not resolved:
         _add(snapshot_index.snapshots_by_account_id.get(account_id))
 
-    return resolved
+    selected_snapshot_name = select_snapshot_name(
+        resolved,
+        snapshot_index.active_snapshot_name,
+        email=email,
+    )
+    if selected_snapshot_name is None:
+        return []
+    return [selected_snapshot_name]
 
 
 def _expected_account_ids_for_account(

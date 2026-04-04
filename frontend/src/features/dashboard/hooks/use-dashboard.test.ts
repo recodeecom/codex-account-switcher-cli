@@ -118,6 +118,53 @@ describe("useDashboard", () => {
     }
   });
 
+  it("uses fast polling when tracked sessions exist without live telemetry", async () => {
+    server.use(
+      http.get("/api/dashboard/overview", () =>
+        HttpResponse.json(
+          createDashboardOverview({
+            accounts: [
+              createAccountSummary({
+                accountId: "acc_tracked_only",
+                email: "tracked-only@example.com",
+                displayName: "tracked-only@example.com",
+                codexLiveSessionCount: 0,
+                codexTrackedSessionCount: 2,
+                codexSessionCount: 0,
+                codexAuth: {
+                  hasSnapshot: true,
+                  snapshotName: "tracked-only",
+                  activeSnapshotName: "different",
+                  isActiveSnapshot: false,
+                  hasLiveSession: false,
+                },
+                lastUsageRecordedAtPrimary: null,
+                lastUsageRecordedAtSecondary: null,
+              }),
+            ],
+          }),
+        ),
+      ),
+    );
+
+    const queryClient = createTestQueryClient();
+    const { result } = renderHook(() => useDashboard(), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    const query = queryClient.getQueryCache().find({ queryKey: ["dashboard", "overview"] });
+    expect(query).toBeDefined();
+    const refetchInterval = (query?.options as { refetchInterval?: unknown } | undefined)
+      ?.refetchInterval;
+    if (typeof refetchInterval === "function") {
+      expect(refetchInterval(query as never)).toBe(2_000);
+    } else {
+      expect(refetchInterval).toBe(2_000);
+    }
+  });
+
   it("exposes error state on request failure", async () => {
     server.use(
       http.get("/api/dashboard/overview", () =>

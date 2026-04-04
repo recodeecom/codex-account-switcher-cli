@@ -55,10 +55,16 @@ export function isAccountWorkingNow(
     AccountSummary,
     | "codexAuth"
     | "codexLiveSessionCount"
+    | "codexSessionCount"
+    | "codexTrackedSessionCount"
     | "lastUsageRecordedAtPrimary"
     | "lastUsageRecordedAtSecondary"
   >,
   nowMs: number = Date.now(),
 ): boolean {
-  return hasFreshLiveTelemetry(account, nowMs);
+  if (hasFreshLiveTelemetry(account, nowMs)) {
+    return true;
+  }
+
+  return Math.max(account.codexTrackedSessionCount ?? 0, account.codexSessionCount ?? 0, 0) > 0;
 }

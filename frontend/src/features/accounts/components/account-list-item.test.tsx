@@ -315,7 +315,7 @@ describe("AccountListItem", () => {
     );
 
     expect(screen.getByRole("button", { name: "Use this" })).toBeEnabled();
-    expect(screen.queryByText("Deactivated")).not.toBeInTheDocument();
+    expect(screen.queryByText("Disconnected")).not.toBeInTheDocument();
   });
 
   it("treats deactivated accounts with live sessions as active in list rows", () => {
@@ -345,7 +345,7 @@ describe("AccountListItem", () => {
     );
 
     expect(screen.getByRole("button", { name: "Use this" })).toBeEnabled();
-    expect(screen.queryByText("Deactivated")).not.toBeInTheDocument();
+    expect(screen.queryByText("Disconnected")).not.toBeInTheDocument();
   });
 
   it("shows live badge and live background when account is working now", () => {

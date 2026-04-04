@@ -64,6 +64,27 @@ describe("useAccounts", () => {
     expect(resolveAccountsPollInterval(undefined)).toBe(30_000);
   });
 
+  it("uses fast polling when tracked sessions are present without live telemetry", () => {
+    const trackedAccounts = [
+      createAccountSummary({
+        codexLiveSessionCount: 0,
+        codexTrackedSessionCount: 3,
+        codexSessionCount: 0,
+        codexAuth: {
+          hasSnapshot: true,
+          snapshotName: "secondary",
+          activeSnapshotName: "main",
+          isActiveSnapshot: false,
+          hasLiveSession: false,
+        },
+        lastUsageRecordedAtPrimary: null,
+        lastUsageRecordedAtSecondary: null,
+      }),
+    ];
+
+    expect(resolveAccountsPollInterval(trackedAccounts)).toBe(2_000);
+  });
+
   it("loads accounts and invalidates related queries after mutations", async () => {
     const queryClient = createTestQueryClient();
     const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");

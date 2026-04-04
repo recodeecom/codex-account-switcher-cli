@@ -89,24 +89,19 @@ export function AccountCards({
     const deactivated: AccountSummary[] = [];
 
     for (const account of accounts) {
-      if (account.status === "deactivated") {
-        deactivated.push(account);
-        continue;
-      }
+      const hasLiveSession = hasFreshLiveTelemetry(account);
+      const effectiveStatus = resolveEffectiveAccountStatus({
+        status: account.status,
+        isActiveSnapshot: account.codexAuth?.isActiveSnapshot,
+        hasLiveSession,
+      });
 
       if (isAccountWorkingNow(account)) {
         working.push(account);
         continue;
       }
 
-      const isDeactivated =
-        resolveEffectiveAccountStatus({
-          status: account.status,
-          isActiveSnapshot: account.codexAuth?.isActiveSnapshot,
-          hasLiveSession: hasFreshLiveTelemetry(account),
-        }) === "deactivated";
-
-      if (isDeactivated) {
+      if (effectiveStatus === "deactivated") {
         deactivated.push(account);
       } else {
         active.push(account);
@@ -195,7 +190,7 @@ export function AccountCards({
               Working now
             </h3>
             <p className="text-xs text-muted-foreground">
-              Live accounts are grouped first so you can switch faster.
+              Accounts with active CLI sessions are grouped first so you can switch faster.
             </p>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">

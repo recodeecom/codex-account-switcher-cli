@@ -28,7 +28,7 @@ async def sync_local_codex_auth_snapshots(*, repo: AccountsRepository, encryptor
         return
 
     ignored_account_ids = list_auto_import_ignored_account_ids()
-    imported_any = False
+    changed_any = False
     for snapshot_path in _collect_codex_auth_snapshot_paths():
         try:
             raw = snapshot_path.read_bytes()
@@ -43,15 +43,21 @@ async def sync_local_codex_auth_snapshots(*, repo: AccountsRepository, encryptor
 
         existing = await repo.get_by_id(account.id)
         if existing is not None:
+            if existing.status == AccountStatus.DEACTIVATED and _should_reactivate_deactivated_account(existing):
+                try:
+                    await repo.upsert(account)
+                except AccountIdentityConflictError:
+                    continue
+                changed_any = True
             continue
 
         try:
             await repo.upsert(account)
         except AccountIdentityConflictError:
             continue
-        imported_any = True
+        changed_any = True
 
-    if imported_any:
+    if changed_any:
         get_account_selection_cache().invalidate()
 
 
@@ -116,3 +122,18 @@ def _resolve_codex_auth_path() -> Path:
         path = Path(raw).expanduser()
         return path if path.is_absolute() else Path.cwd() / path
     return Path.home() / ".codex" / "auth.json"
+
+
+def _should_reactivate_deactivated_account(account: Account) -> bool:
+    """Allow snapshot auto-import recovery except for API-disconnected accounts.
+
+    Usage refresh marks disconnected/invalid workspace memberships as deactivated
+    with reasons like ``Usage API error: HTTP 403 - Forbidden``.
+    Keep those accounts deactivated until explicit re-auth instead of
+    immediately resurrecting them from local snapshot files.
+    """
+
+    reason = (account.deactivation_reason or "").strip().lower()
+    if reason.startswith("usage api error: http "):
+        return False
+    return True

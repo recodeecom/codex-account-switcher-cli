@@ -3,7 +3,7 @@ export const STATUS_LABELS = {
   paused: "Paused",
   limited: "Rate limited",
   exceeded: "Quota exceeded",
-  deactivated: "Deactivated",
+  deactivated: "Disconnected",
 } as const;
 
 export const ERROR_LABELS = {

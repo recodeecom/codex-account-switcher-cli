@@ -8,6 +8,7 @@ type QuotaDisplayInput = {
   lastRecordedAt?: string | null;
   staleAfterMs?: number;
   nowMs?: number;
+  applyCycleFloor?: boolean;
 };
 
 const DEFAULT_LIVE_STALE_AFTER_MS = 6 * 60 * 1000;
@@ -86,6 +87,7 @@ export function normalizeRemainingPercentForDisplay({
   lastRecordedAt,
   staleAfterMs = DEFAULT_LIVE_STALE_AFTER_MS,
   nowMs = Date.now(),
+  applyCycleFloor = true,
 }: QuotaDisplayInput): number | null {
   let normalizedRemainingPercent = remainingPercent;
 
@@ -110,13 +112,15 @@ export function normalizeRemainingPercentForDisplay({
     return null;
   }
 
-  normalizedRemainingPercent = floorRemainingPercentByCycle({
-    accountKey,
-    windowKey,
-    resetAtMs: parseResetAtMs(resetAt),
-    nowMs,
-    remainingPercent: normalizedRemainingPercent,
-  });
+  if (applyCycleFloor) {
+    normalizedRemainingPercent = floorRemainingPercentByCycle({
+      accountKey,
+      windowKey,
+      resetAtMs: parseResetAtMs(resetAt),
+      nowMs,
+      remainingPercent: normalizedRemainingPercent,
+    });
+  }
 
   return normalizedRemainingPercent;
 }

@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useMemo } from "react";
+import { Suspense, lazy, useCallback, useEffect, useRef, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -28,7 +28,6 @@ export function AccountsPage() {
     resumeMutation,
     deleteMutation,
     useLocalMutation,
-    refreshAuthMutation,
     repairSnapshotMutation,
   } = useAccounts();
   const oauth = useOauth();
@@ -40,6 +39,8 @@ export function AccountsPage() {
   const accounts = useMemo(() => accountsQuery.data ?? [], [accountsQuery.data]);
   const duplicateAccountIds = useMemo(() => buildDuplicateAccountIdSet(accounts), [accounts]);
   const selectedAccountId = searchParams.get("selected");
+  const oauthIntent = searchParams.get("oauth");
+  const oauthIntentInFlightRef = useRef(false);
 
   const handleSelectAccount = useCallback((accountId: string) => {
     const nextSearchParams = new URLSearchParams(searchParams);
@@ -62,6 +63,30 @@ export function AccountsPage() {
     },
     [searchParams, setSearchParams, useLocalMutation],
   );
+
+  const triggerDeviceOauth = useCallback((accountId: string) => {
+    const nextSearchParams = new URLSearchParams(searchParams);
+    nextSearchParams.set("selected", accountId);
+    nextSearchParams.set("oauth", "device");
+    setSearchParams(nextSearchParams);
+  }, [searchParams, setSearchParams]);
+
+  useEffect(() => {
+    if (oauthIntent !== "device" || oauthIntentInFlightRef.current) {
+      return;
+    }
+
+    oauthIntentInFlightRef.current = true;
+    oauthDialog.show();
+
+    void oauth.start("device").finally(() => {
+      oauthIntentInFlightRef.current = false;
+    });
+
+    const nextSearchParams = new URLSearchParams(searchParams);
+    nextSearchParams.delete("oauth");
+    setSearchParams(nextSearchParams, { replace: true });
+  }, [oauth, oauthDialog, oauthIntent, searchParams, setSearchParams]);
 
   const resolvedSelectedAccountId = useMemo(() => {
     if (accounts.length === 0) {
@@ -87,7 +112,6 @@ export function AccountsPage() {
     resumeMutation.isPending ||
     deleteMutation.isPending ||
     useLocalMutation.isPending ||
-    refreshAuthMutation.isPending ||
     repairSnapshotMutation.isPending;
 
   const mutationError =
@@ -96,7 +120,6 @@ export function AccountsPage() {
     getErrorMessageOrNull(resumeMutation.error) ||
     getErrorMessageOrNull(deleteMutation.error) ||
     getErrorMessageOrNull(useLocalMutation.error) ||
-    getErrorMessageOrNull(refreshAuthMutation.error) ||
     getErrorMessageOrNull(repairSnapshotMutation.error);
 
   return (
@@ -140,13 +163,7 @@ export function AccountsPage() {
             }
             useLocalBusy={useLocalMutation.isPending}
             repairSnapshotBusy={repairSnapshotMutation.isPending}
-            onReauth={(accountId) => {
-              refreshAuthMutation.mutate(accountId, {
-                onError: () => {
-                  oauthDialog.show();
-                },
-              });
-            }}
+            onReauth={triggerDeviceOauth}
           />
         </div>
       )}

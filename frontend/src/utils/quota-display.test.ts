@@ -202,4 +202,25 @@ describe("normalizeRemainingPercentForDisplay", () => {
     expect(accountOnePrimaryAfterHigher).toBe(35);
     expect(accountOneWeeklyAfterLower).toBe(70);
   });
+
+  it("can bypass cycle floor when authoritative merged values are provided", () => {
+    const first = normalizeRemainingPercentForDisplay({
+      accountKey: "acc-merged",
+      windowKey: "secondary",
+      remainingPercent: 0,
+      resetAt: "2026-01-07T00:00:00.000Z",
+      nowMs: new Date("2026-01-01T04:00:00.000Z").getTime(),
+    });
+    const second = normalizeRemainingPercentForDisplay({
+      accountKey: "acc-merged",
+      windowKey: "secondary",
+      remainingPercent: 69,
+      resetAt: "2026-01-07T00:00:00.000Z",
+      nowMs: new Date("2026-01-01T04:10:00.000Z").getTime(),
+      applyCycleFloor: false,
+    });
+
+    expect(first).toBe(0);
+    expect(second).toBe(69);
+  });
 });

@@ -305,7 +305,7 @@ def test_resolve_snapshot_names_for_account_prefers_email_named_snapshot_on_conf
         email="admin@edixai.com",
     )
 
-    assert resolved == ["admin-edixai-com", "viktoredix"]
+    assert resolved == ["admin-edixai-com"]
 
 
 def test_resolve_snapshot_names_for_account_prefers_email_prefix_snapshot_on_conflict() -> None:
@@ -326,7 +326,7 @@ def test_resolve_snapshot_names_for_account_prefers_email_prefix_snapshot_on_con
         email="admin@edixai.com",
     )
 
-    assert resolved == ["admin-snapshot", "viktoredix"]
+    assert resolved == ["admin-snapshot"]
 
 
 def test_switch_snapshot_falls_back_without_codex_auth(

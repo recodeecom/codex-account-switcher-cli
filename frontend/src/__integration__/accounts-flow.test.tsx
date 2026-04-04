@@ -109,8 +109,9 @@ describe("accounts flow integration", () => {
     });
   });
 
-  it("falls back to OAuth dialog when re-auth refresh fails on accounts page", async () => {
+  it("starts device OAuth immediately when re-authenticate is clicked on accounts page", async () => {
     const user = userEvent.setup({ delay: null });
+    let refreshCalls = 0;
 
     server.use(
       http.get("/api/accounts", () =>
@@ -136,17 +137,10 @@ describe("accounts flow integration", () => {
           ],
         }),
       ),
-      http.post("/api/accounts/:accountId/refresh-auth", () =>
-        HttpResponse.json(
-          {
-            error: {
-              code: "account_refresh_failed",
-              message: "Refresh failed",
-            },
-          },
-          { status: 400 },
-        ),
-      ),
+      http.post("/api/accounts/:accountId/refresh-auth", () => {
+        refreshCalls += 1;
+        return HttpResponse.json({ status: "refreshed" });
+      }),
     );
 
     window.history.pushState({}, "", "/accounts");
@@ -156,5 +150,7 @@ describe("accounts flow integration", () => {
     await user.click(await screen.findByRole("button", { name: "Re-authenticate" }));
 
     expect(await screen.findByRole("heading", { name: "Add account with OAuth" })).toBeInTheDocument();
+    expect(await screen.findByText("User code")).toBeInTheDocument();
+    expect(refreshCalls).toBe(0);
   });
 });

@@ -40,6 +40,11 @@ _LINUX_DESKTOP_ENTRY_FALLBACKS: tuple[str, ...] = (
     "org.kde.konsole",
     "xfce4-terminal",
 )
+_CONTAINER_HOST_TERMINAL_BRIDGES: tuple[tuple[str, ...], ...] = (
+    ("flatpak-spawn", "--host"),
+    ("distrobox-host-exec",),
+    ("host-spawn",),
+)
 
 
 @dataclass(slots=True)
@@ -103,6 +108,9 @@ def _spawn_detached(argv: list[str]) -> None:
 
 
 def _open_linux_terminal(shell: str, command: str) -> None:
+    if _open_linux_terminal_with_override(shell=shell, command=command):
+        return
+
     candidates: list[list[str]] = [
         ["x-terminal-emulator", "-e", shell, "-lc", command],
         ["gnome-terminal", "--", shell, "-lc", command],
@@ -126,6 +134,7 @@ def _open_linux_terminal(shell: str, command: str) -> None:
     ]
 
     errors: list[str] = []
+    is_containerized = _is_containerized_runtime()
     for argv in candidates:
         executable = _resolve_executable(argv[0])
         if executable is None:
@@ -146,10 +155,29 @@ def _open_linux_terminal(shell: str, command: str) -> None:
             except Exception as exc:  # pragma: no cover - platform specific
                 errors.append(f"gtk-launch {desktop_entry}: {exc}")
 
+    bridge_prefixes = _linux_host_bridge_prefixes()
+    if bridge_prefixes and is_containerized:
+        for prefix in bridge_prefixes:
+            for argv in candidates:
+                try:
+                    _spawn_detached([*prefix, *argv])
+                    return
+                except Exception as exc:  # pragma: no cover - platform specific
+                    errors.append(f"{' '.join(prefix)} {' '.join(argv)}: {exc}")
+
+        for prefix in bridge_prefixes:
+            for desktop_entry in _LINUX_DESKTOP_ENTRY_FALLBACKS:
+                try:
+                    _spawn_detached([*prefix, "gtk-launch", desktop_entry])
+                    return
+                except Exception as exc:  # pragma: no cover - platform specific
+                    errors.append(f"{' '.join(prefix)} gtk-launch {desktop_entry}: {exc}")
+
     detail = "; ".join(errors) if errors else "No supported terminal app found in PATH."
-    if _is_containerized_runtime():
+    if is_containerized:
         detail += (
             " Detected containerized runtime; host terminal apps may be unavailable in this environment."
+            " Set CODEX_LB_LINUX_TERMINAL_LAUNCHER or CODEX_LB_LINUX_TERMINAL_BRIDGE to a host-aware launcher."
         )
     raise TerminalLaunchError(f"Failed to open host terminal. {detail}")
 
@@ -177,6 +205,64 @@ def _is_containerized_runtime() -> bool:
         return True
     container_hint = os.environ.get("container", "").strip().lower()
     return bool(container_hint and container_hint != "0")
+
+
+def _open_linux_terminal_with_override(*, shell: str, command: str) -> bool:
+    template = os.environ.get("CODEX_LB_LINUX_TERMINAL_LAUNCHER", "").strip()
+    if not template:
+        return False
+
+    try:
+        formatted = template.format(
+            shell=shell,
+            shell_q=shlex.quote(shell),
+            command=command,
+            command_q=shlex.quote(command),
+        )
+    except Exception as exc:
+        raise TerminalLaunchError(f"Invalid CODEX_LB_LINUX_TERMINAL_LAUNCHER template: {exc}") from exc
+
+    try:
+        argv = shlex.split(formatted)
+    except ValueError as exc:
+        raise TerminalLaunchError(f"Invalid CODEX_LB_LINUX_TERMINAL_LAUNCHER value: {exc}") from exc
+    if not argv:
+        raise TerminalLaunchError("CODEX_LB_LINUX_TERMINAL_LAUNCHER produced an empty command.")
+
+    executable = _resolve_executable(argv[0])
+    if executable is None:
+        raise TerminalLaunchError(
+            f"CODEX_LB_LINUX_TERMINAL_LAUNCHER executable was not found in PATH: {argv[0]}"
+        )
+
+    try:
+        _spawn_detached([executable, *argv[1:]])
+    except Exception as exc:  # pragma: no cover - platform specific
+        raise TerminalLaunchError(f"Failed to launch terminal via override: {exc}") from exc
+    return True
+
+
+def _linux_host_bridge_prefixes() -> list[list[str]]:
+    prefixes: list[list[str]] = []
+
+    explicit_bridge = os.environ.get("CODEX_LB_LINUX_TERMINAL_BRIDGE", "").strip()
+    if explicit_bridge:
+        try:
+            parts = shlex.split(explicit_bridge)
+        except ValueError:
+            parts = []
+        if parts:
+            executable = _resolve_executable(parts[0])
+            if executable is not None:
+                prefixes.append([executable, *parts[1:]])
+
+    for bridge in _CONTAINER_HOST_TERMINAL_BRIDGES:
+        executable = _resolve_executable(bridge[0])
+        if executable is None:
+            continue
+        prefixes.append([executable, *bridge[1:]])
+
+    return prefixes
 
 
 def _open_macos_terminal(command: str) -> None:

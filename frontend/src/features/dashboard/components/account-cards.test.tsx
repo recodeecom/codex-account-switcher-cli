@@ -71,7 +71,7 @@ describe("AccountCards", () => {
     expect(screen.getByRole("heading", { name: "Working now" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Other accounts" })).toBeInTheDocument();
     expect(
-      screen.getByText("Live accounts are grouped first so you can switch faster."),
+      screen.getByText("Accounts with active CLI sessions are grouped first so you can switch faster."),
     ).toBeInTheDocument();
     expect(screen.getByText("2 live sessions")).toBeInTheDocument();
     expect(screen.getByText(/5h avg \d+%/i)).toBeInTheDocument();
@@ -241,7 +241,7 @@ describe("AccountCards", () => {
     expect(titles).toEqual(["active-1@example.com", "active-2@example.com", "deactivated@example.com"]);
   });
 
-  it("does not place deactivated accounts in the working-now section even with live telemetry", () => {
+  it("places deactivated accounts in the working-now section when live telemetry is present", () => {
     const nowIso = new Date().toISOString();
     const deactivatedLive = createAccountSummary({
       accountId: "acc_deactivated_live",
@@ -268,8 +268,52 @@ describe("AccountCards", () => {
       />,
     );
 
-    expect(screen.queryByRole("heading", { name: "Working now" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Working now" })).toBeInTheDocument();
     expect(screen.getByText("deactivated-live@example.com")).toBeInTheDocument();
+    expect(screen.getByText("2 live sessions")).toBeInTheDocument();
+  });
+
+  it("places tracked-session accounts in the working-now section", () => {
+    const tracked = createAccountSummary({
+      accountId: "acc_tracked",
+      email: "tracked@example.com",
+      displayName: "tracked@example.com",
+      codexLiveSessionCount: 0,
+      codexTrackedSessionCount: 3,
+      codexSessionCount: 0,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "tracked",
+        activeSnapshotName: "other",
+        isActiveSnapshot: false,
+        hasLiveSession: false,
+      },
+      lastUsageRecordedAtPrimary: null,
+      lastUsageRecordedAtSecondary: null,
+    });
+    const idle = createAccountSummary({
+      accountId: "acc_idle_2",
+      email: "idle-2@example.com",
+      displayName: "idle-2@example.com",
+      codexLiveSessionCount: 0,
+      codexTrackedSessionCount: 0,
+      codexSessionCount: 0,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "idle-2",
+        activeSnapshotName: "other",
+        isActiveSnapshot: false,
+        hasLiveSession: false,
+      },
+      lastUsageRecordedAtPrimary: null,
+      lastUsageRecordedAtSecondary: null,
+    });
+
+    render(<AccountCards accounts={[idle, tracked]} primaryWindow={null} secondaryWindow={null} />);
+
+    expect(screen.getByRole("heading", { name: "Working now" })).toBeInTheDocument();
+    expect(screen.getByText("tracked@example.com")).toBeInTheDocument();
+    expect(screen.queryByText("live sessions")).not.toBeInTheDocument();
   });
 
   it("falls back to request-usage tokens when window row is unknown", () => {

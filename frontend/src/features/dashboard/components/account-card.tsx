@@ -7,8 +7,9 @@ import {
   RotateCcw,
   SquareTerminal,
 } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
+import { CopyButton } from "@/components/copy-button";
 import { usePrivacyStore } from "@/hooks/use-privacy";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -223,6 +224,33 @@ function formatDebugSource(source: string): string {
   return parts[parts.length - 1] || normalized;
 }
 
+function buildQuotaDebugLogLines(liveQuotaDebug: NonNullable<AccountSummary["liveQuotaDebug"]>): string[] {
+  const merged = liveQuotaDebug.merged;
+  const lines: string[] = [
+    `$ merged 5h=${formatDebugPercent(merged?.primary?.remainingPercent)} weekly=${formatDebugPercent(merged?.secondary?.remainingPercent)}`,
+    `$ override=${liveQuotaDebug.overrideReason ?? (liveQuotaDebug.overrideApplied ? "applied" : "none")}`,
+    `$ flow=collect_raw -> merge -> ${liveQuotaDebug.overrideApplied ? "apply_override" : "no_override"}`,
+  ];
+
+  if (liveQuotaDebug.snapshotsConsidered.length > 0) {
+    lines.push(`$ snapshots=${liveQuotaDebug.snapshotsConsidered.join(", ")}`);
+  }
+
+  if (liveQuotaDebug.rawSamples.length === 0) {
+    lines.push("$ no raw terminal samples");
+    return lines;
+  }
+
+  liveQuotaDebug.rawSamples.slice(0, 24).forEach((sample, index) => {
+    const staleSuffix = sample.stale ? " stale=true" : "";
+    const snapshotSuffix = sample.snapshotName ? ` snapshot=${sample.snapshotName}` : "";
+    lines.push(
+      `$ sample#${index + 1} src=${formatDebugSource(sample.source)} 5h=${formatDebugPercent(sample.primary?.remainingPercent)} weekly=${formatDebugPercent(sample.secondary?.remainingPercent)}${snapshotSuffix}${staleSuffix}`,
+    );
+  });
+  return lines;
+}
+
 export function AccountCard({
   account,
   tokensUsed = null,
@@ -231,6 +259,11 @@ export function AccountCard({
   onAction,
 }: AccountCardProps) {
   const [showQuotaDebug, setShowQuotaDebug] = useState(false);
+  const liveQuotaDebug = account.liveQuotaDebug ?? null;
+  const mergedPrimaryRemainingPercent =
+    liveQuotaDebug?.merged?.primary?.remainingPercent ?? null;
+  const mergedSecondaryRemainingPercent =
+    liveQuotaDebug?.merged?.secondary?.remainingPercent ?? null;
   const blurred = usePrivacyStore((s) => s.blurred);
   const isActiveSnapshot = account.codexAuth?.isActiveSnapshot ?? false;
   const hasLiveSession = hasFreshLiveTelemetry(account);
@@ -240,8 +273,9 @@ export function AccountCard({
     isActiveSnapshot,
     hasLiveSession,
   });
-  const status = account.status === "deactivated" ? "deactivated" : effectiveStatus;
-  const primaryRemainingRaw = account.usage?.primaryRemainingPercent ?? null;
+  const status = effectiveStatus;
+  const primaryRemainingRaw =
+    mergedPrimaryRemainingPercent ?? account.usage?.primaryRemainingPercent ?? null;
   const primaryTelemetryFresh = isFreshQuotaTelemetryTimestamp(
     account.lastUsageRecordedAtPrimary ?? null,
   );
@@ -257,14 +291,17 @@ export function AccountCard({
     resetAt: account.resetAtPrimary ?? null,
     hasLiveSession,
     lastRecordedAt: account.lastUsageRecordedAtPrimary ?? null,
+    applyCycleFloor: mergedPrimaryRemainingPercent == null,
   });
   const secondaryRemaining = normalizeRemainingPercentForDisplay({
     accountKey: account.accountId,
     windowKey: "secondary",
-    remainingPercent: account.usage?.secondaryRemainingPercent ?? null,
+    remainingPercent:
+      mergedSecondaryRemainingPercent ?? account.usage?.secondaryRemainingPercent ?? null,
     resetAt: account.resetAtSecondary ?? null,
     hasLiveSession,
     lastRecordedAt: account.lastUsageRecordedAtSecondary ?? null,
+    applyCycleFloor: mergedSecondaryRemainingPercent == null,
   });
   const weeklyOnly =
     account.windowMinutesPrimary == null &&
@@ -327,8 +364,10 @@ export function AccountCard({
   const codexTrackedSessionCount = Math.max(account.codexTrackedSessionCount ?? 0, 0);
   const hasSessionInventory = codexLiveSessionCount > 0 || codexTrackedSessionCount > 0;
   const codexCurrentTaskPreview = account.codexCurrentTaskPreview?.trim() || null;
-  const liveQuotaDebug = account.liveQuotaDebug ?? null;
-  const mergedDebug = liveQuotaDebug?.merged ?? null;
+  const quotaDebugLogText = useMemo(
+    () => (liveQuotaDebug ? buildQuotaDebugLogLines(liveQuotaDebug).join("\n") : ""),
+    [liveQuotaDebug],
+  );
   const emailSubtitle =
     account.displayName && account.displayName !== account.email
       ? account.email
@@ -462,8 +501,9 @@ export function AccountCard({
         <div className="mt-2">
           <button
             type="button"
-            className="inline-flex items-center gap-1.5 rounded-md border border-border/70 bg-background/40 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:bg-background/70 hover:text-foreground"
+            className="inline-flex items-center gap-1.5 rounded-md border border-cyan-500/25 bg-cyan-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-700/90 transition-colors hover:bg-cyan-500/15 hover:text-cyan-800 dark:text-cyan-200/90 dark:hover:text-cyan-100"
             aria-expanded={showQuotaDebug}
+            aria-label="Debug"
             onClick={() => setShowQuotaDebug((current) => !current)}
           >
             Debug
@@ -473,32 +513,18 @@ export function AccountCard({
           </button>
 
           {showQuotaDebug ? (
-            <div className="mt-2 space-y-1.5 rounded-lg border border-zinc-700/80 bg-[#050b14] px-2.5 py-2.5 font-mono text-[10px] leading-relaxed text-zinc-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-              <p className="uppercase tracking-[0.18em] text-zinc-400">quota logs</p>
-              <p className="text-emerald-300">
-                $ merged 5h={formatDebugPercent(mergedDebug?.primary?.remainingPercent)} weekly=
-                {formatDebugPercent(mergedDebug?.secondary?.remainingPercent)}
-              </p>
-              {liveQuotaDebug.overrideReason ? (
-                <p className="text-amber-300">$ override={liveQuotaDebug.overrideReason}</p>
-              ) : null}
-              {liveQuotaDebug.rawSamples.length > 0 ? (
-                <div className="space-y-1">
-                  {liveQuotaDebug.rawSamples.slice(0, 8).map((sample, index) => (
-                    <p
-                      key={`${sample.source}-${sample.recordedAt}-${index}`}
-                      className="text-zinc-300"
-                    >
-                      $ {formatDebugSource(sample.source)} 5h=
-                      {formatDebugPercent(sample.primary?.remainingPercent)} weekly=
-                      {formatDebugPercent(sample.secondary?.remainingPercent)}
-                      {sample.stale ? " stale=true" : ""}
-                    </p>
-                  ))}
+            <div className="mt-2 space-y-2 rounded-lg border border-cyan-500/25 bg-[#061325] px-2.5 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-300">
+                  Quota logs
+                </p>
+                <div className="origin-right scale-90">
+                  <CopyButton value={quotaDebugLogText} label="Copy logs" />
                 </div>
-              ) : (
-                <p className="text-zinc-400">$ no raw terminal samples</p>
-              )}
+              </div>
+              <pre className="max-h-56 overflow-y-auto rounded-md border border-cyan-500/20 bg-[#020812] p-2.5 font-mono text-[11px] leading-5 text-cyan-100">
+                <code>{quotaDebugLogText}</code>
+              </pre>
             </div>
           ) : null}
         </div>

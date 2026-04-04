@@ -33,7 +33,6 @@ export function DashboardPage() {
   const {
     resumeMutation,
     useLocalMutation,
-    refreshAuthMutation,
     openTerminalMutation,
     repairSnapshotMutation,
   } = useAccountMutations();
@@ -54,11 +53,7 @@ export function DashboardPage() {
           resumeMutation.mutate(account.accountId);
           break;
         case "reauth":
-          refreshAuthMutation.mutate(account.accountId, {
-            onError: () => {
-              navigate(`/accounts?selected=${account.accountId}`);
-            },
-          });
+          navigate(`/accounts?selected=${account.accountId}&oauth=device`);
           break;
         case "useLocal":
           useLocalMutation.mutate(account.accountId, {
@@ -97,7 +92,6 @@ export function DashboardPage() {
       navigate,
       openTerminalMutation,
       repairSnapshotMutation,
-      refreshAuthMutation,
       resumeMutation,
       useLocalMutation,
     ],

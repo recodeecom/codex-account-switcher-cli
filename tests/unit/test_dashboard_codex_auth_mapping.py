@@ -25,7 +25,7 @@ def _make_account(*, account_id: str, chatgpt_account_id: str, email: str) -> Ac
     )
 
 
-def test_build_codex_auth_status_prefers_email_snapshot_over_active_snapshot() -> None:
+def test_build_codex_auth_status_collapses_conflicts_to_single_snapshot_mapping() -> None:
     denver_email = "denver@edixal.com"
     chatgpt_account_id = "shared-chatgpt-id"
     denver_account = _make_account(
@@ -46,4 +46,4 @@ def test_build_codex_auth_status_prefers_email_snapshot_over_active_snapshot() -
 
     assert status.snapshot_name == "denver"
     assert status.active_snapshot_name == "nagyviktordp"
-    assert status.is_active_snapshot is True
+    assert status.is_active_snapshot is False

@@ -223,7 +223,7 @@ describe("AccountCard", () => {
     expect(screen.getByRole("button", { name: "Use this account" })).toBeEnabled();
   });
 
-  it("keeps deactivated accounts deactivated in dashboard cards even when snapshot is active", () => {
+  it("treats deactivated accounts with active snapshot as active in dashboard cards", () => {
     const account = createAccountSummary({
       status: "deactivated",
       usage: {
@@ -240,8 +240,9 @@ describe("AccountCard", () => {
 
     render(<AccountCard account={account} />);
 
-    expect(screen.getByText("Deactivated")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Re-auth" })).toBeInTheDocument();
+    expect(screen.getByText("Active")).toBeInTheDocument();
+    expect(screen.queryByText("Disconnected")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Re-auth" })).not.toBeInTheDocument();
   });
 
   it("calls useLocal action when use this account button is clicked", async () => {
@@ -461,7 +462,7 @@ describe("AccountCard", () => {
     expect(screen.getByText("Working now")).toBeInTheDocument();
   });
 
-  it("does not show working indicator when only tracked codex sessions exist", () => {
+  it("shows working indicator when tracked codex sessions exist without live telemetry", () => {
     const account = createAccountSummary({
       codexLiveSessionCount: 0,
       codexTrackedSessionCount: 2,
@@ -481,7 +482,7 @@ describe("AccountCard", () => {
 
     render(<AccountCard account={account} />);
 
-    expect(screen.queryByText("Working now")).not.toBeInTheDocument();
+    expect(screen.getByText("Working now")).toBeInTheDocument();
     expect(screen.queryByText("Live token status")).not.toBeInTheDocument();
     expect(screen.getByText("63%")).toBeInTheDocument();
   });
@@ -688,6 +689,108 @@ describe("AccountCard", () => {
     expect(progressTrack).toHaveClass("bg-zinc-500/10");
   });
 
+  it("prefers merged quota debug percentages over stale usage percentages", () => {
+    const account = createAccountSummary({
+      accountId: "acc_debug_merged_values",
+      usage: {
+        primaryRemainingPercent: 93,
+        secondaryRemainingPercent: 0,
+      },
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "viktor",
+        activeSnapshotName: "viktor",
+        isActiveSnapshot: true,
+        hasLiveSession: false,
+      },
+      liveQuotaDebug: {
+        snapshotsConsidered: ["viktor"],
+        overrideApplied: false,
+        overrideReason: "deferred_active_snapshot_mixed_default_sessions",
+        merged: {
+          source: "merged",
+          snapshotName: "viktor",
+          recordedAt: "2026-01-01T00:00:00.000Z",
+          stale: false,
+          primary: {
+            usedPercent: 49,
+            remainingPercent: 51,
+            resetAt: 1760000000,
+            windowMinutes: 300,
+          },
+          secondary: {
+            usedPercent: 31,
+            remainingPercent: 69,
+            resetAt: 1760600000,
+            windowMinutes: 10080,
+          },
+        },
+        rawSamples: [],
+      },
+    });
+
+    render(<AccountCard account={account} />);
+
+    expect(screen.getAllByText("51%").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("69%").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("does not keep a stale 0% floor when merged quota debug values are available", () => {
+    const accountId = "acc_debug_floor_recovery";
+    const base = createAccountSummary({
+      accountId,
+      usage: {
+        primaryRemainingPercent: 93,
+        secondaryRemainingPercent: 0,
+      },
+      liveQuotaDebug: null,
+    });
+    const withMerged = createAccountSummary({
+      accountId,
+      usage: {
+        primaryRemainingPercent: 93,
+        secondaryRemainingPercent: 0,
+      },
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "viktor",
+        activeSnapshotName: "viktor",
+        isActiveSnapshot: true,
+        hasLiveSession: false,
+      },
+      liveQuotaDebug: {
+        snapshotsConsidered: ["viktor"],
+        overrideApplied: false,
+        overrideReason: "deferred_active_snapshot_mixed_default_sessions",
+        merged: {
+          source: "merged",
+          snapshotName: "viktor",
+          recordedAt: "2026-01-01T00:00:00.000Z",
+          stale: false,
+          primary: {
+            usedPercent: 49,
+            remainingPercent: 51,
+            resetAt: 1760000000,
+            windowMinutes: 300,
+          },
+          secondary: {
+            usedPercent: 31,
+            remainingPercent: 69,
+            resetAt: 1760600000,
+            windowMinutes: 10080,
+          },
+        },
+        rawSamples: [],
+      },
+    });
+
+    const { rerender } = render(<AccountCard account={base} />);
+    expect(screen.getAllByText("0%").length).toBeGreaterThanOrEqual(1);
+
+    rerender(<AccountCard account={withMerged} />);
+    expect(screen.getAllByText("69%").length).toBeGreaterThanOrEqual(1);
+  });
+
   it("keeps codex sessions at zero when account is not the active snapshot", () => {
     const account = createAccountSummary({
       email: "idle@example.com",
@@ -770,6 +873,7 @@ describe("AccountCard", () => {
     expect(screen.getByText(/quota logs/i)).toBeInTheDocument();
     expect(screen.getByText(/\$ merged 5h=17% weekly=77%/)).toBeInTheDocument();
     expect(screen.getByText(/\$ override=applied_live_usage_windows/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /copy logs/i })).toBeInTheDocument();
     expect(screen.queryByText(/\$ no raw terminal samples/i)).not.toBeInTheDocument();
   });
 });

@@ -377,7 +377,7 @@ async def test_usage_updater_deactivates_on_account_invalid_4xx(monkeypatch) -> 
 
 
 @pytest.mark.asyncio
-async def test_usage_updater_does_not_deactivate_on_403(monkeypatch) -> None:
+async def test_usage_updater_deactivates_on_disconnected_account_403(monkeypatch) -> None:
     monkeypatch.setenv("CODEX_LB_USAGE_REFRESH_ENABLED", "true")
     from app.core.clients.usage import UsageFetchError
     from app.core.config.settings import get_settings
@@ -398,7 +398,12 @@ async def test_usage_updater_does_not_deactivate_on_403(monkeypatch) -> None:
 
     await updater.refresh_accounts([acc], latest_usage={})
 
-    assert len(accounts_repo.status_updates) == 0
+    assert len(accounts_repo.status_updates) == 1
+    update = accounts_repo.status_updates[0]
+    assert update["account_id"] == "acc_403"
+    assert update["status"] == AccountStatus.DEACTIVATED
+    assert "403" in update["deactivation_reason"]
+    assert "Forbidden" in update["deactivation_reason"]
 
 
 @pytest.mark.asyncio

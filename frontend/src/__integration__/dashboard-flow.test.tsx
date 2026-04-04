@@ -299,7 +299,7 @@ describe("dashboard flow integration", () => {
     expect(window.location.search).toContain("selected=acc_no_snapshot");
   });
 
-  it("stays on dashboard when re-auth refresh succeeds for a deactivated account", async () => {
+  it("routes to accounts and starts device OAuth when re-auth is clicked", async () => {
     const user = userEvent.setup({ delay: null });
     let refreshCalls = 0;
 
@@ -346,64 +346,12 @@ describe("dashboard flow integration", () => {
     expect(await screen.findByRole("heading", { name: "Dashboard" })).toBeInTheDocument();
     await user.click(await screen.findByRole("button", { name: "Re-auth" }));
 
-    await waitFor(() => {
-      expect(refreshCalls).toBe(1);
-    });
-    expect(window.location.pathname).toBe("/dashboard");
-    expect(window.location.search).not.toContain("selected=acc_reauth_success");
-  });
-
-  it("routes to account details when re-auth refresh fails for a deactivated account", async () => {
-    const user = userEvent.setup({ delay: null });
-
-    server.use(
-      http.get("/api/dashboard/overview", () =>
-        HttpResponse.json(
-          createDashboardOverview({
-            accounts: [
-              createAccountSummary({
-                accountId: "acc_reauth_fallback",
-                status: "deactivated",
-                usage: {
-                  primaryRemainingPercent: 44,
-                  secondaryRemainingPercent: 73,
-                },
-                codexAuth: {
-                  hasSnapshot: true,
-                  snapshotName: "reauth-snapshot",
-                  activeSnapshotName: "different-snapshot",
-                  isActiveSnapshot: false,
-                  hasLiveSession: false,
-                  expectedSnapshotName: "reauth-snapshot",
-                  snapshotNameMatchesEmail: true,
-                },
-              }),
-            ],
-          }),
-        ),
-      ),
-      http.post("/api/accounts/:accountId/refresh-auth", () =>
-        HttpResponse.json(
-          {
-            error: {
-              code: "account_refresh_failed",
-              message: "Refresh failed",
-            },
-          },
-          { status: 400 },
-        ),
-      ),
-    );
-
-    window.history.pushState({}, "", "/dashboard");
-    renderWithProviders(<App />);
-
-    expect(await screen.findByRole("heading", { name: "Dashboard" })).toBeInTheDocument();
-    await user.click(await screen.findByRole("button", { name: "Re-auth" }));
-
     expect(await screen.findByRole("heading", { name: "Accounts" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Add account with OAuth" })).toBeInTheDocument();
+    expect(await screen.findByText("User code")).toBeInTheDocument();
     expect(window.location.pathname).toBe("/accounts");
-    expect(window.location.search).toContain("selected=acc_reauth_fallback");
+    expect(window.location.search).toContain("selected=acc_reauth_success");
+    expect(refreshCalls).toBe(0);
   });
 
   it("opens sessions page from account card when codex sessions are present", async () => {
