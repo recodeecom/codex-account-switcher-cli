@@ -229,7 +229,7 @@ async def test_dashboard_overview_combines_data(async_client, db_setup):
 
 
 @pytest.mark.asyncio
-async def test_dashboard_overview_falls_back_to_older_tracked_sessions_when_no_recent_sessions(async_client, db_setup):
+async def test_dashboard_overview_ignores_older_tracked_sessions_when_no_recent_sessions(async_client, db_setup):
     now = utcnow().replace(microsecond=0)
 
     async with SessionLocal() as session:
@@ -262,9 +262,9 @@ async def test_dashboard_overview_falls_back_to_older_tracked_sessions_when_no_r
     payload = response.json()
     account = next(item for item in payload["accounts"] if item["accountId"] == "acc_old_only")
 
-    # No recent update exists, but durable tracked sessions should remain
-    # discoverable for "Working now" grouping.
-    assert account["codexTrackedSessionCount"] == 1
+    # No recent update exists, so stale codex-session mappings must not
+    # inflate tracked-session counters.
+    assert account["codexTrackedSessionCount"] == 0
     # Task preview remains tied to the recent-task window.
     assert account["codexCurrentTaskPreview"] is None
 

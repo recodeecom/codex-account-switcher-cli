@@ -1,0 +1,5 @@
+- [x] Add swap-aware parallel-build gating in `redeploy.sh`.
+- [x] Add safe serial fallback when memory telemetry is unavailable.
+- [x] Extend redeploy unit tests to cover swap-pressure and missing-meminfo fallback behavior.
+- [x] Update README/redeploy usage text for new safety controls and defaults.
+- [x] Validate specs with `openspec validate --specs`.

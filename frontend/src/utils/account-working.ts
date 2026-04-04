@@ -1,6 +1,7 @@
 import type { AccountSummary } from "@/features/accounts/schemas";
 
 const LIVE_TELEMETRY_STALE_AFTER_MS = 5 * 60 * 1000;
+const LIVE_TELEMETRY_WORKING_GRACE_AFTER_MS = 20 * 60 * 1000;
 const RECENT_USAGE_SIGNAL_STALE_AFTER_MS = 36 * 60 * 60 * 1000;
 const RESET_ALIGNMENT_TOLERANCE_MS = 30 * 1000;
 
@@ -47,7 +48,7 @@ export function getFreshDebugRawSampleCount(
 }
 
 export function getMergedQuotaRemainingPercent(
-  account: Pick<AccountSummary, "liveQuotaDebug">,
+  account: Pick<AccountSummary, "liveQuotaDebug" | "codexAuth">,
   windowKey: "primary" | "secondary",
 ): number | null {
   const liveQuotaDebug = account.liveQuotaDebug;
@@ -60,6 +61,32 @@ export function getMergedQuotaRemainingPercent(
   const deferredMixedDefaultSessions =
     overrideReason.startsWith("deferred_active_snapshot_mixed_default_sessions");
   if (deferredMixedDefaultSessions && liveQuotaDebug?.overrideApplied !== true) {
+    return null;
+  }
+
+  const normalizeSnapshots = (snapshots: Array<string>) =>
+    snapshots
+      .map((snapshot) => normalizeSnapshotName(snapshot))
+      .filter((snapshot): snapshot is string => snapshot != null);
+
+  const targetSnapshot =
+    normalizeSnapshotName(account.codexAuth?.expectedSnapshotName) ??
+    normalizeSnapshotName(account.codexAuth?.snapshotName);
+  const mergedSnapshot = normalizeSnapshotName(merged.snapshotName);
+  const consideredSnapshots = normalizeSnapshots(liveQuotaDebug?.snapshotsConsidered ?? []);
+
+  if (targetSnapshot) {
+    if (mergedSnapshot && mergedSnapshot !== targetSnapshot) {
+      return null;
+    }
+    if (
+      !mergedSnapshot &&
+      consideredSnapshots.length > 0 &&
+      consideredSnapshots.some((snapshot) => snapshot !== targetSnapshot)
+    ) {
+      return null;
+    }
+  } else if (consideredSnapshots.length > 1) {
     return null;
   }
 
@@ -156,7 +183,9 @@ export function getRawQuotaWindowFallback(
     return null;
   }
 
-  const targetSnapshot = normalizeSnapshotName(account.codexAuth?.snapshotName);
+  const targetSnapshot =
+    normalizeSnapshotName(account.codexAuth?.expectedSnapshotName) ??
+    normalizeSnapshotName(account.codexAuth?.snapshotName);
   const consideredSnapshots = (liveQuotaDebug.snapshotsConsidered ?? [])
     .map((value) => normalizeSnapshotName(value))
     .filter((value): value is string => value != null);
@@ -353,6 +382,22 @@ export function isAccountWorkingNow(
   nowMs: number = Date.now(),
 ): boolean {
   const hasFreshLiveSession = hasFreshLiveTelemetry(account, nowMs);
+  const hasGraceLiveSessionHint = (() => {
+    if (!(account.codexAuth?.hasLiveSession ?? false)) {
+      return false;
+    }
+
+    const isWithinGraceWindow = (value: string | null | undefined): boolean => {
+      const recordedAtMs = parseRecordedAtMs(value);
+      if (recordedAtMs == null) return false;
+      return nowMs - recordedAtMs <= LIVE_TELEMETRY_WORKING_GRACE_AFTER_MS;
+    };
+
+    return (
+      isWithinGraceWindow(account.lastUsageRecordedAtPrimary) ||
+      isWithinGraceWindow(account.lastUsageRecordedAtSecondary)
+    );
+  })();
   const hasActiveSessionCounterSignal =
     Math.max(
       account.codexLiveSessionCount ?? 0,
@@ -381,6 +426,15 @@ export function isAccountWorkingNow(
     account.usage?.primaryRemainingPercent ??
     null;
 
+  // Explicit merged live usage is authoritative: when it reports depleted 5h
+  // quota, the account should leave "Working now" immediately.
+  if (
+    typeof mergedPrimaryRemaining === "number" &&
+    Math.round(Math.max(0, mergedPrimaryRemaining)) <= 0
+  ) {
+    return false;
+  }
+
   // Keep the grouping logic aligned with the UI percent label (rounded).
   // When the 5h budget renders as 0%, the account should not stay in
   // "Working now" unless it still has an active CLI session signal.
@@ -393,6 +447,10 @@ export function isAccountWorkingNow(
   }
 
   if (hasFreshLiveSession) {
+    return true;
+  }
+
+  if (hasGraceLiveSessionHint) {
     return true;
   }
 

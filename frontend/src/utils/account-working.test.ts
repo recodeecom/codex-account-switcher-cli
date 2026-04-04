@@ -262,10 +262,27 @@ describe("isAccountWorkingNow", () => {
         isActiveSnapshot: false,
         hasLiveSession: true,
       },
-      lastUsageRecordedAtPrimary: "2026-04-04T11:45:00.000Z",
-      lastUsageRecordedAtSecondary: "2026-04-04T11:40:00.000Z",
+      lastUsageRecordedAtPrimary: "2026-04-04T11:30:00.000Z",
+      lastUsageRecordedAtSecondary: "2026-04-04T11:30:00.000Z",
     });
     expect(isAccountWorkingNow(account, now.getTime())).toBe(false);
+  });
+
+  it("keeps live-session accounts in working-now during a short grace window", () => {
+    const now = new Date("2026-04-04T12:00:00.000Z");
+    const account = createAccountSummary({
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "secondary",
+        activeSnapshotName: "main",
+        isActiveSnapshot: false,
+        hasLiveSession: true,
+      },
+      lastUsageRecordedAtPrimary: "2026-04-04T11:48:00.000Z",
+      lastUsageRecordedAtSecondary: null,
+    });
+
+    expect(isAccountWorkingNow(account, now.getTime())).toBe(true);
   });
 
   it("returns false when none of the working conditions apply", () => {
@@ -307,6 +324,14 @@ describe("isAccountWorkingNow", () => {
 
   it("keeps merged quotas when override was applied", () => {
     const account = createAccountSummary({
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "korona",
+        activeSnapshotName: "korona",
+        expectedSnapshotName: "korona",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
       liveQuotaDebug: {
         snapshotsConsidered: ["korona"],
         overrideApplied: true,
@@ -325,6 +350,36 @@ describe("isAccountWorkingNow", () => {
 
     expect(getMergedQuotaRemainingPercent(account, "primary")).toBe(16);
     expect(getMergedQuotaRemainingPercent(account, "secondary")).toBe(90);
+  });
+
+  it("ignores merged quotas when merged snapshot does not match expected snapshot", () => {
+    const account = createAccountSummary({
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "korona",
+        activeSnapshotName: "korona",
+        expectedSnapshotName: "amodeus",
+        isActiveSnapshot: false,
+        hasLiveSession: true,
+      },
+      liveQuotaDebug: {
+        snapshotsConsidered: ["korona"],
+        overrideApplied: true,
+        overrideReason: "applied_live_usage_windows",
+        merged: {
+          source: "merged",
+          snapshotName: "korona",
+          recordedAt: "2026-04-04T11:58:00.000Z",
+          stale: false,
+          primary: { usedPercent: 96, remainingPercent: 4, resetAt: 1760000000, windowMinutes: 300 },
+          secondary: { usedPercent: 23, remainingPercent: 77, resetAt: 1760600000, windowMinutes: 10080 },
+        },
+        rawSamples: [],
+      },
+    });
+
+    expect(getMergedQuotaRemainingPercent(account, "primary")).toBeNull();
+    expect(getMergedQuotaRemainingPercent(account, "secondary")).toBeNull();
   });
 
   it("uses raw sample fallback when merged payload has no windows", () => {
@@ -546,6 +601,39 @@ describe("isAccountWorkingNow", () => {
             stale: false,
             primary: { usedPercent: 88, remainingPercent: 12, resetAt: 1760000000, windowMinutes: 300 },
             secondary: { usedPercent: 70, remainingPercent: 30, resetAt: 1760600000, windowMinutes: 10080 },
+          },
+        ],
+      },
+    });
+
+    expect(getRawQuotaWindowFallback(account, "primary")).toBeNull();
+    expect(getRawQuotaWindowFallback(account, "secondary")).toBeNull();
+  });
+
+  it("rejects raw sample fallback when expected snapshot differs from samples", () => {
+    const nowIso = "2026-04-04T11:58:00.000Z";
+    const account = createAccountSummary({
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "korona",
+        activeSnapshotName: "korona",
+        expectedSnapshotName: "amodeus",
+        isActiveSnapshot: false,
+        hasLiveSession: true,
+      },
+      liveQuotaDebug: {
+        snapshotsConsidered: ["korona"],
+        overrideApplied: false,
+        overrideReason: "no_live_telemetry",
+        merged: null,
+        rawSamples: [
+          {
+            source: "/tmp/rollout-korona.jsonl",
+            snapshotName: "korona",
+            recordedAt: nowIso,
+            stale: false,
+            primary: { usedPercent: 96, remainingPercent: 4, resetAt: 1760000000, windowMinutes: 300 },
+            secondary: { usedPercent: 23, remainingPercent: 77, resetAt: 1760600000, windowMinutes: 10080 },
           },
         ],
       },

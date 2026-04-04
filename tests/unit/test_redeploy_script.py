@@ -146,10 +146,10 @@ def _frontend_version(project: Path) -> str:
 def test_redeploy_skips_codex_auth_when_unchanged(tmp_path: Path) -> None:
     project = _create_stub_project(tmp_path)
 
-    _run_redeploy(project, "--force-codex-auth-install")
+    _run_redeploy(project, "--force-codex-auth-install", "--no-bump-frontend-version")
     (project / "logs" / "npm.log").write_text("", encoding="utf-8")
 
-    result = _run_redeploy(project)
+    result = _run_redeploy(project, "--no-bump-frontend-version")
     npm_log = (project / "logs" / "npm.log").read_text(encoding="utf-8").strip()
 
     assert "Skipping codex-auth install/update (already up to date" in result.stdout
@@ -198,6 +198,59 @@ def test_redeploy_switches_to_serial_build_on_low_memory(tmp_path: Path) -> None
     assert "compose build --parallel" not in docker_log
     assert "compose build server" in docker_log
     assert "compose build frontend" in docker_log
+
+
+def test_redeploy_switches_to_serial_build_on_low_swap(tmp_path: Path) -> None:
+    project = _create_stub_project(tmp_path)
+
+    (project / "logs" / "docker.log").write_text("", encoding="utf-8")
+    (project / "meminfo").write_text(
+        "MemTotal:       32768000 kB\n"
+        "MemAvailable:   12288000 kB\n"
+        "SwapTotal:      4194304 kB\n"
+        "SwapFree:       524288 kB\n",
+        encoding="utf-8",
+    )
+
+    _run_redeploy(project, "--skip-codex-auth-install")
+    docker_log = (project / "logs" / "docker.log").read_text(encoding="utf-8")
+
+    assert "compose build --parallel" not in docker_log
+    assert "compose build server" in docker_log
+    assert "compose build frontend" in docker_log
+
+
+def test_redeploy_falls_back_to_serial_build_when_meminfo_missing(tmp_path: Path) -> None:
+    project = _create_stub_project(tmp_path)
+    missing_meminfo_path = project / "missing-meminfo"
+
+    (project / "logs" / "docker.log").write_text("", encoding="utf-8")
+    _run_redeploy(
+        project,
+        "--skip-codex-auth-install",
+        extra_env={"CODEX_LB_MEMINFO_PATH": str(missing_meminfo_path)},
+    )
+    docker_log = (project / "logs" / "docker.log").read_text(encoding="utf-8")
+
+    assert "compose build --parallel" not in docker_log
+    assert "compose build server" in docker_log
+    assert "compose build frontend" in docker_log
+
+
+def test_redeploy_force_parallel_overrides_missing_meminfo_fallback(tmp_path: Path) -> None:
+    project = _create_stub_project(tmp_path)
+    missing_meminfo_path = project / "missing-meminfo"
+
+    (project / "logs" / "docker.log").write_text("", encoding="utf-8")
+    _run_redeploy(
+        project,
+        "--skip-codex-auth-install",
+        "--parallel-build",
+        extra_env={"CODEX_LB_MEMINFO_PATH": str(missing_meminfo_path)},
+    )
+    docker_log = (project / "logs" / "docker.log").read_text(encoding="utf-8")
+
+    assert "compose build --parallel server frontend" in docker_log
 
 
 def test_redeploy_aborts_when_memory_and_swap_are_critical(tmp_path: Path) -> None:

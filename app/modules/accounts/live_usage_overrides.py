@@ -223,7 +223,11 @@ def apply_local_live_usage_overrides(
                         account_id=account_id,
                         snapshots_considered=snapshots_considered,
                         live_usage_samples_by_snapshot=live_usage_samples_by_snapshot,
-                        raw_samples_override=raw_samples_override,
+                        raw_samples_override=(
+                            raw_samples_override
+                            if raw_samples_override is not None
+                            else ([] if should_defer_active_snapshot_usage else None)
+                        ),
                         primary_usage=primary_usage,
                         secondary_usage=secondary_usage,
                         persist_candidates=persist_candidates,
@@ -333,7 +337,7 @@ def apply_local_live_usage_overrides(
                         account_id=account_id,
                         snapshots_considered=snapshots_considered,
                         live_usage_samples_by_snapshot=live_usage_samples_by_snapshot,
-                        raw_samples_override=raw_samples_override,
+                        raw_samples_override=raw_samples_override if raw_samples_override is not None else [],
                         primary_usage=primary_usage,
                         secondary_usage=secondary_usage,
                         persist_candidates=persist_candidates,
@@ -1020,6 +1024,10 @@ def _build_default_sample_debug_overrides(
         baseline_secondary_usage=baseline_secondary_usage,
         sample_sources=[sample.source for sample in default_scope_samples],
         preferred_account_id=active_account_id,
+        # Keep immediate attribution for a brand-new single default-scope
+        # sample (common right after switching), but avoid spreading
+        # multi-session ambiguous fingerprints across accounts.
+        allow_ambiguous_fallback_assignments=len(default_scope_samples) <= 1,
     )
     if not assignments:
         return {}, {}
@@ -1590,6 +1598,7 @@ def _resolve_sample_account_assignments(
     baseline_secondary_usage: dict[str, UsageHistory],
     sample_sources: list[str] | None = None,
     preferred_account_id: str | None = None,
+    allow_ambiguous_fallback_assignments: bool = True,
 ) -> dict[int, _SampleMatchResult]:
     assignments: dict[int, _SampleMatchResult] = {}
     if not samples or not accounts:
@@ -1694,6 +1703,11 @@ def _resolve_sample_account_assignments(
 
     # Pass 4: conservative fallback for unresolved samples.
     for sample_index in _sorted_sample_indexes(samples, unresolved_sample_indexes):
+        if (
+            not allow_ambiguous_fallback_assignments
+            and _sample_has_fingerprint(samples[sample_index])
+        ):
+            continue
         account_id = preferred_account_id if preferred_account_id in assigned_counts else None
         if account_id is None:
             account_id = min(

@@ -13,7 +13,8 @@ FORCE_SERIAL_BUILD="${CODEX_LB_FORCE_SERIAL_BUILD:-false}"
 FORCE_PARALLEL_BUILD="${CODEX_LB_FORCE_PARALLEL_BUILD:-false}"
 PRUNE_DOCKER_IMAGES="${CODEX_LB_PRUNE_DOCKER_IMAGES:-true}"
 PRUNE_DOCKER_BUILD_CACHE="${CODEX_LB_PRUNE_DOCKER_BUILD_CACHE:-false}"
-PARALLEL_BUILD_MIN_MEM_MB="${CODEX_LB_PARALLEL_BUILD_MIN_MEM_MB:-4096}"
+PARALLEL_BUILD_MIN_MEM_MB="${CODEX_LB_PARALLEL_BUILD_MIN_MEM_MB:-6144}"
+PARALLEL_BUILD_MIN_SWAP_MB="${CODEX_LB_PARALLEL_BUILD_MIN_SWAP_MB:-1024}"
 MIN_AVAILABLE_MEM_MB="${CODEX_LB_MIN_AVAILABLE_MEM_MB:-1024}"
 MIN_AVAILABLE_SWAP_MB="${CODEX_LB_MIN_AVAILABLE_SWAP_MB:-512}"
 MEMINFO_PATH="${CODEX_LB_MEMINFO_PATH:-/proc/meminfo}"
@@ -45,7 +46,8 @@ Env:
   CODEX_LB_FORCE_PARALLEL_BUILD=true|false (default: false)
   CODEX_LB_PRUNE_DOCKER_IMAGES=true|false (default: true)
   CODEX_LB_PRUNE_DOCKER_BUILD_CACHE=true|false (default: false)
-  CODEX_LB_PARALLEL_BUILD_MIN_MEM_MB=4096 (auto-switch to serial below this MemAvailable)
+  CODEX_LB_PARALLEL_BUILD_MIN_MEM_MB=6144 (auto-switch to serial below this MemAvailable)
+  CODEX_LB_PARALLEL_BUILD_MIN_SWAP_MB=1024 (auto-switch to serial below this SwapFree; set 0 to disable)
   CODEX_LB_MIN_AVAILABLE_MEM_MB=1024 (abort when both mem/swap are too low)
   CODEX_LB_MIN_AVAILABLE_SWAP_MB=512
   CODEX_LB_MEMINFO_PATH=/proc/meminfo (override for testing/debugging)
@@ -146,6 +148,15 @@ normalize_positive_int() {
   echo "$value"
 }
 
+normalize_nonnegative_int() {
+  local value="${1:-}"
+  if [[ -z "$value" || ! "$value" =~ ^[0-9]+$ ]]; then
+    echo "Error: expected non-negative integer value, got: ${value}" >&2
+    exit 1
+  fi
+  echo "$value"
+}
+
 INSTALL_CODEX_AUTH="$(normalize_bool "$INSTALL_CODEX_AUTH")"
 BUMP_FRONTEND_VERSION="$(normalize_bool "$BUMP_FRONTEND_VERSION")"
 FORCE_CODEX_AUTH_INSTALL="$(normalize_bool "$FORCE_CODEX_AUTH_INSTALL")"
@@ -154,6 +165,7 @@ FORCE_PARALLEL_BUILD="$(normalize_bool "$FORCE_PARALLEL_BUILD")"
 PRUNE_DOCKER_IMAGES="$(normalize_bool "$PRUNE_DOCKER_IMAGES")"
 PRUNE_DOCKER_BUILD_CACHE="$(normalize_bool "$PRUNE_DOCKER_BUILD_CACHE")"
 PARALLEL_BUILD_MIN_MEM_MB="$(normalize_positive_int "$PARALLEL_BUILD_MIN_MEM_MB")"
+PARALLEL_BUILD_MIN_SWAP_MB="$(normalize_nonnegative_int "$PARALLEL_BUILD_MIN_SWAP_MB")"
 MIN_AVAILABLE_MEM_MB="$(normalize_positive_int "$MIN_AVAILABLE_MEM_MB")"
 MIN_AVAILABLE_SWAP_MB="$(normalize_positive_int "$MIN_AVAILABLE_SWAP_MB")"
 
@@ -229,6 +241,7 @@ EOF
 
 should_build_parallel() {
   local mem_mb=""
+  local swap_mb=""
   if [[ "$FORCE_SERIAL_BUILD" == "true" ]]; then
     return 1
   fi
@@ -238,11 +251,17 @@ should_build_parallel() {
 
   mem_mb="$(mem_available_mb || true)"
   if [[ -z "$mem_mb" ]]; then
-    return 0
+    echo "Unable to read MemAvailable from ${MEMINFO_PATH}; defaulting to serial docker builds for stability."
+    return 1
   fi
+  swap_mb="$(swap_free_mb)"
 
   if (( mem_mb < PARALLEL_BUILD_MIN_MEM_MB )); then
     echo "MemAvailable=${mem_mb} MiB (< ${PARALLEL_BUILD_MIN_MEM_MB} MiB); switching to serial docker builds for stability."
+    return 1
+  fi
+  if (( PARALLEL_BUILD_MIN_SWAP_MB > 0 && swap_mb < PARALLEL_BUILD_MIN_SWAP_MB )); then
+    echo "SwapFree=${swap_mb} MiB (< ${PARALLEL_BUILD_MIN_SWAP_MB} MiB); switching to serial docker builds for stability."
     return 1
   fi
   return 0

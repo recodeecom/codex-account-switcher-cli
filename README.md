@@ -188,9 +188,11 @@ When `CODEX_LB_CODEX_AUTH_AUTO_IMPORT_ON_ACCOUNTS_LIST=true` (default), loading 
 > Use `--no-bump-frontend-version` (or `CODEX_LB_BUMP_FRONTEND_VERSION=false`) to keep it unchanged.
 >
 > Redeploy now also protects low-memory hosts from freezes:
-> - auto-switches to serial Docker builds when available memory is low
+> - auto-switches to serial Docker builds when available memory **or swap** is low
 > - aborts early when both RAM and swap are critically low
+> - defaults to serial builds if memory telemetry cannot be read
 > - supports explicit overrides: `--serial-build`, `--parallel-build`, `CODEX_LB_FORCE_SERIAL_BUILD`, `CODEX_LB_FORCE_PARALLEL_BUILD`
+> - threshold envs: `CODEX_LB_PARALLEL_BUILD_MIN_MEM_MB` (default `6144`) and `CODEX_LB_PARALLEL_BUILD_MIN_SWAP_MB` (default `1024`, set `0` to disable swap gating)
 
 ## Client Setup
 

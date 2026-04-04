@@ -92,18 +92,10 @@ class AccountsService:
             primary_usage = await self._usage_repo.latest_by_account(window="primary")
         secondary_usage = await self._usage_repo.latest_by_account(window="secondary") if self._usage_repo else {}
         active_codex_window_start = utcnow() - _ACTIVE_CODEX_TASK_WINDOW
-        recent_codex_tracked_session_counts_by_account = await self._repo.list_codex_session_counts_by_account(
+        codex_tracked_session_counts_by_account = await self._repo.list_codex_session_counts_by_account(
             account_ids,
             active_since=active_codex_window_start,
         )
-        all_codex_tracked_session_counts_by_account = await self._repo.list_codex_session_counts_by_account(account_ids)
-        codex_tracked_session_counts_by_account = {
-            account_id: recent_codex_tracked_session_counts_by_account.get(
-                account_id,
-                all_codex_tracked_session_counts_by_account.get(account_id, 0),
-            )
-            for account_id in account_ids
-        }
         codex_live_session_counts_by_account = {account_id: 0 for account_id in account_ids}
         codex_current_task_preview_by_account = await self._repo.list_codex_current_task_preview_by_account(
             account_ids,
