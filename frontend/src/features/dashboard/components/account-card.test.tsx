@@ -762,13 +762,14 @@ describe("AccountCard", () => {
 
     render(<AccountCard account={account} />);
 
-    expect(screen.getByText("Quota debug")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /show details/i })).toBeInTheDocument();
-    expect(screen.queryByText(/Merged → 5h 17% · Weekly 77%/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /debug/i })).toBeInTheDocument();
+    expect(screen.queryByText(/quota logs/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/\$ merged 5h=17% weekly=77%/)).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /show details/i }));
-    expect(screen.getByRole("button", { name: /hide details/i })).toBeInTheDocument();
-    expect(screen.getByText(/Merged → 5h 17% · Weekly 77%/)).toBeInTheDocument();
-    expect(screen.queryByText("No raw terminal samples")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /debug/i }));
+    expect(screen.getByText(/quota logs/i)).toBeInTheDocument();
+    expect(screen.getByText(/\$ merged 5h=17% weekly=77%/)).toBeInTheDocument();
+    expect(screen.getByText(/\$ override=applied_live_usage_windows/)).toBeInTheDocument();
+    expect(screen.queryByText(/\$ no raw terminal samples/i)).not.toBeInTheDocument();
   });
 });

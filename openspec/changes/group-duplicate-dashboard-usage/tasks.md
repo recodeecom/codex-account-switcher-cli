@@ -1,0 +1,9 @@
+- [x] Export reusable account identity key helper for consistent duplicate grouping.
+- [x] Group dashboard donut items by identity and render one legend/slice per group.
+- [x] Prefer the lowest remaining value when selecting the grouped representative usage row.
+- [x] Group request-log consumed-usage donut items by identity and combine duplicate usage.
+- [x] Recompute donut totals from grouped capacities.
+- [x] Update dashboard page wiring to use grouped totals from the dashboard view.
+- [x] Add/adjust frontend tests for duplicate grouping and lowest-remaining selection.
+- [x] Add/adjust frontend tests for duplicate grouping in request-log consumed usage donuts.
+- [x] Run targeted verification (`vitest`, `tsc -b`, `eslint`) for frontend changes.

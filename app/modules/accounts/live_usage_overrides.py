@@ -17,6 +17,7 @@ from app.modules.accounts.codex_live_usage import (
     read_local_codex_live_usage_by_snapshot,
     read_local_codex_live_usage_samples_by_snapshot,
     read_local_codex_live_usage_samples,
+    read_runtime_live_session_counts_by_snapshot,
 )
 from app.modules.accounts.schemas import (
     AccountCodexAuthStatus,
@@ -73,6 +74,7 @@ def apply_local_live_usage_overrides(
     live_usage_by_snapshot = read_local_codex_live_usage_by_snapshot()
     live_usage_samples_by_snapshot = read_local_codex_live_usage_samples_by_snapshot()
     live_process_session_counts_by_snapshot = read_live_codex_process_session_counts_by_snapshot()
+    runtime_live_session_counts_by_snapshot = read_runtime_live_session_counts_by_snapshot()
     should_defer_active_snapshot_usage = _should_defer_active_snapshot_usage_override(
         accounts=accounts,
         snapshot_index=snapshot_index,
@@ -100,16 +102,27 @@ def apply_local_live_usage_overrides(
             selected_snapshot_name=codex_auth_status.snapshot_name,
             live_process_session_counts_by_snapshot=live_process_session_counts_by_snapshot,
         )
+        live_runtime_session_count = _resolve_live_runtime_session_count_for_account(
+            snapshot_names=snapshot_names,
+            selected_snapshot_name=codex_auth_status.snapshot_name,
+            runtime_live_session_counts_by_snapshot=runtime_live_session_counts_by_snapshot,
+        )
         has_live_process_session = live_process_session_count > 0
+        has_live_runtime_session = live_runtime_session_count > 0
         has_live_telemetry = bool(live_usage and live_usage.active_session_count > 0)
-        codex_auth_status.has_live_session = has_live_process_session or has_live_telemetry
+        # "Working now" must reflect live CLI processes only. Session-file
+        # telemetry can still update quota windows, but it must not elevate
+        # account live/session status by itself unless runtime-scoped session
+        # files explicitly map to the account snapshot.
+        codex_auth_status.has_live_session = has_live_process_session or has_live_runtime_session
         account_id = account.id
         override_reason: str | None = None
         override_applied = False
 
-        if has_live_process_session:
+        if has_live_process_session or has_live_runtime_session:
             codex_live_session_counts_by_account[account_id] = max(
                 live_process_session_count,
+                live_runtime_session_count,
                 codex_live_session_counts_by_account.get(account_id, 0),
             )
         elif not has_live_telemetry:
@@ -165,12 +178,7 @@ def apply_local_live_usage_overrides(
             # multiple snapshots. When that mixed telemetry cannot be reliably
             # split yet, keep quota windows on their baseline account values
             # instead of attributing another snapshot's limits to the active
-            # account. Also clamp to presence-only to avoid inflating counts
-            # from stale or cross-account default-session files.
-            codex_live_session_counts_by_account[account_id] = max(
-                1,
-                codex_live_session_counts_by_account.get(account_id, 0),
-            )
+            # account.
             override_reason = "deferred_active_snapshot_mixed_default_sessions"
             _set_live_quota_debug(
                 account_id=account_id,
@@ -191,12 +199,6 @@ def apply_local_live_usage_overrides(
                 override_reason=override_reason,
             )
             continue
-
-        if not has_live_process_session:
-            codex_live_session_counts_by_account[account_id] = max(
-                max(0, live_usage.active_session_count),
-                codex_live_session_counts_by_account.get(account_id, 0),
-            )
 
         recorded_at = to_utc_naive(live_usage.recorded_at)
         if live_usage.primary is not None:
@@ -479,6 +481,22 @@ def _resolve_live_process_session_count_for_account(
     total = 0
     for snapshot_name in candidate_names:
         total += max(0, live_process_session_counts_by_snapshot.get(snapshot_name, 0))
+    return total
+
+
+def _resolve_live_runtime_session_count_for_account(
+    *,
+    snapshot_names: list[str],
+    selected_snapshot_name: str | None,
+    runtime_live_session_counts_by_snapshot: dict[str, int],
+) -> int:
+    candidate_names = _resolve_snapshot_candidates(
+        snapshot_names=snapshot_names,
+        selected_snapshot_name=selected_snapshot_name,
+    )
+    total = 0
+    for snapshot_name in candidate_names:
+        total += max(0, runtime_live_session_counts_by_snapshot.get(snapshot_name, 0))
     return total
 
 

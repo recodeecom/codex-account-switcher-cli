@@ -459,49 +459,47 @@ export function AccountCard({
         />
       </div>
       {liveQuotaDebug ? (
-        <div className="mt-2 rounded-lg border border-cyan-500/20 bg-cyan-500/[0.06] px-2.5 py-2">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-cyan-700 dark:text-cyan-300">
-            Quota debug
-          </p>
+        <div className="mt-2">
           <button
             type="button"
-            className="mt-1 inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-700/90 hover:text-cyan-800 dark:text-cyan-200/90 dark:hover:text-cyan-100"
+            className="inline-flex items-center gap-1.5 rounded-md border border-border/70 bg-background/40 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:bg-background/70 hover:text-foreground"
             aria-expanded={showQuotaDebug}
             onClick={() => setShowQuotaDebug((current) => !current)}
           >
-            {showQuotaDebug ? "Hide details" : "Show details"}
+            Debug
             <ChevronDown
               className={cn("h-3 w-3 transition-transform duration-200", showQuotaDebug && "rotate-180")}
             />
           </button>
 
           {showQuotaDebug ? (
-            <>
-              <p className="mt-1 text-[11px] text-cyan-800 dark:text-cyan-200">
-                Merged → 5h {formatDebugPercent(mergedDebug?.primary?.remainingPercent)} · Weekly{" "}
+            <div className="mt-2 space-y-1.5 rounded-lg border border-zinc-700/80 bg-[#050b14] px-2.5 py-2.5 font-mono text-[10px] leading-relaxed text-zinc-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+              <p className="uppercase tracking-[0.18em] text-zinc-400">quota logs</p>
+              <p className="text-emerald-300">
+                $ merged 5h={formatDebugPercent(mergedDebug?.primary?.remainingPercent)} weekly=
                 {formatDebugPercent(mergedDebug?.secondary?.remainingPercent)}
-                {liveQuotaDebug.overrideReason ? ` (${liveQuotaDebug.overrideReason})` : ""}
               </p>
+              {liveQuotaDebug.overrideReason ? (
+                <p className="text-amber-300">$ override={liveQuotaDebug.overrideReason}</p>
+              ) : null}
               {liveQuotaDebug.rawSamples.length > 0 ? (
-                <div className="mt-1.5 space-y-1">
+                <div className="space-y-1">
                   {liveQuotaDebug.rawSamples.slice(0, 8).map((sample, index) => (
                     <p
                       key={`${sample.source}-${sample.recordedAt}-${index}`}
-                      className="text-[10px] text-cyan-700/90 dark:text-cyan-200/90"
+                      className="text-zinc-300"
                     >
-                      {formatDebugSource(sample.source)} → 5h{" "}
-                      {formatDebugPercent(sample.primary?.remainingPercent)} · Weekly{" "}
+                      $ {formatDebugSource(sample.source)} 5h=
+                      {formatDebugPercent(sample.primary?.remainingPercent)} weekly=
                       {formatDebugPercent(sample.secondary?.remainingPercent)}
-                      {sample.stale ? " · stale" : ""}
+                      {sample.stale ? " stale=true" : ""}
                     </p>
                   ))}
                 </div>
               ) : (
-                <p className="mt-1.5 text-[10px] text-cyan-700/90 dark:text-cyan-200/90">
-                  No raw terminal samples
-                </p>
+                <p className="text-zinc-400">$ no raw terminal samples</p>
               )}
-            </>
+            </div>
           ) : null}
         </div>
       ) : null}

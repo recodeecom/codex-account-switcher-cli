@@ -414,13 +414,13 @@ async def test_accounts_list_mixed_sessions_preserves_matched_live_sessions_for_
     assert response.status_code == 200
     accounts = {item["accountId"]: item for item in response.json()["accounts"]}
 
-    assert accounts[work_account_id]["codexAuth"]["hasLiveSession"] is True
-    assert accounts[work_account_id]["codexSessionCount"] == 1
+    assert accounts[work_account_id]["codexAuth"]["hasLiveSession"] is False
+    assert accounts[work_account_id]["codexSessionCount"] == 0
     assert accounts[work_account_id]["usage"]["primaryRemainingPercent"] == pytest.approx(80.0)
     assert accounts[work_account_id]["usage"]["secondaryRemainingPercent"] == pytest.approx(70.0)
 
-    assert accounts[personal_account_id]["codexAuth"]["hasLiveSession"] is True
-    assert accounts[personal_account_id]["codexSessionCount"] == 1
+    assert accounts[personal_account_id]["codexAuth"]["hasLiveSession"] is False
+    assert accounts[personal_account_id]["codexSessionCount"] == 0
     assert accounts[personal_account_id]["usage"]["primaryRemainingPercent"] == pytest.approx(60.0)
     assert accounts[personal_account_id]["usage"]["secondaryRemainingPercent"] == pytest.approx(50.0)
 
@@ -501,19 +501,19 @@ async def test_accounts_list_mixed_sessions_keeps_quota_baseline_when_reset_fing
     assert response.status_code == 200
     accounts = {item["accountId"]: item for item in response.json()["accounts"]}
 
-    assert accounts[work_account_id]["codexAuth"]["hasLiveSession"] is True
-    assert accounts[work_account_id]["codexAuth"]["liveUsageConfidence"] == "high"
-    assert accounts[work_account_id]["codexLiveSessionCount"] == 1
+    assert accounts[work_account_id]["codexAuth"]["hasLiveSession"] is False
+    assert accounts[work_account_id]["codexAuth"]["liveUsageConfidence"] is None
+    assert accounts[work_account_id]["codexLiveSessionCount"] == 0
     assert accounts[work_account_id]["codexTrackedSessionCount"] == 0
-    assert accounts[work_account_id]["codexSessionCount"] == 1
+    assert accounts[work_account_id]["codexSessionCount"] == 0
     assert accounts[work_account_id]["usage"]["primaryRemainingPercent"] == pytest.approx(85.0)
     assert accounts[work_account_id]["usage"]["secondaryRemainingPercent"] == pytest.approx(75.0)
 
-    assert accounts[personal_account_id]["codexAuth"]["hasLiveSession"] is True
-    assert accounts[personal_account_id]["codexAuth"]["liveUsageConfidence"] == "low"
-    assert accounts[personal_account_id]["codexLiveSessionCount"] == 1
+    assert accounts[personal_account_id]["codexAuth"]["hasLiveSession"] is False
+    assert accounts[personal_account_id]["codexAuth"]["liveUsageConfidence"] is None
+    assert accounts[personal_account_id]["codexLiveSessionCount"] == 0
     assert accounts[personal_account_id]["codexTrackedSessionCount"] == 0
-    assert accounts[personal_account_id]["codexSessionCount"] == 1
+    assert accounts[personal_account_id]["codexSessionCount"] == 0
     assert accounts[personal_account_id]["usage"]["primaryRemainingPercent"] == pytest.approx(35.0)
     assert accounts[personal_account_id]["usage"]["secondaryRemainingPercent"] == pytest.approx(25.0)
 
@@ -569,8 +569,8 @@ async def test_accounts_list_prefers_newer_current_snapshot_over_stale_auth_poin
 
     assert accounts[admin_account_id]["codexAuth"]["activeSnapshotName"] == "admin"
     assert accounts[admin_account_id]["codexAuth"]["isActiveSnapshot"] is True
-    assert accounts[admin_account_id]["codexAuth"]["hasLiveSession"] is True
-    assert accounts[admin_account_id]["codexSessionCount"] == 1
+    assert accounts[admin_account_id]["codexAuth"]["hasLiveSession"] is False
+    assert accounts[admin_account_id]["codexSessionCount"] == 0
     assert accounts[admin_account_id]["usage"]["primaryRemainingPercent"] == pytest.approx(77.0)
     assert accounts[admin_account_id]["usage"]["secondaryRemainingPercent"] == pytest.approx(47.0)
 

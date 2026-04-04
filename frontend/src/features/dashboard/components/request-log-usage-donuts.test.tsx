@@ -81,6 +81,54 @@ describe("RequestLogUsageDonuts", () => {
     expect(screen.getAllByText("Unassigned").length).toBeGreaterThanOrEqual(2);
   });
 
+  it("groups duplicate identities into one legend row with combined consumed usage", () => {
+    render(
+      <RequestLogUsageDonuts
+        accounts={[
+          createAccountSummary({
+            accountId: "acc-dup-1",
+            email: "dup@example.com",
+            displayName: "dup@example.com",
+          }),
+          createAccountSummary({
+            accountId: "acc-dup-2",
+            email: "dup@example.com",
+            displayName: "dup@example.com",
+          }),
+        ]}
+        usageSummary={{
+          last5h: {
+            totalTokens: 300,
+            totalCostUsd: 0.4,
+            totalCostEur: 0.36,
+            accounts: [
+              { accountId: "acc-dup-1", tokens: 100, costUsd: 0.13, costEur: 0.12 },
+              { accountId: "acc-dup-2", tokens: 200, costUsd: 0.27, costEur: 0.24 },
+            ],
+          },
+          last7d: {
+            totalTokens: 600,
+            totalCostUsd: 0.8,
+            totalCostEur: 0.72,
+            accounts: [
+              { accountId: "acc-dup-1", tokens: 300, costUsd: 0.4, costEur: 0.36 },
+              { accountId: "acc-dup-2", tokens: 300, costUsd: 0.4, costEur: 0.36 },
+            ],
+          },
+          fxRateUsdToEur: 0.92,
+        }}
+        fallback={{ last5h: false, last7d: false, active: false }}
+      />,
+    );
+
+    expect(screen.getAllByText("Top: dup@example.com (×2) · 100%").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText("dup@example.com (×2)").length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText("acc-dup-1")).not.toBeInTheDocument();
+    expect(screen.queryByText("acc-dup-2")).not.toBeInTheDocument();
+    expect(screen.getAllByText("300K").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("600K").length).toBeGreaterThanOrEqual(1);
+  });
+
   it("renders fallback note when live-usage fallback is active", () => {
     render(
       <RequestLogUsageDonuts

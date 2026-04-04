@@ -345,7 +345,11 @@ def _build_codex_auth_status(*, account: Account, snapshot_index: CodexAuthSnaps
         chatgpt_account_id=account.chatgpt_account_id,
         email=account.email,
     )
-    selected_snapshot_name = select_snapshot_name(snapshot_names, snapshot_index.active_snapshot_name)
+    selected_snapshot_name = select_snapshot_name(
+        snapshot_names,
+        snapshot_index.active_snapshot_name,
+        email=account.email,
+    )
     active_snapshot_name = snapshot_index.active_snapshot_name
     return AccountCodexAuthStatus(
         has_snapshot=bool(snapshot_names),

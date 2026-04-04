@@ -15,6 +15,7 @@ from app.modules.accounts.codex_live_usage import (
     read_local_codex_live_usage_by_snapshot,
     read_local_codex_live_usage_samples,
     read_local_codex_live_usage_samples_by_snapshot,
+    read_runtime_live_session_counts_by_snapshot,
 )
 
 
@@ -289,6 +290,66 @@ def test_read_local_codex_live_usage_by_snapshot_reads_multiple_runtime_profiles
     assert usage_by_snapshot["personal"].active_session_count == 1
     assert usage_by_snapshot["personal"].secondary is not None
     assert usage_by_snapshot["personal"].secondary.used_percent == 40.0
+
+
+def test_read_runtime_live_session_counts_by_snapshot_reads_runtime_profiles(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    now = datetime.now(timezone.utc)
+    runtime_root = tmp_path / "runtimes"
+    monkeypatch.setenv("CODEX_AUTH_RUNTIME_ROOT", str(runtime_root))
+
+    work_runtime = runtime_root / "terminal-work"
+    work_runtime.mkdir(parents=True, exist_ok=True)
+    (work_runtime / "current").write_text("work", encoding="utf-8")
+    work_day_dir = _sessions_day_dir(work_runtime / "sessions", now)
+    _write_rollout(
+        work_day_dir / "rollout-work.jsonl",
+        timestamp=now - timedelta(minutes=1),
+        primary_used=10.0,
+        secondary_used=20.0,
+    )
+
+    personal_runtime = runtime_root / "terminal-personal"
+    personal_runtime.mkdir(parents=True, exist_ok=True)
+    (personal_runtime / "current").write_text("personal", encoding="utf-8")
+    personal_day_dir = _sessions_day_dir(personal_runtime / "sessions", now)
+    _write_rollout(
+        personal_day_dir / "rollout-personal.jsonl",
+        timestamp=now - timedelta(seconds=30),
+        primary_used=30.0,
+        secondary_used=40.0,
+    )
+
+    counts = read_runtime_live_session_counts_by_snapshot(now=now)
+
+    assert counts == {"work": 1, "personal": 1}
+
+
+def test_read_runtime_live_session_counts_by_snapshot_ignores_stale_runtime_sessions(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    now = datetime.now(timezone.utc)
+    runtime_root = tmp_path / "runtimes"
+    monkeypatch.setenv("CODEX_AUTH_RUNTIME_ROOT", str(runtime_root))
+    monkeypatch.setenv("CODEX_LB_LOCAL_SESSION_ACTIVE_SECONDS", "60")
+
+    runtime = runtime_root / "terminal-work"
+    runtime.mkdir(parents=True, exist_ok=True)
+    (runtime / "current").write_text("work", encoding="utf-8")
+    day_dir = _sessions_day_dir(runtime / "sessions", now - timedelta(hours=2))
+    _write_rollout(
+        day_dir / "rollout-stale.jsonl",
+        timestamp=now - timedelta(hours=2),
+        primary_used=77.0,
+        secondary_used=55.0,
+    )
+
+    counts = read_runtime_live_session_counts_by_snapshot(now=now)
+
+    assert counts == {}
 
 
 def test_read_local_codex_live_usage_by_snapshot_runtime_prefers_highest_used_within_runtime(

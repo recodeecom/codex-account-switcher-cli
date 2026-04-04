@@ -158,11 +158,49 @@ def read_live_codex_process_session_counts_by_snapshot() -> dict[str, int]:
     return counts
 
 
+def read_runtime_live_session_counts_by_snapshot(*, now: datetime | None = None) -> dict[str, int]:
+    current = now or datetime.now(timezone.utc)
+    runtime_root = _resolve_runtime_root()
+    if not runtime_root.exists() or not runtime_root.is_dir():
+        return {}
+
+    counts: dict[str, int] = {}
+    for runtime_dir in runtime_root.iterdir():
+        if not runtime_dir.is_dir():
+            continue
+
+        snapshot_name = _read_runtime_current_snapshot(runtime_dir)
+        if not snapshot_name:
+            continue
+
+        live_count = _count_active_rollout_sessions_for_sessions_dir(
+            sessions_dir=runtime_dir / "sessions",
+            now=current,
+        )
+        if live_count <= 0:
+            continue
+        counts[snapshot_name] = counts.get(snapshot_name, 0) + live_count
+
+    return counts
+
+
 def has_recent_active_snapshot_process_fallback(*, now: datetime | None = None) -> bool:
     current = now or datetime.now(timezone.utc)
     if not _active_snapshot_selection_changed_recently(current):
         return False
     return _has_running_default_scope_codex_process()
+
+
+def _count_active_rollout_sessions_for_sessions_dir(*, sessions_dir: Path, now: datetime) -> int:
+    if not sessions_dir.exists() or not sessions_dir.is_dir():
+        return 0
+
+    candidates = _candidate_rollout_files(sessions_dir, now)
+    if not candidates:
+        return 0
+
+    cutoff_ts = (now - timedelta(seconds=_active_window_seconds())).timestamp()
+    return sum(1 for path in candidates if _safe_mtime(path) >= cutoff_ts)
 
 
 def _read_local_codex_live_usage_for_sessions_dir(

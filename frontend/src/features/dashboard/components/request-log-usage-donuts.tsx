@@ -3,7 +3,7 @@ import { useMemo } from "react";
 import { DonutChart } from "@/components/donut-chart";
 import type { RequestLogUsageFallbackState } from "@/features/dashboard/request-log-usage-fallback";
 import type { AccountSummary, RequestLogUsageSummary } from "@/features/dashboard/schemas";
-import { buildDuplicateAccountIdSet, formatCompactAccountId } from "@/utils/account-identifiers";
+import { buildAccountIdentityKey } from "@/utils/account-identifiers";
 import { formatCompactNumber, formatEuro, formatWindowLabel } from "@/utils/formatters";
 
 export type RequestLogUsageDonutsProps = {
@@ -40,7 +40,6 @@ function formatTokensAsThousands(value: number): string {
 }
 
 function buildDonutItems(accounts: AccountSummary[], window: UsageSummaryWindow): DonutLegendItem[] {
-  const duplicateAccountIds = buildDuplicateAccountIdSet(accounts);
   const tokensByAccount = new Map<string, number>();
   const costEurByAccount = new Map<string, number>();
   let unassignedTokens = 0;
@@ -56,27 +55,80 @@ function buildDonutItems(accounts: AccountSummary[], window: UsageSummaryWindow)
     costEurByAccount.set(row.accountId, row.costEur);
   }
 
-  const items: DonutLegendItem[] = accounts.map((account) => {
+  const groupedItems = new Map<
+    string,
+    {
+      id: string;
+      label: string;
+      isEmail: boolean;
+      value: number;
+      costEur: number;
+      count: number;
+    }
+  >();
+
+  for (const account of accounts) {
     const rawLabel = account.displayName || account.email || account.accountId;
     const isEmail = !!account.email && rawLabel === account.email;
-    const labelSuffix = duplicateAccountIds.has(account.accountId)
-      ? ` (${formatCompactAccountId(account.accountId, 5, 4)})`
-      : "";
+    const identityKey = buildAccountIdentityKey(account);
+    const accountValue = Math.max(0, tokensByAccount.get(account.accountId) ?? 0);
+    const accountCostEur = Math.max(0, costEurByAccount.get(account.accountId) ?? 0);
+    const existing = groupedItems.get(identityKey);
+    if (!existing) {
+      groupedItems.set(identityKey, {
+        id: `identity:${identityKey}`,
+        label: rawLabel,
+        isEmail,
+        value: accountValue,
+        costEur: accountCostEur,
+        count: 1,
+      });
+      continue;
+    }
+    groupedItems.set(identityKey, {
+      ...existing,
+      value: existing.value + accountValue,
+      costEur: existing.costEur + accountCostEur,
+      count: existing.count + 1,
+    });
+  }
 
-    return {
-      id: account.accountId,
-      label: rawLabel,
-      labelSuffix,
-      isEmail,
-      value: Math.max(0, tokensByAccount.get(account.accountId) ?? 0),
-      costEur: Math.max(0, costEurByAccount.get(account.accountId) ?? 0),
-    };
-  });
+  const items: DonutLegendItem[] = Array.from(groupedItems.values()).map((item) => ({
+    id: item.id,
+    label: item.label,
+    labelSuffix: item.count > 1 ? ` (×${item.count})` : "",
+    isEmail: item.isEmail,
+    value: item.value,
+    costEur: item.costEur,
+  }));
 
   const knownAccountIds = new Set(accounts.map((account) => account.accountId));
-  const unknownRows = window.accounts
-    .filter((row) => row.accountId && !knownAccountIds.has(row.accountId))
-    .sort((left, right) => (left.accountId ?? "").localeCompare(right.accountId ?? ""));
+  const unknownRowsByAccountId = new Map<
+    string,
+    { accountId: string; tokens: number; costEur: number }
+  >();
+  for (const row of window.accounts) {
+    if (!row.accountId || knownAccountIds.has(row.accountId)) {
+      continue;
+    }
+    const existing = unknownRowsByAccountId.get(row.accountId);
+    if (!existing) {
+      unknownRowsByAccountId.set(row.accountId, {
+        accountId: row.accountId,
+        tokens: Math.max(0, row.tokens),
+        costEur: Math.max(0, row.costEur),
+      });
+      continue;
+    }
+    unknownRowsByAccountId.set(row.accountId, {
+      accountId: row.accountId,
+      tokens: existing.tokens + Math.max(0, row.tokens),
+      costEur: existing.costEur + Math.max(0, row.costEur),
+    });
+  }
+  const unknownRows = Array.from(unknownRowsByAccountId.values()).sort((left, right) =>
+    left.accountId.localeCompare(right.accountId),
+  );
 
   for (const row of unknownRows) {
     if (!row.accountId) continue;
@@ -85,8 +137,8 @@ function buildDonutItems(accounts: AccountSummary[], window: UsageSummaryWindow)
       label: row.accountId,
       labelSuffix: "",
       isEmail: false,
-      value: Math.max(0, row.tokens),
-      costEur: Math.max(0, row.costEur),
+      value: row.tokens,
+      costEur: row.costEur,
     });
   }
 
@@ -122,7 +174,7 @@ function buildWindowStats(items: DonutLegendItem[], totalTokens: number): UsageW
   return {
     activeAccounts,
     avgTokensPerAccount,
-    topAccountLabel: topItem?.label ?? "No activity",
+    topAccountLabel: topItem ? `${topItem.label}${topItem.labelSuffix}` : "No activity",
     topAccountShare,
   };
 }

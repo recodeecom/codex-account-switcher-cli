@@ -7,7 +7,6 @@ import {
 } from "@/features/dashboard/utils";
 import type { RemainingItem } from "@/features/dashboard/utils";
 import type { AccountSummary, Depletion } from "@/features/dashboard/schemas";
-import { formatCompactAccountId } from "@/utils/account-identifiers";
 
 function account(overrides: Partial<AccountSummary> & Pick<AccountSummary, "accountId" | "email">): AccountSummary {
   return {
@@ -225,7 +224,7 @@ describe("buildRemainingItems", () => {
     expect(items[1].label).toBe("two@example.com");
   });
 
-  it("appends compact account id only for duplicate emails", () => {
+  it("groups duplicate emails into a single legend item", () => {
     const duplicateA = "d48f0bfc-8ea6-48a7-8d76-d0e5ef1816c5_6f12b5d5";
     const duplicateB = "7f9de2ad-7621-4a6f-88bc-ec7f3d914701_91a95cee";
     const items = buildRemainingItems(
@@ -238,14 +237,53 @@ describe("buildRemainingItems", () => {
       "primary",
     );
 
+    expect(items).toHaveLength(2);
     expect(items[0].label).toBe("dup@example.com");
-    expect(items[0].labelSuffix).toBe(` (${formatCompactAccountId(duplicateA, 5, 4)})`);
+    expect(items[0].labelSuffix).toBe(" (×2)");
     expect(items[0].isEmail).toBe(true);
-    expect(items[1].label).toBe("dup@example.com");
-    expect(items[1].labelSuffix).toBe(` (${formatCompactAccountId(duplicateB, 5, 4)})`);
+    expect(items[1].label).toBe("unique@example.com");
+    expect(items[1].labelSuffix).toBe("");
     expect(items[1].isEmail).toBe(true);
-    expect(items[2].label).toBe("unique@example.com");
-    expect(items[2].labelSuffix).toBe("");
-    expect(items[2].isEmail).toBe(true);
+  });
+
+  it("uses the lowest remaining quota when duplicate identities are grouped", () => {
+    const items = buildRemainingItems(
+      [
+        account({
+          accountId: "acc-1",
+          email: "dup@example.com",
+          usage: { primaryRemainingPercent: 60, secondaryRemainingPercent: 80 },
+        }),
+        account({
+          accountId: "acc-2",
+          email: "dup@example.com",
+          usage: { primaryRemainingPercent: 20, secondaryRemainingPercent: 50 },
+        }),
+      ],
+      {
+        windowKey: "primary",
+        windowMinutes: 300,
+        accounts: [
+          {
+            accountId: "acc-1",
+            remainingPercentAvg: 60,
+            capacityCredits: 100,
+            remainingCredits: 60,
+          },
+          {
+            accountId: "acc-2",
+            remainingPercentAvg: 20,
+            capacityCredits: 100,
+            remainingCredits: 20,
+          },
+        ],
+      },
+      "primary",
+    );
+
+    expect(items).toHaveLength(1);
+    expect(items[0].accountId).toBe("acc-2");
+    expect(items[0].value).toBe(20);
+    expect(items[0].remainingPercent).toBe(20);
   });
 });

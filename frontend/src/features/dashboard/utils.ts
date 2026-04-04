@@ -2,7 +2,7 @@ import { Activity, AlertTriangle, Coins, DollarSign } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { buildDonutPalette } from "@/utils/colors";
-import { buildDuplicateAccountIdSet, formatCompactAccountId } from "@/utils/account-identifiers";
+import { buildAccountIdentityKey } from "@/utils/account-identifiers";
 import {
   formatCachedTokensMeta,
   formatCompactNumber,
@@ -50,6 +50,8 @@ export type DashboardView = {
   stats: DashboardStat[];
   primaryUsageItems: RemainingItem[];
   secondaryUsageItems: RemainingItem[];
+  primaryTotal: number;
+  secondaryTotal: number;
   requestLogs: RequestLog[];
   safeLinePrimary: SafeLineView | null;
   safeLineSecondary: SafeLineView | null;
@@ -60,13 +62,32 @@ export function buildDepletionView(depletion: Depletion | null | undefined): Saf
   return { safePercent: depletion.safeUsagePercent, riskLevel: depletion.riskLevel };
 }
 
-function buildWindowIndex(window: UsageWindow | null): Map<string, number> {
-  const index = new Map<string, number>();
+type WindowIndexEntry = {
+  remainingCredits: number;
+  capacityCredits: number;
+};
+
+type GroupedWindowEntry = {
+  identityKey: string;
+  accountId: string;
+  label: string;
+  isEmail: boolean;
+  remainingPercent: number | null;
+  remainingCredits: number;
+  capacityCredits: number;
+  count: number;
+};
+
+function buildWindowIndex(window: UsageWindow | null): Map<string, WindowIndexEntry> {
+  const index = new Map<string, WindowIndexEntry>();
   if (!window) {
     return index;
   }
   for (const entry of window.accounts) {
-    index.set(entry.accountId, entry.remainingCredits);
+    index.set(entry.accountId, {
+      remainingCredits: entry.remainingCredits,
+      capacityCredits: entry.capacityCredits,
+    });
   }
   return index;
 }
@@ -80,6 +101,71 @@ function accountRemainingPercent(account: AccountSummary, windowKey: "primary" |
     return account.usage?.secondaryRemainingPercent ?? null;
   }
   return account.usage?.primaryRemainingPercent ?? null;
+}
+
+function shouldReplaceGroupedEntry(current: GroupedWindowEntry, candidate: GroupedWindowEntry): boolean {
+  if (candidate.remainingCredits < current.remainingCredits) {
+    return true;
+  }
+  if (candidate.remainingCredits > current.remainingCredits) {
+    return false;
+  }
+  if (candidate.remainingPercent != null && current.remainingPercent == null) {
+    return true;
+  }
+  if (candidate.remainingPercent == null || current.remainingPercent == null) {
+    return false;
+  }
+  return candidate.remainingPercent < current.remainingPercent;
+}
+
+function buildGroupedWindowEntries(
+  accounts: AccountSummary[],
+  window: UsageWindow | null,
+  windowKey: "primary" | "secondary",
+): GroupedWindowEntry[] {
+  const usageIndex = buildWindowIndex(window);
+  const grouped = new Map<string, GroupedWindowEntry>();
+
+  for (const account of accounts) {
+    if (windowKey === "primary" && isWeeklyOnlyAccount(account)) {
+      continue;
+    }
+
+    const usageEntry = usageIndex.get(account.accountId);
+    const rawLabel = account.displayName || account.email || account.accountId;
+    const entry: GroupedWindowEntry = {
+      identityKey: buildAccountIdentityKey(account),
+      accountId: account.accountId,
+      label: rawLabel,
+      isEmail: !!account.email && rawLabel === account.email,
+      remainingPercent: accountRemainingPercent(account, windowKey),
+      remainingCredits: usageEntry?.remainingCredits ?? 0,
+      capacityCredits: usageEntry?.capacityCredits ?? 0,
+      count: 1,
+    };
+
+    const existing = grouped.get(entry.identityKey);
+    if (!existing) {
+      grouped.set(entry.identityKey, entry);
+      continue;
+    }
+
+    const nextCount = existing.count + 1;
+    if (shouldReplaceGroupedEntry(existing, entry)) {
+      grouped.set(entry.identityKey, {
+        ...entry,
+        count: nextCount,
+      });
+    } else {
+      grouped.set(entry.identityKey, {
+        ...existing,
+        count: nextCount,
+      });
+    }
+  }
+
+  return Array.from(grouped.values());
 }
 
 /**
@@ -124,32 +210,29 @@ export function buildRemainingItems(
   windowKey: "primary" | "secondary",
   isDark = false,
 ): RemainingItem[] {
-  const usageIndex = buildWindowIndex(window);
-  const palette = buildDonutPalette(accounts.length, isDark);
-  const duplicateAccountIds = buildDuplicateAccountIdSet(accounts);
+  const groupedEntries = buildGroupedWindowEntries(accounts, window, windowKey);
+  const palette = buildDonutPalette(groupedEntries.length, isDark);
 
-  return accounts
-    .map((account, index) => {
-      if (windowKey === "primary" && isWeeklyOnlyAccount(account)) {
-        return null;
-      }
-      const remaining = usageIndex.get(account.accountId) ?? 0;
-      const rawLabel = account.displayName || account.email || account.accountId;
-      const labelIsEmail = !!account.email && rawLabel === account.email;
-      const labelSuffix = duplicateAccountIds.has(account.accountId)
-        ? ` (${formatCompactAccountId(account.accountId, 5, 4)})`
-        : "";
-      return {
-        accountId: account.accountId,
-        label: rawLabel,
-        labelSuffix,
-        isEmail: labelIsEmail,
-        value: remaining,
-        remainingPercent: accountRemainingPercent(account, windowKey),
-        color: palette[index % palette.length],
-      };
-    })
-    .filter((item): item is RemainingItem => item !== null);
+  return groupedEntries.map((entry, index) => ({
+    accountId: entry.accountId,
+    label: entry.label,
+    labelSuffix: entry.count > 1 ? ` (×${entry.count})` : "",
+    isEmail: entry.isEmail,
+    value: entry.remainingCredits,
+    remainingPercent: entry.remainingPercent,
+    color: palette[index % palette.length],
+  }));
+}
+
+function buildGroupedWindowTotalCapacity(
+  accounts: AccountSummary[],
+  window: UsageWindow | null,
+  windowKey: "primary" | "secondary",
+): number {
+  return buildGroupedWindowEntries(accounts, window, windowKey).reduce(
+    (sum, entry) => sum + Math.max(0, entry.capacityCredits),
+    0,
+  );
 }
 
 export function avgPerHour(cost7d: number, hours = 24 * 7): number {
@@ -216,6 +299,8 @@ export function buildDashboardView(
 
   const rawPrimaryItems = buildRemainingItems(overview.accounts, primaryWindow, "primary", isDark);
   const secondaryUsageItems = buildRemainingItems(overview.accounts, secondaryWindow, "secondary", isDark);
+  const primaryTotal = buildGroupedWindowTotalCapacity(overview.accounts, primaryWindow, "primary");
+  const secondaryTotal = buildGroupedWindowTotalCapacity(overview.accounts, secondaryWindow, "secondary");
 
   return {
     stats,
@@ -223,6 +308,8 @@ export function buildDashboardView(
       ? applySecondaryConstraint(rawPrimaryItems, secondaryUsageItems)
       : rawPrimaryItems,
     secondaryUsageItems,
+    primaryTotal,
+    secondaryTotal,
     requestLogs,
     safeLinePrimary: buildDepletionView(overview.depletionPrimary),
     safeLineSecondary: buildDepletionView(overview.depletionSecondary),

@@ -4,7 +4,7 @@ export type AccountIdentityLike = {
   displayName: string;
 };
 
-function identityKey(account: AccountIdentityLike): string {
+export function buildAccountIdentityKey(account: AccountIdentityLike): string {
   const email = account.email.trim().toLowerCase();
   if (email) {
     return `email:${email}`;
@@ -19,13 +19,13 @@ function identityKey(account: AccountIdentityLike): string {
 export function buildDuplicateAccountIdSet<T extends AccountIdentityLike>(accounts: T[]): Set<string> {
   const counts = new Map<string, number>();
   for (const account of accounts) {
-    const key = identityKey(account);
+    const key = buildAccountIdentityKey(account);
     counts.set(key, (counts.get(key) ?? 0) + 1);
   }
 
   const duplicateAccountIds = new Set<string>();
   for (const account of accounts) {
-    if ((counts.get(identityKey(account)) ?? 0) > 1) {
+    if ((counts.get(buildAccountIdentityKey(account)) ?? 0) > 1) {
       duplicateAccountIds.add(account.accountId);
     }
   }
