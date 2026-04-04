@@ -110,11 +110,11 @@ export function DashboardPage() {
   );
 
   const view = useMemo(() => {
-    if (!overview || !logPage) {
+    if (!overview) {
       return null;
     }
-    return buildDashboardView(overview, logPage.requests, isDark);
-  }, [overview, logPage, isDark]);
+    return buildDashboardView(overview, logPage?.requests ?? [], isDark);
+  }, [overview, logPage?.requests, isDark]);
 
   const accountOptions = useMemo(() => {
     const entries = new Map<string, { label: string; isEmail: boolean }>();
@@ -181,7 +181,7 @@ export function DashboardPage() {
 
       {errorMessage ? <AlertMessage variant="error">{errorMessage}</AlertMessage> : null}
 
-      {!view ? (
+      {!overview || !view ? (
         <DashboardSkeleton />
       ) : (
         <>

@@ -17,6 +17,7 @@ _DEFAULT_SWITCH_PROCESS_FALLBACK_SECONDS = 60
 _DEFAULT_UNLABELED_PROCESS_START_TOLERANCE_SECONDS = 5
 _TAIL_LINE_LIMIT = 400
 _FALLBACK_SCAN_LIMIT = 200
+_RATE_LIMIT_SNAPSHOTS_PER_FILE = 8
 _ROLLOUT_SESSION_PREFIX_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}$")
 _RESET_AT_MATCH_TOLERANCE_SECONDS = 30
 
@@ -66,7 +67,7 @@ def read_local_codex_live_usage_by_snapshot(*, now: datetime | None = None) -> d
         default_usage = _read_local_codex_live_usage_for_sessions_dir(
             sessions_dir=_resolve_sessions_dir(),
             now=current,
-            aggregation_mode="max_used",
+            aggregation_mode="latest",
         )
         if default_usage is not None:
             usage_by_snapshot[active_snapshot_name] = default_usage
@@ -86,7 +87,7 @@ def read_local_codex_live_usage_by_snapshot(*, now: datetime | None = None) -> d
         runtime_usage = _read_local_codex_live_usage_for_sessions_dir(
             sessions_dir=runtime_dir / "sessions",
             now=current,
-            aggregation_mode="max_used",
+            aggregation_mode="latest",
         )
         if runtime_usage is None:
             continue
@@ -389,7 +390,7 @@ def _merge_live_usage(
             preferred_recorded_at=preferred.recorded_at,
             fallback_recorded_at=fallback.recorded_at,
             now=max(previous.recorded_at, current.recorded_at),
-            prefer_max_used_within_cycle=True,
+            prefer_max_used_within_cycle=False,
         ),
         secondary=_merge_usage_windows(
             previous=preferred.secondary,
@@ -397,7 +398,7 @@ def _merge_live_usage(
             preferred_recorded_at=preferred.recorded_at,
             fallback_recorded_at=fallback.recorded_at,
             now=max(previous.recorded_at, current.recorded_at),
-            prefer_max_used_within_cycle=True,
+            prefer_max_used_within_cycle=False,
         ),
     )
 
@@ -827,9 +828,9 @@ def _extract_latest_rate_limit_from_paths(
     paths: list[Path],
 ) -> tuple[datetime, LocalUsageWindow | None, LocalUsageWindow | None] | None:
     for path in paths:
-        snapshot = _extract_latest_rate_limit_from_file(path)
-        if snapshot is not None:
-            return snapshot
+        snapshots = _extract_recent_rate_limit_snapshots_from_file(path, max_samples=1)
+        if snapshots:
+            return snapshots[0]
     return None
 
 
@@ -840,9 +841,12 @@ def _extract_max_used_rate_limit_from_paths(
 ) -> tuple[datetime, LocalUsageWindow | None, LocalUsageWindow | None] | None:
     snapshots: list[tuple[datetime, LocalUsageWindow | None, LocalUsageWindow | None]] = []
     for path in paths:
-        snapshot = _extract_latest_rate_limit_from_file(path)
-        if snapshot is not None:
-            snapshots.append(snapshot)
+        snapshots.extend(
+            _extract_recent_rate_limit_snapshots_from_file(
+                path,
+                max_samples=_RATE_LIMIT_SNAPSHOTS_PER_FILE,
+            )
+        )
 
     if not snapshots:
         return None
@@ -859,7 +863,7 @@ def _extract_max_used_rate_limit_from_paths(
             preferred_recorded_at=latest_recorded_at,
             fallback_recorded_at=recorded_at,
             now=now,
-            prefer_max_used_within_cycle=True,
+            prefer_max_used_within_cycle=False,
         )
         merged_secondary = _merge_usage_windows(
             previous=merged_secondary,
@@ -867,7 +871,7 @@ def _extract_max_used_rate_limit_from_paths(
             preferred_recorded_at=latest_recorded_at,
             fallback_recorded_at=recorded_at,
             now=now,
-            prefer_max_used_within_cycle=True,
+            prefer_max_used_within_cycle=False,
         )
 
     return latest_recorded_at, merged_primary, merged_secondary
@@ -876,39 +880,98 @@ def _extract_max_used_rate_limit_from_paths(
 def _extract_latest_rate_limit_from_file(
     path: Path,
 ) -> tuple[datetime, LocalUsageWindow | None, LocalUsageWindow | None] | None:
+    snapshots = _extract_recent_rate_limit_snapshots_from_file(path, max_samples=1)
+    if not snapshots:
+        return None
+    return snapshots[0]
+
+
+def _extract_recent_rate_limit_snapshots_from_file(
+    path: Path,
+    *,
+    max_samples: int,
+) -> list[tuple[datetime, LocalUsageWindow | None, LocalUsageWindow | None]]:
+    if max_samples <= 0:
+        return []
+
     tail: deque[str] = deque(maxlen=_TAIL_LINE_LIMIT)
     try:
         with path.open("r", encoding="utf-8", errors="ignore") as handle:
             for line in handle:
                 tail.append(line)
     except OSError:
-        return None
+        return []
+
+    snapshots: list[tuple[datetime, LocalUsageWindow | None, LocalUsageWindow | None]] = []
+    seen_timestamps: set[datetime] = set()
 
     for raw_line in reversed(tail):
-        line = raw_line.strip()
-        if not line:
+        snapshot = _rate_limit_snapshot_from_line(raw_line)
+        if snapshot is None:
             continue
-        try:
-            payload = json.loads(line)
-        except json.JSONDecodeError:
+        timestamp = snapshot[0]
+        if timestamp in seen_timestamps:
             continue
-        if not isinstance(payload, dict):
-            continue
+        seen_timestamps.add(timestamp)
+        snapshots.append(snapshot)
+        if len(snapshots) >= max_samples:
+            break
 
-        rate_limits = _extract_rate_limits_payload(payload)
-        if rate_limits is None:
-            continue
+    if snapshots:
+        return snapshots
 
-        timestamp = _parse_timestamp(payload.get("timestamp"))
-        if timestamp is None:
-            continue
+    # Some long-running sessions can emit the latest token_count far outside
+    # the tail window (for example, verbose tool output after an early
+    # token_count update). When the tail pass finds no rate-limit payloads,
+    # fall back to a full-file scan so we still recover the newest available
+    # quota snapshot for that session.
+    all_snapshots: list[tuple[datetime, LocalUsageWindow | None, LocalUsageWindow | None]] = []
+    try:
+        with path.open("r", encoding="utf-8", errors="ignore") as handle:
+            for raw_line in handle:
+                snapshot = _rate_limit_snapshot_from_line(raw_line)
+                if snapshot is None:
+                    continue
+                timestamp = snapshot[0]
+                if timestamp in seen_timestamps:
+                    continue
+                seen_timestamps.add(timestamp)
+                all_snapshots.append(snapshot)
+    except OSError:
+        return []
 
-        primary_raw, secondary_raw = _extract_windows(rate_limits)
-        primary = _window_from_payload(primary_raw, timestamp)
-        secondary = _window_from_payload(secondary_raw, timestamp)
-        return timestamp, primary, secondary
+    if not all_snapshots:
+        return []
 
-    return None
+    all_snapshots.sort(key=lambda item: item[0], reverse=True)
+    return all_snapshots[:max_samples]
+
+
+def _rate_limit_snapshot_from_line(
+    raw_line: str,
+) -> tuple[datetime, LocalUsageWindow | None, LocalUsageWindow | None] | None:
+    line = raw_line.strip()
+    if not line:
+        return None
+    try:
+        payload = json.loads(line)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+
+    rate_limits = _extract_rate_limits_payload(payload)
+    if rate_limits is None:
+        return None
+
+    timestamp = _parse_timestamp(payload.get("timestamp"))
+    if timestamp is None:
+        return None
+
+    primary_raw, secondary_raw = _extract_windows(rate_limits)
+    primary = _window_from_payload(primary_raw, timestamp)
+    secondary = _window_from_payload(secondary_raw, timestamp)
+    return timestamp, primary, secondary
 
 
 def _extract_rate_limits_payload(payload: dict[str, Any]) -> dict[str, Any] | None:

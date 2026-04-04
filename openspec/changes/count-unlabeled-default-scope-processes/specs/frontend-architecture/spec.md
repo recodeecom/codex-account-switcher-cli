@@ -14,3 +14,8 @@ The Dashboard page SHALL display: summary metric cards (requests 7d, tokens, cos
 - **WHEN** a running Codex process has no explicit snapshot/runtime metadata
 - **AND** either it predates the latest default snapshot selection timestamp outside tolerance, or the process is not owned by the current user
 - **THEN** the process MUST NOT be attributed to any account live-session count.
+
+#### Scenario: Deferred mixed-session override prefers freshest sample
+- **WHEN** active-snapshot usage must use deferred mixed-default-session sample fallback
+- **THEN** primary/secondary deferred overrides SHALL use the freshest available non-stale sample per window
+- **AND** they MUST NOT use min/max outlier selection as the primary tie-break.

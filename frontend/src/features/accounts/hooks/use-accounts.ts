@@ -17,7 +17,7 @@ import type { AccountSummary } from "@/features/accounts/schemas";
 import { isAccountWorkingNow } from "@/utils/account-working";
 
 const DEFAULT_ACCOUNTS_POLL_MS = 30_000;
-const ACTIVE_ACCOUNTS_POLL_MS = 2_000;
+const ACTIVE_ACCOUNTS_POLL_MS = 1_000;
 
 function extractAccounts(data: unknown): AccountSummary[] | undefined {
   if (Array.isArray(data)) {

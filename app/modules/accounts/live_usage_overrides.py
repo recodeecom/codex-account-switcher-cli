@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import logging
 import os
+from pathlib import Path
+import re
 from typing import Literal
 
 from app.core.utils.time import to_utc_naive
@@ -42,6 +44,7 @@ _PERCENT_PATTERN_HIGH_CONFIDENCE_MAX_DISTANCE = 8.0
 _PERCENT_PATTERN_HIGH_CONFIDENCE_MARGIN = 4.0
 _LIVE_USAGE_DEBUG_ENV = "CODEX_LB_LIVE_USAGE_DEBUG"
 _DEFAULT_SESSION_FINGERPRINT_FALLBACK_ENV = "CODEX_LB_DEFAULT_SESSION_FINGERPRINT_FALLBACK_ENABLED"
+_ROLLOUT_SOURCE_SESSION_PREFIX_RE = re.compile(r"rollout-(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2})")
 logger = logging.getLogger(__name__)
 
 
@@ -216,6 +219,7 @@ def apply_local_live_usage_overrides(
 
         if (
             not has_live_process_session
+            and not has_live_runtime_session
             and should_defer_active_snapshot_usage
             and codex_auth_status.is_active_snapshot
         ):
@@ -368,6 +372,11 @@ def apply_local_live_usage_overrides(
         and (
             _default_session_fingerprint_fallback_enabled()
             or has_recent_active_snapshot_process_fallback()
+            or _has_mixed_default_scope_sessions(
+                snapshot_index=snapshot_index,
+                live_usage_by_snapshot=live_usage_by_snapshot,
+                live_usage_samples_by_snapshot=live_usage_samples_by_snapshot,
+            )
         )
     ):
         _apply_local_default_session_fingerprint_overrides(
@@ -562,24 +571,25 @@ def _apply_deferred_sample_floor_override(
         return False, None
 
     # When deferred matching cannot safely map reset fingerprints to a
-    # single account, prefer the least-consumed sample instead of a
-    # conservative max-used floor. Mixed default-session samples can include
-    # telemetry from another snapshot/account, and picking max-used causes
-    # false depletion on the active account immediately after switching.
-    primary_sample = min(
+    # single account, prefer the freshest sample for each window. This keeps
+    # active-snapshot cards closer to the current CLI banner while avoiding
+    # max/min outlier swings from mixed default-session telemetry.
+    primary_sample = max(
         primary_samples,
         key=lambda sample: (
-            float(sample.primary.used_percent),
-            -sample.recorded_at.timestamp(),
+            _source_session_start_key(sample.source),
+            sample.recorded_at.timestamp(),
+            -float(sample.primary.used_percent),
             sample.source,
         ),
         default=None,
     )
-    secondary_sample = min(
+    secondary_sample = max(
         secondary_samples,
         key=lambda sample: (
-            float(sample.secondary.used_percent),
-            -sample.recorded_at.timestamp(),
+            _source_session_start_key(sample.source),
+            sample.recorded_at.timestamp(),
+            -float(sample.secondary.used_percent),
             sample.source,
         ),
         default=None,
@@ -681,6 +691,13 @@ def _coalesce_persist_candidates(
         if existing is None or candidate.recorded_at >= existing.recorded_at:
             latest_by_key[key] = candidate
     return list(latest_by_key.values())
+
+
+def _source_session_start_key(source: str) -> str:
+    match = _ROLLOUT_SOURCE_SESSION_PREFIX_RE.search(Path(source).name)
+    if match is None:
+        return ""
+    return match.group(1)
 
 
 def _resolve_snapshot_candidates(
@@ -872,6 +889,11 @@ def _build_debug_sample(
     stale: bool,
 ) -> AccountLiveQuotaDebugSample | None:
     if recorded_at is None:
+        return None
+    if primary is None and secondary is None:
+        # Presence-only sample snapshots are useful for internal session
+        # counting, but they add noisy "$ sample ... 5h=— weekly=—" rows in
+        # UI debug logs and should not be exposed as quota telemetry.
         return None
     return AccountLiveQuotaDebugSample(
         source=source,
@@ -1195,6 +1217,23 @@ def _should_defer_active_snapshot_usage_override(
 
 def _sample_has_fingerprint(sample: LocalCodexLiveUsage) -> bool:
     return sample.primary is not None or sample.secondary is not None
+
+
+def _has_mixed_default_scope_sessions(
+    *,
+    snapshot_index: CodexAuthSnapshotIndex,
+    live_usage_by_snapshot: dict[str, LocalCodexLiveUsage],
+    live_usage_samples_by_snapshot: dict[str, list[LocalCodexLiveUsageSample]],
+) -> bool:
+    active_snapshot_name = snapshot_index.active_snapshot_name
+    if not active_snapshot_name:
+        return False
+    active_usage = live_usage_by_snapshot.get(active_snapshot_name)
+    if active_usage is None:
+        return False
+    if len(live_usage_by_snapshot) != 1 or active_usage.active_session_count <= 1:
+        return False
+    return len(live_usage_samples_by_snapshot.get(active_snapshot_name, [])) > 1
 
 
 def _remember_snapshot_sample_owners_for_account(

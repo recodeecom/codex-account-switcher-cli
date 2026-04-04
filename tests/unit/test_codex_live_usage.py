@@ -213,6 +213,62 @@ def test_read_local_codex_live_usage_reports_live_session_even_without_rate_limi
     assert usage.secondary is None
 
 
+def test_read_local_codex_live_usage_recovers_rate_limit_outside_tail_window(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    now = datetime.now(timezone.utc)
+    sessions_root = tmp_path / "sessions"
+    monkeypatch.setenv("CODEX_SESSIONS_DIR", str(sessions_root))
+    monkeypatch.setenv("CODEX_LB_LOCAL_SESSION_ACTIVE_SECONDS", "600")
+
+    day_dir = _sessions_day_dir(sessions_root, now)
+    noisy_rollout = day_dir / "rollout-noisy.jsonl"
+
+    first_snapshot_ts = now - timedelta(minutes=2)
+    first_payload = {
+        "timestamp": first_snapshot_ts.isoformat().replace("+00:00", "Z"),
+        "type": "event_msg",
+        "payload": {
+            "type": "token_count",
+            "rate_limits": {
+                "primary": {
+                    "used_percent": 36.0,
+                    "window_minutes": 300,
+                    "resets_at": int((first_snapshot_ts + timedelta(minutes=30)).timestamp()),
+                },
+                "secondary": {
+                    "used_percent": 4.0,
+                    "window_minutes": 10_080,
+                    "resets_at": int((first_snapshot_ts + timedelta(days=7)).timestamp()),
+                },
+            },
+        },
+    }
+    noisy_lines = [json.dumps(first_payload)]
+    for index in range(450):
+        noisy_lines.append(
+            json.dumps(
+                {
+                    "timestamp": (now - timedelta(seconds=index)).isoformat().replace("+00:00", "Z"),
+                    "type": "event_msg",
+                    "payload": {"type": "task_progress", "step": index},
+                }
+            )
+        )
+    noisy_rollout.write_text("\n".join(noisy_lines) + "\n", encoding="utf-8")
+    ts = (now - timedelta(seconds=5)).timestamp()
+    os.utime(noisy_rollout, (ts, ts))
+
+    usage = read_local_codex_live_usage(now=now)
+    assert usage is not None
+    assert usage.active_session_count == 1
+    assert usage.primary is not None
+    assert usage.secondary is not None
+    assert usage.primary.used_percent == pytest.approx(36.0)
+    assert usage.secondary.used_percent == pytest.approx(4.0)
+
+
 def test_read_local_codex_live_usage_samples_drops_stale_token_count_fingerprints(
     monkeypatch,
     tmp_path: Path,
@@ -292,7 +348,7 @@ def test_read_local_codex_live_usage_by_snapshot_reads_multiple_runtime_profiles
     assert usage_by_snapshot["personal"].secondary.used_percent == 40.0
 
 
-def test_read_local_codex_live_usage_by_snapshot_default_scope_prefers_highest_used_within_cycle(
+def test_read_local_codex_live_usage_by_snapshot_default_scope_prefers_newest_sample_within_cycle(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -327,8 +383,8 @@ def test_read_local_codex_live_usage_by_snapshot_default_scope_prefers_highest_u
     assert usage.active_session_count == 2
     assert usage.primary is not None
     assert usage.secondary is not None
-    assert usage.primary.used_percent == 95.0
-    assert usage.secondary.used_percent == 37.0
+    assert usage.primary.used_percent == 76.0
+    assert usage.secondary.used_percent == 34.0
 
 
 def test_read_runtime_live_session_counts_by_snapshot_reads_runtime_profiles(
@@ -391,7 +447,7 @@ def test_read_runtime_live_session_counts_by_snapshot_ignores_stale_runtime_sess
     assert counts == {}
 
 
-def test_read_local_codex_live_usage_by_snapshot_runtime_prefers_highest_used_within_runtime(
+def test_read_local_codex_live_usage_by_snapshot_runtime_prefers_newest_sample_within_runtime(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -429,8 +485,8 @@ def test_read_local_codex_live_usage_by_snapshot_runtime_prefers_highest_used_wi
     assert work_usage.active_session_count == 2
     assert work_usage.primary is not None
     assert work_usage.secondary is not None
-    assert work_usage.primary.used_percent == 95.0
-    assert work_usage.secondary.used_percent == 80.0
+    assert work_usage.primary.used_percent == 12.0
+    assert work_usage.secondary.used_percent == 25.0
 
 
 def test_read_local_codex_live_usage_by_snapshot_merges_same_snapshot_across_runtimes(
@@ -480,7 +536,7 @@ def test_read_local_codex_live_usage_by_snapshot_merges_same_snapshot_across_run
     assert merged.secondary.used_percent == 44.0
 
 
-def test_read_local_codex_live_usage_by_snapshot_merges_same_snapshot_with_max_used_floor(
+def test_read_local_codex_live_usage_by_snapshot_merges_same_snapshot_using_newest_runtime_sample(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -523,8 +579,8 @@ def test_read_local_codex_live_usage_by_snapshot_merges_same_snapshot_with_max_u
     assert merged.active_session_count == 2
     assert merged.primary is not None
     assert merged.secondary is not None
-    assert merged.primary.used_percent == 81.0
-    assert merged.secondary.used_percent == 66.0
+    assert merged.primary.used_percent == 14.0
+    assert merged.secondary.used_percent == 22.0
 
 
 def test_read_local_codex_live_usage_samples_by_snapshot_returns_runtime_and_default_samples(

@@ -109,11 +109,24 @@ export function isAccountWorkingNow(
     | "codexSessionCount"
     | "codexTrackedSessionCount"
     | "liveQuotaDebug"
+    | "usage"
     | "lastUsageRecordedAtPrimary"
     | "lastUsageRecordedAtSecondary"
   >,
   nowMs: number = Date.now(),
 ): boolean {
+  const mergedPrimaryRemaining = getMergedQuotaRemainingPercent(account, "primary");
+  const primaryRemaining =
+    typeof mergedPrimaryRemaining === "number"
+      ? mergedPrimaryRemaining
+      : account.usage?.primaryRemainingPercent ?? null;
+
+  // If the 5h window is fully depleted, the account should not stay in
+  // "Working now" even when stale tracked/session telemetry lingers.
+  if (typeof primaryRemaining === "number" && primaryRemaining <= 0) {
+    return false;
+  }
+
   if (hasFreshLiveTelemetry(account, nowMs)) {
     return true;
   }

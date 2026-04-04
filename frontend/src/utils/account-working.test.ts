@@ -54,6 +54,29 @@ describe("isAccountWorkingNow", () => {
     expect(isAccountWorkingNow(account)).toBe(true);
   });
 
+  it("returns false when 5h is depleted even if tracked sessions are present", () => {
+    const account = createAccountSummary({
+      usage: {
+        primaryRemainingPercent: 0,
+        secondaryRemainingPercent: 88,
+      },
+      codexLiveSessionCount: 0,
+      codexTrackedSessionCount: 3,
+      codexSessionCount: 3,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+      lastUsageRecordedAtPrimary: "2026-04-04T11:59:00.000Z",
+      lastUsageRecordedAtSecondary: "2026-04-04T11:59:00.000Z",
+    });
+
+    expect(isAccountWorkingNow(account, new Date("2026-04-04T12:00:00.000Z").getTime())).toBe(false);
+  });
+
   it("returns true when compatibility codexSessionCount is present", () => {
     const account = createAccountSummary({
       codexLiveSessionCount: 0,
@@ -197,5 +220,40 @@ describe("isAccountWorkingNow", () => {
 
     expect(getMergedQuotaRemainingPercent(account, "primary")).toBe(16);
     expect(getMergedQuotaRemainingPercent(account, "secondary")).toBe(90);
+  });
+
+  it("returns false when merged 5h is depleted", () => {
+    const account = createAccountSummary({
+      usage: {
+        primaryRemainingPercent: 44,
+        secondaryRemainingPercent: 90,
+      },
+      codexLiveSessionCount: 1,
+      codexTrackedSessionCount: 2,
+      codexSessionCount: 2,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "amodeus",
+        activeSnapshotName: "amodeus",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+      liveQuotaDebug: {
+        snapshotsConsidered: ["amodeus"],
+        overrideApplied: true,
+        overrideReason: "deferred_active_snapshot_sample_floor_override",
+        merged: {
+          source: "merged",
+          snapshotName: "amodeus",
+          recordedAt: "2026-04-04T12:00:00.000Z",
+          stale: false,
+          primary: { usedPercent: 100, remainingPercent: 0, resetAt: 1760000000, windowMinutes: 300 },
+          secondary: { usedPercent: 12, remainingPercent: 88, resetAt: 1760600000, windowMinutes: 10080 },
+        },
+        rawSamples: [],
+      },
+    });
+
+    expect(isAccountWorkingNow(account)).toBe(false);
   });
 });

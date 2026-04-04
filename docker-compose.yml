@@ -5,6 +5,9 @@ services:
       dockerfile: Dockerfile
     env_file:
       - .env.local
+    environment:
+      # Ensure --reload notices host bind-mount edits reliably across Docker setups.
+      WATCHFILES_FORCE_POLLING: "true"
     ports:
       - "2455:2455"
     command:
@@ -17,13 +20,12 @@ services:
       - "2455"
       - --reload
     volumes:
+      # Bind-mount backend source for instant FastAPI reload on Python edits.
+      - ./app:/app/app:rw
       - ${HOME}/.codex:/home/app/.codex:rw
       - codex-lb-data:/var/lib/codex-lb
     develop:
       watch:
-        - action: sync
-          path: ./app
-          target: /app/app
         - action: rebuild
           path: ./pyproject.toml
         - action: rebuild
