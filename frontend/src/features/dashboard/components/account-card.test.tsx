@@ -355,7 +355,7 @@ describe("AccountCard", () => {
     expect(screen.getAllByText(/^live$/i).length).toBeGreaterThanOrEqual(1);
   });
 
-  it("shows telemetry pending instead of syncing when runtime live sessions have no fresh usage timestamps", () => {
+  it("shows live-session fallback label when runtime sessions have no telemetry timestamps yet", () => {
     const account = createAccountSummary({
       usage: {
         primaryRemainingPercent: null,
@@ -376,11 +376,12 @@ describe("AccountCard", () => {
 
     render(<AccountCard account={account} />);
 
-    expect(screen.getAllByText("Telemetry pending").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Live session detected").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText("Telemetry pending")).not.toBeInTheDocument();
     expect(screen.queryByText("Syncing live telemetry")).not.toBeInTheDocument();
   });
 
-  it("shows telemetry pending when live timestamps are fresh but quota percentages are missing", () => {
+  it("shows live-session fallback label when quota percentages are missing", () => {
     const nowIso = new Date().toISOString();
     const account = createAccountSummary({
       usage: {
@@ -402,7 +403,8 @@ describe("AccountCard", () => {
 
     render(<AccountCard account={account} />);
 
-    expect(screen.getAllByText("Telemetry pending").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Live session detected").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText("Telemetry pending")).not.toBeInTheDocument();
     expect(screen.queryByText("Syncing live telemetry")).not.toBeInTheDocument();
   });
 
@@ -540,6 +542,62 @@ describe("AccountCard", () => {
     expect(screen.getAllByText("26%").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText("Telemetry pending")).not.toBeInTheDocument();
     expect(screen.getAllByText("Live token status").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("prefers deferred raw quota fallback over stale baseline usage", () => {
+    const nowIso = new Date().toISOString();
+    const account = createAccountSummary({
+      usage: {
+        primaryRemainingPercent: 50,
+        secondaryRemainingPercent: 56,
+      },
+      resetAtPrimary: "2026-04-04T11:00:00.000Z",
+      resetAtSecondary: "2026-04-09T11:00:00.000Z",
+      lastUsageRecordedAtPrimary: "2026-04-04T11:00:00.000Z",
+      lastUsageRecordedAtSecondary: "2026-04-04T11:00:00.000Z",
+      codexLiveSessionCount: 1,
+      codexSessionCount: 1,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "bia",
+        activeSnapshotName: "bia",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+      liveQuotaDebug: {
+        snapshotsConsidered: ["bia"],
+        overrideApplied: false,
+        overrideReason: "deferred_active_snapshot_mixed_default_sessions",
+        merged: null,
+        rawSamples: [
+          {
+            source: "/tmp/rollout-bia.jsonl",
+            snapshotName: "bia",
+            recordedAt: nowIso,
+            stale: false,
+            primary: {
+              usedPercent: 84,
+              remainingPercent: 16,
+              resetAt: 1760000000,
+              windowMinutes: 300,
+            },
+            secondary: {
+              usedPercent: 60,
+              remainingPercent: 40,
+              resetAt: 1760600000,
+              windowMinutes: 10080,
+            },
+          },
+        ],
+      },
+    });
+
+    render(<AccountCard account={account} />);
+
+    expect(screen.getAllByText("16%").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("40%").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText(/\b50%\b/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/\b56%\b/)).not.toBeInTheDocument();
   });
 
   it("renders current task preview for working accounts when provided", () => {

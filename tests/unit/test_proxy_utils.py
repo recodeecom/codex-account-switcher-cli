@@ -3012,6 +3012,65 @@ def test_sticky_key_from_session_header_accepts_aliases_in_priority_order():
     )
 
 
+def test_sticky_key_from_session_header_scopes_by_authorization_bearer():
+    expected_scope = proxy_service._hash_identifier("token-a")
+    assert (
+        proxy_service._sticky_key_from_session_header(
+            {"session_id": "sid_1", "authorization": "Bearer token-a"}
+        )
+        == f"sid_1::auth:{expected_scope}"
+    )
+
+
+def test_sticky_key_from_session_header_ignores_missing_or_invalid_bearer_token():
+    assert (
+        proxy_service._sticky_key_from_session_header(
+            {"session_id": "sid_1", "authorization": "Bearer   "}
+        )
+        == "sid_1"
+    )
+    assert (
+        proxy_service._sticky_key_from_session_header(
+            {"session_id": "sid_1", "authorization": "Basic abc123"}
+        )
+        == "sid_1"
+    )
+
+
+def test_sticky_key_for_responses_request_scopes_codex_affinity_by_auth_token():
+    payload = ResponsesRequest.model_validate(
+        {
+            "model": "gpt-5.1",
+            "instructions": "hi",
+            "input": [{"role": "user", "content": [{"type": "input_text", "text": "hello"}]}],
+            "stream": True,
+        }
+    )
+
+    policy_a = proxy_service._sticky_key_for_responses_request(
+        payload,
+        headers={"session_id": "codex-session-1", "authorization": "Bearer token-a"},
+        codex_session_affinity=True,
+        openai_cache_affinity=True,
+        openai_cache_affinity_max_age_seconds=300,
+        sticky_threads_enabled=False,
+    )
+    policy_b = proxy_service._sticky_key_for_responses_request(
+        payload,
+        headers={"session_id": "codex-session-1", "authorization": "Bearer token-b"},
+        codex_session_affinity=True,
+        openai_cache_affinity=True,
+        openai_cache_affinity_max_age_seconds=300,
+        sticky_threads_enabled=False,
+    )
+
+    assert policy_a.kind == proxy_service.StickySessionKind.CODEX_SESSION
+    assert policy_b.kind == proxy_service.StickySessionKind.CODEX_SESSION
+    assert policy_a.key is not None
+    assert policy_b.key is not None
+    assert policy_a.key != policy_b.key
+
+
 def test_sticky_key_for_responses_request_derives_prompt_cache_before_codex_session_return():
     payload = ResponsesRequest.model_validate(
         {

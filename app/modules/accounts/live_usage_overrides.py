@@ -116,12 +116,22 @@ def apply_local_live_usage_overrides(
         selected_snapshot_name = codex_auth_status.snapshot_name
         snapshot_names_from_index = snapshot_index.snapshots_by_account_id.get(account.id, [])
         if selected_snapshot_name:
-            # Account status already resolves a single effective snapshot name.
-            # Reuse it here so live-usage attribution/debug telemetry does not
-            # accidentally merge stale aliases from snapshot index buckets,
-            # even when legacy index metadata does not yet include the selected
-            # snapshot in this account-id bucket.
-            snapshot_names = [selected_snapshot_name]
+            # Prefer the selected snapshot whenever it has direct telemetry so
+            # we do not merge stale aliases from snapshot-index history.
+            # If the selected name has no direct signal yet (legacy mismatch
+            # or delayed snapshot metadata), include index aliases as a
+            # compatibility fallback to avoid dropping live attribution.
+            selected_has_direct_live_data = _snapshot_has_direct_live_data(
+                snapshot_name=selected_snapshot_name,
+                live_usage_by_snapshot=live_usage_by_snapshot,
+                live_usage_samples_by_snapshot=live_usage_samples_by_snapshot,
+                live_process_session_counts_by_snapshot=live_process_session_counts_by_snapshot,
+                runtime_live_session_counts_by_snapshot=runtime_live_session_counts_by_snapshot,
+            )
+            if selected_has_direct_live_data:
+                snapshot_names = [selected_snapshot_name]
+            else:
+                snapshot_names = [selected_snapshot_name, *snapshot_names_from_index]
         else:
             snapshot_names = snapshot_names_from_index
         snapshots_considered = _resolve_snapshot_candidates(
@@ -146,7 +156,10 @@ def apply_local_live_usage_overrides(
         has_live_process_session = live_process_session_count > 0
         has_live_runtime_session = live_runtime_session_count > 0
         has_live_telemetry = bool(live_usage and live_usage.active_session_count > 0)
-        if has_live_process_session or has_live_runtime_session:
+        if (
+            (has_live_process_session or has_live_runtime_session)
+            and not should_defer_active_snapshot_usage
+        ):
             owned_samples: list[LocalCodexLiveUsageSample] = []
             for snapshot_name in snapshots_considered:
                 owned_samples.extend(live_usage_samples_by_snapshot.get(snapshot_name, []))
@@ -197,6 +210,7 @@ def apply_local_live_usage_overrides(
                         account_id=account_id,
                         snapshots_considered=snapshots_considered,
                         live_usage_samples_by_snapshot=live_usage_samples_by_snapshot,
+                        raw_samples_override=raw_samples_override,
                         primary_usage=primary_usage,
                         secondary_usage=secondary_usage,
                         persist_candidates=persist_candidates,
@@ -320,6 +334,7 @@ def apply_local_live_usage_overrides(
                         account_id=account_id,
                         snapshots_considered=snapshots_considered,
                         live_usage_samples_by_snapshot=live_usage_samples_by_snapshot,
+                        raw_samples_override=raw_samples_override,
                         primary_usage=primary_usage,
                         secondary_usage=secondary_usage,
                         persist_candidates=persist_candidates,
@@ -419,18 +434,20 @@ def apply_local_live_usage_overrides(
     # attribution during a recent snapshot switch while legacy/default-scope
     # sessions are still active. The explicit env flag remains supported as a
     # manual override.
-    if (
+    has_mixed_default_scope_sessions = _has_mixed_default_scope_sessions(
+        snapshot_index=snapshot_index,
+        live_usage_by_snapshot=live_usage_by_snapshot,
+        live_usage_samples_by_snapshot=live_usage_samples_by_snapshot,
+    )
+    should_apply_default_scope_fingerprint_fallback = has_mixed_default_scope_sessions or (
         not live_process_session_counts_by_snapshot
         and (
             _default_session_fingerprint_fallback_enabled()
             or has_recent_active_snapshot_process_fallback()
-            or _has_mixed_default_scope_sessions(
-                snapshot_index=snapshot_index,
-                live_usage_by_snapshot=live_usage_by_snapshot,
-                live_usage_samples_by_snapshot=live_usage_samples_by_snapshot,
-            )
         )
-    ):
+    )
+
+    if should_apply_default_scope_fingerprint_fallback:
         _apply_local_default_session_fingerprint_overrides(
             accounts=accounts,
             snapshot_index=snapshot_index,
@@ -603,49 +620,88 @@ def _apply_deferred_sample_floor_override(
     account_id: str,
     snapshots_considered: list[str],
     live_usage_samples_by_snapshot: dict[str, list[LocalCodexLiveUsageSample]],
+    raw_samples_override: list[AccountLiveQuotaDebugSample] | None,
     primary_usage: dict[str, UsageHistory],
     secondary_usage: dict[str, UsageHistory],
     persist_candidates: list[LiveUsageOverridePersistCandidate],
 ) -> tuple[bool, LocalCodexLiveUsage | None]:
-    candidate_samples: list[LocalCodexLiveUsageSample] = []
-    for snapshot_name in snapshots_considered:
-        candidate_samples.extend(live_usage_samples_by_snapshot.get(snapshot_name, []))
+    if raw_samples_override is not None:
+        candidate_samples = [
+            sample
+            for sample in sorted(
+                raw_samples_override,
+                key=lambda sample: (
+                    _source_session_start_key(sample.source),
+                    sample.recorded_at.timestamp(),
+                    sample.source,
+                ),
+                reverse=True,
+            )
+            if sample.primary is not None or sample.secondary is not None
+        ]
+        if not candidate_samples:
+            return False, None
 
-    if not candidate_samples:
-        return False, None
+        # When account-attributed debug samples are available, keep both
+        # windows anchored to the newest rollout-session sample to avoid
+        # cross-source window mixing that can make merged values disagree with
+        # the top debug sample shown in the UI.
+        selected_sample = next(
+            (sample for sample in candidate_samples if not sample.stale),
+            candidate_samples[0],
+        )
+        primary_sample = (
+            selected_sample if selected_sample.primary is not None else None
+        )
+        secondary_sample = (
+            selected_sample if selected_sample.secondary is not None else None
+        )
+        if primary_sample is None:
+            primary_sample = next(
+                (sample for sample in candidate_samples if sample.primary is not None),
+                None,
+            )
+        if secondary_sample is None:
+            secondary_sample = next(
+                (sample for sample in candidate_samples if sample.secondary is not None),
+                None,
+            )
+    else:
+        candidate_samples = []
+        for snapshot_name in snapshots_considered:
+            candidate_samples.extend(live_usage_samples_by_snapshot.get(snapshot_name, []))
+        if not candidate_samples:
+            return False, None
 
-    non_stale_samples = [sample for sample in candidate_samples if not sample.stale]
-    usable_samples = non_stale_samples if non_stale_samples else candidate_samples
-    primary_samples = [sample for sample in usable_samples if sample.primary is not None]
-    secondary_samples = [sample for sample in usable_samples if sample.secondary is not None]
+        non_stale_samples = [sample for sample in candidate_samples if not sample.stale]
+        usable_samples = non_stale_samples if non_stale_samples else candidate_samples
+        primary_samples = [sample for sample in usable_samples if sample.primary is not None]
+        secondary_samples = [sample for sample in usable_samples if sample.secondary is not None]
 
-    if not primary_samples and not secondary_samples:
-        return False, None
+        if not primary_samples and not secondary_samples:
+            return False, None
 
-    # When deferred matching cannot safely map reset fingerprints to a
-    # single account, prefer the freshest sample for each window. This keeps
-    # active-snapshot cards closer to the current CLI banner while avoiding
-    # max/min outlier swings from mixed default-session telemetry.
-    primary_sample = max(
-        primary_samples,
-        key=lambda sample: (
-            _source_session_start_key(sample.source),
-            sample.recorded_at.timestamp(),
-            -float(sample.primary.used_percent),
-            sample.source,
-        ),
-        default=None,
-    )
-    secondary_sample = max(
-        secondary_samples,
-        key=lambda sample: (
-            _source_session_start_key(sample.source),
-            sample.recorded_at.timestamp(),
-            -float(sample.secondary.used_percent),
-            sample.source,
-        ),
-        default=None,
-    )
+        # Prefer the freshest sample for each window.
+        primary_sample = max(
+            primary_samples,
+            key=lambda sample: (
+                _source_session_start_key(sample.source),
+                sample.recorded_at.timestamp(),
+                -float(sample.primary.used_percent),
+                sample.source,
+            ),
+            default=None,
+        )
+        secondary_sample = max(
+            secondary_samples,
+            key=lambda sample: (
+                _source_session_start_key(sample.source),
+                sample.recorded_at.timestamp(),
+                -float(sample.secondary.used_percent),
+                sample.source,
+            ),
+            default=None,
+        )
 
     applied = False
 
@@ -768,6 +824,23 @@ def _resolve_snapshot_candidates(
     return ordered
 
 
+def _snapshot_has_direct_live_data(
+    *,
+    snapshot_name: str,
+    live_usage_by_snapshot: dict[str, LocalCodexLiveUsage],
+    live_usage_samples_by_snapshot: dict[str, list[LocalCodexLiveUsageSample]],
+    live_process_session_counts_by_snapshot: dict[str, int],
+    runtime_live_session_counts_by_snapshot: dict[str, int],
+) -> bool:
+    if snapshot_name in live_usage_by_snapshot:
+        return True
+    if live_process_session_counts_by_snapshot.get(snapshot_name, 0) > 0:
+        return True
+    if runtime_live_session_counts_by_snapshot.get(snapshot_name, 0) > 0:
+        return True
+    return bool(live_usage_samples_by_snapshot.get(snapshot_name))
+
+
 def _set_live_quota_debug(
     *,
     account_id: str,
@@ -785,7 +858,11 @@ def _set_live_quota_debug(
     if raw_samples_override is not None:
         raw_samples = sorted(
             raw_samples_override,
-            key=lambda sample: sample.recorded_at,
+            key=lambda sample: (
+                _source_session_start_key(sample.source),
+                sample.recorded_at.timestamp(),
+                sample.source,
+            ),
             reverse=True,
         )
     else:
@@ -915,11 +992,6 @@ def _build_default_sample_debug_overrides(
     debug_samples_by_account: dict[str, list[AccountLiveQuotaDebugSample]] = {}
     confident_samples_by_account: dict[str, list[AccountLiveQuotaDebugSample]] = {}
     for sample_index, match in assignments.items():
-        include_for_debug = match.confidence == "high" or (
-            active_account_id is not None and match.account_id == active_account_id
-        )
-        if not include_for_debug:
-            continue
         if sample_index < 0 or sample_index >= len(default_scope_samples):
             continue
         sample = default_scope_samples[sample_index]

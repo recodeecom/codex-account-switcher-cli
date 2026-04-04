@@ -142,12 +142,15 @@ export function AccountUsagePanel({ account, trends }: AccountUsagePanelProps) {
     windowKey: "primary",
     remainingPercent:
       mergedPrimaryRemainingPercent ??
-      account.usage?.primaryRemainingPercent ??
       primaryRawQuotaFallback?.remainingPercent ??
+      account.usage?.primaryRemainingPercent ??
       null,
-    resetAt: account.resetAtPrimary ?? primaryRawQuotaFallback?.resetAt ?? null,
+    resetAt: primaryRawQuotaFallback?.resetAt ?? account.resetAtPrimary ?? null,
     hasLiveSession,
-    lastRecordedAt: account.lastUsageRecordedAtPrimary ?? primaryRawQuotaFallback?.recordedAt ?? null,
+    lastRecordedAt:
+      primaryRawQuotaFallback?.recordedAt ??
+      account.lastUsageRecordedAtPrimary ??
+      null,
     applyCycleFloor: mergedPrimaryRemainingPercent == null,
   });
   const secondary = normalizeRemainingPercentForDisplay({
@@ -155,12 +158,15 @@ export function AccountUsagePanel({ account, trends }: AccountUsagePanelProps) {
     windowKey: "secondary",
     remainingPercent:
       mergedSecondaryRemainingPercent ??
-      account.usage?.secondaryRemainingPercent ??
       secondaryRawQuotaFallback?.remainingPercent ??
+      account.usage?.secondaryRemainingPercent ??
       null,
-    resetAt: account.resetAtSecondary ?? secondaryRawQuotaFallback?.resetAt ?? null,
+    resetAt: secondaryRawQuotaFallback?.resetAt ?? account.resetAtSecondary ?? null,
     hasLiveSession,
-    lastRecordedAt: account.lastUsageRecordedAtSecondary ?? secondaryRawQuotaFallback?.recordedAt ?? null,
+    lastRecordedAt:
+      secondaryRawQuotaFallback?.recordedAt ??
+      account.lastUsageRecordedAtSecondary ??
+      null,
     applyCycleFloor: mergedSecondaryRemainingPercent == null,
   });
   const requestUsage = account.requestUsage ?? null;

@@ -19,7 +19,12 @@ from app.modules.accounts.live_usage_overrides import (
     _sample_source_owner_cache,
     apply_local_live_usage_overrides,
 )
-from app.modules.accounts.schemas import AccountCodexAuthStatus
+from app.modules.accounts.schemas import (
+    AccountCodexAuthStatus,
+    AccountLiveQuotaDebug,
+    AccountLiveQuotaDebugSample,
+    AccountLiveQuotaDebugWindow,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -291,7 +296,22 @@ def test_apply_local_live_usage_overrides_disables_default_session_fingerprint_f
         snapshots_by_account_id={account_a.id: ["snap-a"], account_b.id: ["snap-b"]},
         active_snapshot_name="snap-a",
     )
-    codex_auth_by_account = _status_map(accounts, active_snapshot_name="snap-a")
+    codex_auth_by_account = {
+        account_a.id: AccountCodexAuthStatus(
+            has_snapshot=True,
+            snapshot_name="snap-a",
+            active_snapshot_name="snap-a",
+            is_active_snapshot=True,
+            has_live_session=False,
+        ),
+        account_b.id: AccountCodexAuthStatus(
+            has_snapshot=True,
+            snapshot_name="snap-b",
+            active_snapshot_name="snap-a",
+            is_active_snapshot=False,
+            has_live_session=False,
+        ),
+    }
     primary_usage: dict[str, UsageHistory] = {}
     secondary_usage: dict[str, UsageHistory] = {}
     codex_session_counts_by_account = {account_a.id: 0, account_b.id: 0}
@@ -347,7 +367,22 @@ def test_apply_local_live_usage_overrides_uses_recent_switch_process_fallback_wi
         snapshots_by_account_id={account_a.id: ["snap-a"], account_b.id: ["snap-b"]},
         active_snapshot_name="snap-a",
     )
-    codex_auth_by_account = _status_map(accounts, active_snapshot_name="snap-a")
+    codex_auth_by_account = {
+        account_a.id: AccountCodexAuthStatus(
+            has_snapshot=True,
+            snapshot_name="snap-a",
+            active_snapshot_name="snap-a",
+            is_active_snapshot=True,
+            has_live_session=False,
+        ),
+        account_b.id: AccountCodexAuthStatus(
+            has_snapshot=True,
+            snapshot_name="snap-b",
+            active_snapshot_name="snap-a",
+            is_active_snapshot=False,
+            has_live_session=False,
+        ),
+    }
     primary_usage: dict[str, UsageHistory] = {}
     secondary_usage: dict[str, UsageHistory] = {}
     codex_session_counts_by_account = {account_a.id: 0, account_b.id: 0}
@@ -420,7 +455,22 @@ def test_apply_local_live_usage_overrides_uses_mixed_default_session_fallback_wi
         snapshots_by_account_id={account_a.id: ["snap-a"], account_b.id: ["snap-b"]},
         active_snapshot_name="snap-a",
     )
-    codex_auth_by_account = _status_map(accounts, active_snapshot_name="snap-a")
+    codex_auth_by_account = {
+        account_a.id: AccountCodexAuthStatus(
+            has_snapshot=True,
+            snapshot_name="snap-a",
+            active_snapshot_name="snap-a",
+            is_active_snapshot=True,
+            has_live_session=False,
+        ),
+        account_b.id: AccountCodexAuthStatus(
+            has_snapshot=True,
+            snapshot_name="snap-b",
+            active_snapshot_name="snap-a",
+            is_active_snapshot=False,
+            has_live_session=False,
+        ),
+    }
     now = datetime(2026, 4, 3, 12, 0, tzinfo=timezone.utc)
 
     baseline_primary = {
@@ -513,6 +563,117 @@ def test_apply_local_live_usage_overrides_uses_mixed_default_session_fallback_wi
     )
 
     assert codex_session_counts_by_account[account_a.id] == 1
+    assert codex_session_counts_by_account[account_b.id] == 1
+    assert codex_auth_by_account[account_a.id].has_live_session is True
+    assert codex_auth_by_account[account_b.id].has_live_session is True
+
+
+def test_apply_local_live_usage_overrides_uses_mixed_default_session_fallback_with_process_visibility(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    account_a = _make_account("acc-a", "a@example.com")
+    account_b = _make_account("acc-b", "b@example.com")
+    accounts = [account_a, account_b]
+    snapshot_index = CodexAuthSnapshotIndex(
+        snapshots_by_account_id={account_a.id: ["snap-a"], account_b.id: ["snap-b"]},
+        active_snapshot_name="snap-a",
+    )
+    codex_auth_by_account = _status_map(accounts, active_snapshot_name="snap-a")
+    now = datetime(2026, 4, 3, 12, 0, tzinfo=timezone.utc)
+
+    baseline_primary = {
+        account_a.id: _usage_entry(
+            account_id=account_a.id,
+            window="primary",
+            used_percent=88.0,
+            reset_at=1_900_100,
+            window_minutes=300,
+        ),
+        account_b.id: _usage_entry(
+            account_id=account_b.id,
+            window="primary",
+            used_percent=21.0,
+            reset_at=1_900_900,
+            window_minutes=300,
+        ),
+    }
+    baseline_secondary = {
+        account_a.id: _usage_entry(
+            account_id=account_a.id,
+            window="secondary",
+            used_percent=77.0,
+            reset_at=1_903_700,
+            window_minutes=10_080,
+        ),
+        account_b.id: _usage_entry(
+            account_id=account_b.id,
+            window="secondary",
+            used_percent=15.0,
+            reset_at=1_904_500,
+            window_minutes=10_080,
+        ),
+    }
+    codex_session_counts_by_account = {account_a.id: 0, account_b.id: 0}
+
+    monkeypatch.delenv("CODEX_LB_DEFAULT_SESSION_FINGERPRINT_FALLBACK_ENABLED", raising=False)
+    monkeypatch.setattr(
+        "app.modules.accounts.live_usage_overrides.has_recent_active_snapshot_process_fallback",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.live_usage_overrides.read_local_codex_live_usage_by_snapshot",
+        lambda: {
+            "snap-a": LocalCodexLiveUsage(
+                recorded_at=now,
+                active_session_count=2,
+                primary=LocalUsageWindow(used_percent=56.0, reset_at=1_900_500, window_minutes=300),
+                secondary=LocalUsageWindow(used_percent=46.0, reset_at=1_904_000, window_minutes=10_080),
+            )
+        },
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.live_usage_overrides.read_local_codex_live_usage_samples_by_snapshot",
+        lambda: {
+            "snap-a": [
+                LocalCodexLiveUsageSample(
+                    source="rollout-a.jsonl",
+                    recorded_at=now - timedelta(seconds=10),
+                    primary=LocalUsageWindow(used_percent=86.0, reset_at=1_900_100, window_minutes=300),
+                    secondary=LocalUsageWindow(used_percent=74.0, reset_at=1_903_700, window_minutes=10_080),
+                    stale=False,
+                ),
+                LocalCodexLiveUsageSample(
+                    source="rollout-b.jsonl",
+                    recorded_at=now - timedelta(seconds=8),
+                    primary=LocalUsageWindow(used_percent=23.0, reset_at=1_900_900, window_minutes=300),
+                    secondary=LocalUsageWindow(used_percent=16.0, reset_at=1_904_500, window_minutes=10_080),
+                    stale=False,
+                ),
+            ]
+        },
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.live_usage_overrides.read_live_codex_process_session_counts_by_snapshot",
+        lambda: {"snap-a": 2},
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.live_usage_overrides.read_runtime_live_session_counts_by_snapshot",
+        lambda: {},
+    )
+
+    apply_local_live_usage_overrides(
+        accounts=accounts,
+        snapshot_index=snapshot_index,
+        codex_auth_by_account=codex_auth_by_account,
+        primary_usage=dict(baseline_primary),
+        secondary_usage=dict(baseline_secondary),
+        codex_live_session_counts_by_account=codex_session_counts_by_account,
+    )
+
+    # Process-level visibility still keeps active snapshot session volume, but
+    # mixed default-session fingerprint attribution should recover the
+    # additional non-active account ownership.
+    assert codex_session_counts_by_account[account_a.id] == 2
     assert codex_session_counts_by_account[account_b.id] == 1
     assert codex_auth_by_account[account_a.id].has_live_session is True
     assert codex_auth_by_account[account_b.id].has_live_session is True
@@ -2052,6 +2213,300 @@ def test_apply_local_live_usage_overrides_prefers_newest_rollout_source_for_defe
 
     assert primary_usage[account.id].used_percent == pytest.approx(39.0)
     assert secondary_usage[account.id].used_percent == pytest.approx(5.0)
+
+
+def test_apply_local_live_usage_overrides_scopes_deferred_sample_floor_to_account_debug_samples(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    account = _make_account("acc-bia", "bia@example.com")
+    other = _make_account("acc-odin", "odin@example.com")
+    accounts = [account, other]
+    snapshot_index = CodexAuthSnapshotIndex(
+        snapshots_by_account_id={account.id: ["bia"], other.id: ["odin"]},
+        active_snapshot_name="bia",
+    )
+    codex_auth_by_account = {
+        account.id: AccountCodexAuthStatus(
+            has_snapshot=True,
+            snapshot_name="bia",
+            active_snapshot_name="bia",
+            is_active_snapshot=True,
+            has_live_session=False,
+        ),
+        other.id: AccountCodexAuthStatus(
+            has_snapshot=True,
+            snapshot_name="odin",
+            active_snapshot_name="bia",
+            is_active_snapshot=False,
+            has_live_session=False,
+        ),
+    }
+    primary_usage = {
+        account.id: _usage_entry(
+            account_id=account.id,
+            window="primary",
+            used_percent=50.0,
+            reset_at=7_000_100,
+            window_minutes=300,
+        ),
+    }
+    secondary_usage = {
+        account.id: _usage_entry(
+            account_id=account.id,
+            window="secondary",
+            used_percent=44.0,
+            reset_at=7_003_700,
+            window_minutes=10_080,
+        ),
+    }
+    codex_session_counts_by_account = {account.id: 0, other.id: 0}
+    debug_by_account = {}
+    now = datetime(2026, 4, 4, 17, 30, tzinfo=timezone.utc)
+
+    monkeypatch.setattr(
+        "app.modules.accounts.live_usage_overrides.read_local_codex_live_usage_by_snapshot",
+        lambda: {
+            "bia": LocalCodexLiveUsage(
+                recorded_at=now,
+                active_session_count=2,
+                primary=LocalUsageWindow(used_percent=50.0, reset_at=7_000_100, window_minutes=300),
+                secondary=LocalUsageWindow(used_percent=44.0, reset_at=7_003_700, window_minutes=10_080),
+            )
+        },
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.live_usage_overrides.read_local_codex_live_usage_samples_by_snapshot",
+        lambda: {
+            "bia": [
+                LocalCodexLiveUsageSample(
+                    source="/tmp/rollout-2026-04-04T17-30-00-mixed.jsonl",
+                    recorded_at=now,
+                    primary=LocalUsageWindow(used_percent=50.0, reset_at=7_000_100, window_minutes=300),
+                    secondary=LocalUsageWindow(used_percent=44.0, reset_at=7_003_700, window_minutes=10_080),
+                    stale=False,
+                ),
+                LocalCodexLiveUsageSample(
+                    source="/tmp/rollout-2026-04-04T17-28-59-bia.jsonl",
+                    recorded_at=now - timedelta(seconds=61),
+                    primary=LocalUsageWindow(used_percent=84.0, reset_at=7_000_100, window_minutes=300),
+                    secondary=LocalUsageWindow(used_percent=60.0, reset_at=7_003_700, window_minutes=10_080),
+                    stale=False,
+                ),
+            ]
+        },
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.live_usage_overrides._build_default_sample_debug_overrides",
+        lambda **_: (
+            {
+                account.id: [
+                    AccountLiveQuotaDebugSample(
+                        source="/tmp/rollout-2026-04-04T17-28-59-bia.jsonl",
+                        snapshot_name="bia",
+                        recorded_at=now - timedelta(seconds=61),
+                        stale=False,
+                        primary=AccountLiveQuotaDebugWindow(
+                            used_percent=84.0,
+                            remaining_percent=16.0,
+                            reset_at=7_000_100,
+                            window_minutes=300,
+                        ),
+                        secondary=AccountLiveQuotaDebugWindow(
+                            used_percent=60.0,
+                            remaining_percent=40.0,
+                            reset_at=7_003_700,
+                            window_minutes=10_080,
+                        ),
+                    )
+                ]
+            },
+            {},
+        ),
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.live_usage_overrides.read_live_codex_process_session_counts_by_snapshot",
+        lambda: {},
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.live_usage_overrides.read_runtime_live_session_counts_by_snapshot",
+        lambda: {},
+    )
+
+    apply_local_live_usage_overrides(
+        accounts=accounts,
+        snapshot_index=snapshot_index,
+        codex_auth_by_account=codex_auth_by_account,
+        primary_usage=primary_usage,
+        secondary_usage=secondary_usage,
+        codex_live_session_counts_by_account=codex_session_counts_by_account,
+        live_quota_debug_by_account=debug_by_account,
+    )
+
+    assert primary_usage[account.id].used_percent == pytest.approx(84.0)
+    assert secondary_usage[account.id].used_percent == pytest.approx(60.0)
+    debug = debug_by_account[account.id]
+    assert debug.override_reason == "deferred_active_snapshot_sample_floor_override"
+    assert debug.merged is not None
+    assert debug.merged.primary is not None
+    assert debug.merged.secondary is not None
+    assert debug.merged.primary.remaining_percent == pytest.approx(16.0)
+    assert debug.merged.secondary.remaining_percent == pytest.approx(40.0)
+
+
+def test_apply_local_live_usage_overrides_keeps_deferred_floor_merged_windows_aligned_with_freshest_debug_sample(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    account = _make_account("acc-bia", "bia@example.com")
+    other = _make_account("acc-odin", "odin@example.com")
+    accounts = [account, other]
+    snapshot_index = CodexAuthSnapshotIndex(
+        snapshots_by_account_id={account.id: ["bia"], other.id: ["odin"]},
+        active_snapshot_name="bia",
+    )
+    codex_auth_by_account = {
+        account.id: AccountCodexAuthStatus(
+            has_snapshot=True,
+            snapshot_name="bia",
+            active_snapshot_name="bia",
+            is_active_snapshot=True,
+            has_live_session=False,
+        ),
+        other.id: AccountCodexAuthStatus(
+            has_snapshot=True,
+            snapshot_name="odin",
+            active_snapshot_name="bia",
+            is_active_snapshot=False,
+            has_live_session=False,
+        ),
+    }
+    primary_usage = {
+        account.id: _usage_entry(
+            account_id=account.id,
+            window="primary",
+            used_percent=50.0,
+            reset_at=8_000_100,
+            window_minutes=300,
+        ),
+    }
+    secondary_usage = {
+        account.id: _usage_entry(
+            account_id=account.id,
+            window="secondary",
+            used_percent=44.0,
+            reset_at=8_003_700,
+            window_minutes=10_080,
+        ),
+    }
+    codex_session_counts_by_account = {account.id: 0, other.id: 0}
+    debug_by_account = {}
+    now = datetime(2026, 4, 4, 17, 40, tzinfo=timezone.utc)
+
+    monkeypatch.setattr(
+        "app.modules.accounts.live_usage_overrides.read_local_codex_live_usage_by_snapshot",
+        lambda: {
+            "bia": LocalCodexLiveUsage(
+                recorded_at=now,
+                active_session_count=2,
+                primary=LocalUsageWindow(used_percent=50.0, reset_at=8_000_100, window_minutes=300),
+                secondary=LocalUsageWindow(used_percent=44.0, reset_at=8_003_700, window_minutes=10_080),
+            )
+        },
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.live_usage_overrides.read_local_codex_live_usage_samples_by_snapshot",
+        lambda: {
+            "bia": [
+                LocalCodexLiveUsageSample(
+                    source="/tmp/rollout-2026-04-04T17-40-00.jsonl",
+                    recorded_at=now,
+                    primary=LocalUsageWindow(used_percent=84.0, reset_at=8_000_100, window_minutes=300),
+                    secondary=LocalUsageWindow(used_percent=60.0, reset_at=8_003_700, window_minutes=10_080),
+                    stale=False,
+                ),
+                LocalCodexLiveUsageSample(
+                    source="/tmp/rollout-2026-04-04T17-39-00.jsonl",
+                    recorded_at=now - timedelta(seconds=45),
+                    primary=LocalUsageWindow(used_percent=50.0, reset_at=8_000_100, window_minutes=300),
+                    secondary=LocalUsageWindow(used_percent=44.0, reset_at=8_003_700, window_minutes=10_080),
+                    stale=False,
+                ),
+            ]
+        },
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.live_usage_overrides._build_default_sample_debug_overrides",
+        lambda **_: (
+            {
+                account.id: [
+                    AccountLiveQuotaDebugSample(
+                        source="/tmp/rollout-2026-04-04T17-40-00.jsonl",
+                        snapshot_name="bia",
+                        recorded_at=now,
+                        stale=False,
+                        primary=AccountLiveQuotaDebugWindow(
+                            used_percent=84.0,
+                            remaining_percent=16.0,
+                            reset_at=8_000_100,
+                            window_minutes=300,
+                        ),
+                        secondary=AccountLiveQuotaDebugWindow(
+                            used_percent=60.0,
+                            remaining_percent=40.0,
+                            reset_at=8_003_700,
+                            window_minutes=10_080,
+                        ),
+                    ),
+                    AccountLiveQuotaDebugSample(
+                        source="/tmp/rollout-2026-04-04T17-39-00.jsonl",
+                        snapshot_name="bia",
+                        recorded_at=now - timedelta(seconds=45),
+                        stale=False,
+                        primary=AccountLiveQuotaDebugWindow(
+                            used_percent=50.0,
+                            remaining_percent=50.0,
+                            reset_at=8_000_100,
+                            window_minutes=300,
+                        ),
+                        secondary=AccountLiveQuotaDebugWindow(
+                            used_percent=44.0,
+                            remaining_percent=56.0,
+                            reset_at=8_003_700,
+                            window_minutes=10_080,
+                        ),
+                    ),
+                ]
+            },
+            {},
+        ),
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.live_usage_overrides.read_live_codex_process_session_counts_by_snapshot",
+        lambda: {},
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.live_usage_overrides.read_runtime_live_session_counts_by_snapshot",
+        lambda: {},
+    )
+
+    apply_local_live_usage_overrides(
+        accounts=accounts,
+        snapshot_index=snapshot_index,
+        codex_auth_by_account=codex_auth_by_account,
+        primary_usage=primary_usage,
+        secondary_usage=secondary_usage,
+        codex_live_session_counts_by_account=codex_session_counts_by_account,
+        live_quota_debug_by_account=debug_by_account,
+    )
+
+    assert primary_usage[account.id].used_percent == pytest.approx(84.0)
+    assert secondary_usage[account.id].used_percent == pytest.approx(60.0)
+    debug = debug_by_account[account.id]
+    assert debug.override_reason == "deferred_active_snapshot_sample_floor_override"
+    assert debug.merged is not None
+    assert debug.merged.primary is not None
+    assert debug.merged.secondary is not None
+    assert debug.merged.primary.remaining_percent == pytest.approx(16.0)
+    assert debug.merged.secondary.remaining_percent == pytest.approx(40.0)
 
 
 def test_apply_local_live_usage_overrides_hides_presence_only_debug_samples(

@@ -5057,12 +5057,22 @@ def _sticky_key_from_payload(payload: ResponsesRequest) -> str | None:
 
 def _sticky_key_from_session_header(headers: Mapping[str, str]) -> str | None:
     normalized = {key.lower(): value for key, value in headers.items()}
+    auth_scope: str | None = None
+    auth_header = normalized.get("authorization")
+    if isinstance(auth_header, str):
+        stripped_auth = auth_header.strip()
+        if stripped_auth.lower().startswith("bearer "):
+            bearer_token = stripped_auth[7:].strip()
+            if bearer_token:
+                auth_scope = _hash_identifier(bearer_token)
     for key in ("session_id", "x-codex-session-id", "x-codex-conversation-id"):
         value = normalized.get(key)
         if not isinstance(value, str):
             continue
         stripped = value.strip()
         if stripped:
+            if auth_scope:
+                return f"{stripped}::auth:{auth_scope}"
             return stripped
     return None
 

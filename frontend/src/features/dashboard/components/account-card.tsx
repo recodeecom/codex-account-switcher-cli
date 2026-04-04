@@ -177,9 +177,11 @@ function QuotaBar({
           <div className="flex items-center gap-1.5 text-[11px] font-medium text-cyan-700 dark:text-cyan-300">
             <Activity className="h-3 w-3" />
             <span>
-              {liveTelemetryUnavailable || telemetryPending
+              {telemetryPending
                 ? "Telemetry pending"
-                : "Live token status"}
+                : liveTelemetryUnavailable
+                  ? "Live session detected"
+                  : "Live token status"}
             </span>
           </div>
         ) : lastSeenLabel ? (
@@ -300,29 +302,29 @@ export function AccountCard({
   const status = effectiveStatus;
   const primaryRemainingRaw =
     mergedPrimaryRemainingPercent ??
-    account.usage?.primaryRemainingPercent ??
     deferredPrimaryQuotaFallback?.remainingPercent ??
+    account.usage?.primaryRemainingPercent ??
     null;
   const secondaryRemainingRaw =
     mergedSecondaryRemainingPercent ??
-    account.usage?.secondaryRemainingPercent ??
     deferredSecondaryQuotaFallback?.remainingPercent ??
+    account.usage?.secondaryRemainingPercent ??
     null;
   const primaryLastRecordedAt =
-    account.lastUsageRecordedAtPrimary ??
     deferredPrimaryQuotaFallback?.recordedAt ??
+    account.lastUsageRecordedAtPrimary ??
     null;
   const secondaryLastRecordedAt =
-    account.lastUsageRecordedAtSecondary ??
     deferredSecondaryQuotaFallback?.recordedAt ??
+    account.lastUsageRecordedAtSecondary ??
     null;
   const primaryResetAt =
-    account.resetAtPrimary ?? deferredPrimaryQuotaFallback?.resetAt ?? null;
+    deferredPrimaryQuotaFallback?.resetAt ?? account.resetAtPrimary ?? null;
   const secondaryResetAt =
-    account.resetAtSecondary ?? deferredSecondaryQuotaFallback?.resetAt ?? null;
+    deferredSecondaryQuotaFallback?.resetAt ?? account.resetAtSecondary ?? null;
   const primaryWindowMinutes =
-    account.windowMinutesPrimary ??
     deferredPrimaryQuotaFallback?.windowMinutes ??
+    account.windowMinutesPrimary ??
     null;
   const primaryTelemetryFresh = isFreshQuotaTelemetryTimestamp(
     primaryLastRecordedAt,
@@ -330,8 +332,20 @@ export function AccountCard({
   const secondaryTelemetryFresh = isFreshQuotaTelemetryTimestamp(
     secondaryLastRecordedAt,
   );
-  const primaryTelemetryPending = hasLiveSession && !primaryTelemetryFresh;
-  const secondaryTelemetryPending = hasLiveSession && !secondaryTelemetryFresh;
+  const hasTelemetrySignal =
+    freshDebugRawSampleCount > 0 ||
+    primaryLastRecordedAt !== null ||
+    secondaryLastRecordedAt !== null;
+  const primaryTelemetryPending =
+    hasLiveSession &&
+    hasTelemetrySignal &&
+    !primaryTelemetryFresh &&
+    primaryRemainingRaw == null;
+  const secondaryTelemetryPending =
+    hasLiveSession &&
+    hasTelemetrySignal &&
+    !secondaryTelemetryFresh &&
+    secondaryRemainingRaw == null;
   const primaryRemaining = normalizeRemainingPercentForDisplay({
     accountKey: account.accountId,
     windowKey: "primary",

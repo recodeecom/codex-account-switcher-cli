@@ -2,7 +2,7 @@ import { useMemo } from "react";
 
 import { DonutChart } from "@/components/donut-chart";
 import type { RemainingItem, SafeLineView } from "@/features/dashboard/utils";
-import { formatWindowLabel } from "@/utils/formatters";
+import { formatCompactNumber, formatWindowLabel } from "@/utils/formatters";
 
 export type UsageDonutsProps = {
 	primaryItems: RemainingItem[];
@@ -13,6 +13,13 @@ export type UsageDonutsProps = {
 	safeLinePrimary?: SafeLineView | null;
 	safeLineSecondary?: SafeLineView | null;
 };
+
+function formatTokensFromCredits(value: number): string {
+	if (!Number.isFinite(value)) {
+		return "--";
+	}
+	return formatCompactNumber(Math.max(0, value) * 1000);
+}
 
 export function UsageDonuts({
 	primaryItems,
@@ -55,6 +62,8 @@ export function UsageDonuts({
 				title={primaryTitle}
 				items={primaryChartItems}
 				total={primaryTotal}
+				centerValue={formatTokensFromCredits(primaryTotal)}
+				legendValueFormatter={(item) => formatTokensFromCredits(item.value)}
 				safeLine={safeLinePrimary}
 				legendCollapsible
 				legendDefaultCollapsed
@@ -63,6 +72,8 @@ export function UsageDonuts({
 				title="Weekly Remaining"
 				items={secondaryChartItems}
 				total={secondaryTotal}
+				centerValue={formatTokensFromCredits(secondaryTotal)}
+				legendValueFormatter={(item) => formatTokensFromCredits(item.value)}
 				safeLine={safeLineSecondary}
 				legendCollapsible
 				legendDefaultCollapsed

@@ -47,6 +47,24 @@ describe("UsageDonuts", () => {
     expect(screen.getByText("secondary@example.com")).toBeInTheDocument();
   });
 
+  it("formats remaining credits as token counts with compact M/K suffixes", async () => {
+    const user = userEvent.setup({ delay: null });
+
+    render(
+      <UsageDonuts
+        primaryItems={[]}
+        secondaryItems={[item({ accountId: "acc-2", label: "secondary@example.com", value: 1890, remainingPercent: 40, color: "#d9a441" })]}
+        primaryTotal={0}
+        secondaryTotal={143_640}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Weekly Remaining accounts" }));
+
+    expect(screen.getByText("143.64M")).toBeInTheDocument();
+    expect(screen.getByText("1.89M")).toBeInTheDocument();
+  });
+
   it("handles empty data gracefully", () => {
     render(
       <UsageDonuts

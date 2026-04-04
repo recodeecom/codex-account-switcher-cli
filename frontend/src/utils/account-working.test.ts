@@ -288,6 +288,38 @@ describe("isAccountWorkingNow", () => {
     expect(getRawQuotaWindowFallback(account, "secondary")?.remainingPercent).toBe(58);
   });
 
+  it("uses raw sample fallback for no-live-telemetry account-attributed samples", () => {
+    const nowIso = "2026-04-04T11:58:00.000Z";
+    const account = createAccountSummary({
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "odin",
+        activeSnapshotName: "bia",
+        isActiveSnapshot: false,
+        hasLiveSession: true,
+      },
+      liveQuotaDebug: {
+        snapshotsConsidered: ["odin"],
+        overrideApplied: false,
+        overrideReason: "no_live_telemetry",
+        merged: null,
+        rawSamples: [
+          {
+            source: "/tmp/rollout-odin.jsonl",
+            snapshotName: "odin",
+            recordedAt: nowIso,
+            stale: false,
+            primary: { usedPercent: 61, remainingPercent: 39, resetAt: 1760000000, windowMinutes: 300 },
+            secondary: { usedPercent: 42, remainingPercent: 58, resetAt: 1760600000, windowMinutes: 10080 },
+          },
+        ],
+      },
+    });
+
+    expect(getRawQuotaWindowFallback(account, "primary")?.remainingPercent).toBe(39);
+    expect(getRawQuotaWindowFallback(account, "secondary")?.remainingPercent).toBe(58);
+  });
+
   it("rejects raw sample fallback when only mismatched snapshot samples are available", () => {
     const nowIso = "2026-04-04T11:58:00.000Z";
     const account = createAccountSummary({
