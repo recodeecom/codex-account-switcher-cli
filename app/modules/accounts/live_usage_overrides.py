@@ -203,9 +203,9 @@ def apply_local_live_usage_overrides(
             and has_live_telemetry
             and any(live_usage_samples_by_snapshot.get(name) for name in snapshots_considered)
         ):
-            # In strict deferred mode, avoid cross-account remaps, but keep
-            # active-snapshot presence visible when there is concrete sample
-            # evidence in the default scope.
+            # In strict deferred mode, keep active-snapshot session presence
+            # visible when default-scope telemetry exists, even if per-account
+            # attribution is still unresolved.
             codex_auth_status.has_live_session = True
         account_id = account.id
         override_reason: str | None = None
@@ -1065,6 +1065,14 @@ def _build_default_sample_debug_overrides(
         allow_ambiguous_fallback_assignments=len(default_scope_samples) <= 1,
     )
     if not assignments:
+        _prime_unattributed_default_scope_sample_owners(
+            default_scope_samples=default_scope_samples,
+            assignments=assignments,
+            active_account_id=active_account_id,
+            candidate_accounts=candidate_accounts,
+            baseline_primary_usage=baseline_primary_usage,
+            baseline_secondary_usage=baseline_secondary_usage,
+        )
         return {}, {}, {}
 
     debug_samples_by_account: dict[str, list[AccountLiveQuotaDebugSample]] = {}
@@ -1156,9 +1164,37 @@ def _prime_unattributed_default_scope_sample_owners(
     if active_account_id not in candidate_account_ids:
         return
 
-    for sample_index, sample in enumerate(default_scope_samples):
-        if sample_index in assignments:
-            continue
+    # Prime at most one new source for the active account only when no sample
+    # was attributed to it in the current pass. This prevents gradual remapping
+    # of older unresolved sessions to the newly active account across refreshes.
+    has_active_assignment = any(
+        match.account_id == active_account_id for match in assignments.values()
+    )
+    if has_active_assignment:
+        return
+
+    # Never bulk-prime mixed default-scope samples to the currently active
+    # account. Only prime the single newest unmatched sample so a just-started
+    # session can stay sticky across the next refresh/switch without dragging
+    # older sessions away from their previous owners.
+    unresolved_sample_indexes = sorted(
+        (
+            sample_index
+            for sample_index in range(len(default_scope_samples))
+            if sample_index not in assignments
+        ),
+        key=lambda sample_index: (
+            _source_session_start_key(default_scope_samples[sample_index].source),
+            default_scope_samples[sample_index].recorded_at.timestamp(),
+            default_scope_samples[sample_index].source,
+        ),
+        reverse=True,
+    )
+    remaining_prime_budget = 1
+    for sample_index in unresolved_sample_indexes:
+        if remaining_prime_budget <= 0:
+            break
+        sample = default_scope_samples[sample_index]
         if sample.stale:
             continue
         if sample.primary is None and sample.secondary is None:
@@ -1188,6 +1224,7 @@ def _prime_unattributed_default_scope_sample_owners(
             account_id=active_account_id,
             observed_at=sample.recorded_at,
         )
+        remaining_prime_budget -= 1
 
 
 def _build_debug_window(window: LocalUsageWindow | None) -> AccountLiveQuotaDebugWindow | None:

@@ -1016,6 +1016,176 @@ def test_default_scope_debug_assignment_keeps_source_owner_stable_across_active_
     assert by_account_second[csoves.id][0].source == sample_source
 
 
+def test_default_scope_debug_assignment_primes_only_newest_unattributed_sample() -> None:
+    old_owner = _make_account("acc-old", "old@example.com")
+    active = _make_account("acc-active", "active@example.com")
+    accounts = [old_owner, active]
+
+    # Seed sticky ownership for an existing session source.
+    seeded_source = "/tmp/rollout-2026-04-04T23-20-00-seeded.jsonl"
+    seeded_at = datetime(2026, 4, 4, 23, 20, tzinfo=timezone.utc)
+    seeded_by_account, _, seeded_hints = _build_default_sample_debug_overrides(
+        accounts=accounts,
+        snapshot_index=CodexAuthSnapshotIndex(
+            snapshots_by_account_id={old_owner.id: ["old"], active.id: ["active"]},
+            active_snapshot_name="old",
+        ),
+        codex_auth_by_account={
+            old_owner.id: AccountCodexAuthStatus(
+                has_snapshot=True,
+                snapshot_name="old",
+                active_snapshot_name="old",
+                is_active_snapshot=True,
+                has_live_session=False,
+            ),
+            active.id: AccountCodexAuthStatus(
+                has_snapshot=True,
+                snapshot_name="active",
+                active_snapshot_name="old",
+                is_active_snapshot=False,
+                has_live_session=False,
+            ),
+        },
+        baseline_primary_usage={},
+        baseline_secondary_usage={},
+        live_usage_samples_by_snapshot={
+            "old": [
+                LocalCodexLiveUsageSample(
+                    source=seeded_source,
+                    recorded_at=seeded_at,
+                    primary=LocalUsageWindow(
+                        used_percent=62.0,
+                        reset_at=1_761_111_100,
+                        window_minutes=300,
+                    ),
+                    secondary=LocalUsageWindow(
+                        used_percent=40.0,
+                        reset_at=1_761_117_100,
+                        window_minutes=10_080,
+                    ),
+                    stale=False,
+                )
+            ]
+        },
+        should_defer_active_snapshot_usage=True,
+    )
+
+    assert seeded_by_account == {}
+    assert seeded_hints == {}
+
+    older_unattributed = "/tmp/rollout-2026-04-04T23-24-00-older.jsonl"
+    newest_unattributed = "/tmp/rollout-2026-04-04T23-25-00-newest.jsonl"
+    second_pass_samples = {
+        "active": [
+            LocalCodexLiveUsageSample(
+                source=seeded_source,
+                recorded_at=seeded_at + timedelta(minutes=4),
+                primary=LocalUsageWindow(
+                    used_percent=61.5,
+                    reset_at=1_761_111_100,
+                    window_minutes=300,
+                ),
+                secondary=LocalUsageWindow(
+                    used_percent=39.5,
+                    reset_at=1_761_117_100,
+                    window_minutes=10_080,
+                ),
+                stale=False,
+            ),
+            LocalCodexLiveUsageSample(
+                source=older_unattributed,
+                recorded_at=seeded_at + timedelta(minutes=4, seconds=30),
+                primary=LocalUsageWindow(
+                    used_percent=73.0,
+                    reset_at=1_761_130_000,
+                    window_minutes=300,
+                ),
+                secondary=LocalUsageWindow(
+                    used_percent=55.0,
+                    reset_at=1_761_136_000,
+                    window_minutes=10_080,
+                ),
+                stale=False,
+            ),
+            LocalCodexLiveUsageSample(
+                source=newest_unattributed,
+                recorded_at=seeded_at + timedelta(minutes=5),
+                primary=LocalUsageWindow(
+                    used_percent=74.0,
+                    reset_at=1_761_140_000,
+                    window_minutes=300,
+                ),
+                secondary=LocalUsageWindow(
+                    used_percent=56.0,
+                    reset_at=1_761_146_000,
+                    window_minutes=10_080,
+                ),
+                stale=False,
+            ),
+        ]
+    }
+    for _ in range(2):
+        _build_default_sample_debug_overrides(
+            accounts=accounts,
+            snapshot_index=CodexAuthSnapshotIndex(
+                snapshots_by_account_id={old_owner.id: ["old"], active.id: ["active"]},
+                active_snapshot_name="active",
+            ),
+            codex_auth_by_account={
+                old_owner.id: AccountCodexAuthStatus(
+                    has_snapshot=True,
+                    snapshot_name="old",
+                    active_snapshot_name="active",
+                    is_active_snapshot=False,
+                    has_live_session=False,
+                ),
+                active.id: AccountCodexAuthStatus(
+                    has_snapshot=True,
+                    snapshot_name="active",
+                    active_snapshot_name="active",
+                    is_active_snapshot=True,
+                    has_live_session=False,
+                ),
+            },
+            baseline_primary_usage={},
+            baseline_secondary_usage={},
+            live_usage_samples_by_snapshot=second_pass_samples,
+            should_defer_active_snapshot_usage=True,
+        )
+
+    by_account, _, hints = _build_default_sample_debug_overrides(
+        accounts=accounts,
+        snapshot_index=CodexAuthSnapshotIndex(
+            snapshots_by_account_id={old_owner.id: ["old"], active.id: ["active"]},
+            active_snapshot_name="active",
+        ),
+        codex_auth_by_account={
+            old_owner.id: AccountCodexAuthStatus(
+                has_snapshot=True,
+                snapshot_name="old",
+                active_snapshot_name="active",
+                is_active_snapshot=False,
+                has_live_session=False,
+            ),
+            active.id: AccountCodexAuthStatus(
+                has_snapshot=True,
+                snapshot_name="active",
+                active_snapshot_name="active",
+                is_active_snapshot=True,
+                has_live_session=False,
+            ),
+        },
+        baseline_primary_usage={},
+        baseline_secondary_usage={},
+        live_usage_samples_by_snapshot=second_pass_samples,
+        should_defer_active_snapshot_usage=True,
+    )
+
+    assert hints == {old_owner.id: 1, active.id: 1}
+    assert [sample.source for sample in by_account[old_owner.id]] == [seeded_source]
+    assert [sample.source for sample in by_account[active.id]] == [newest_unattributed]
+
+
 def test_fallback_mapping_applies_quota_overrides_when_reset_matches_are_unique() -> None:
     account_a = _make_account("acc-a", "a@example.com")
     account_b = _make_account("acc-b", "b@example.com")
@@ -2756,6 +2926,9 @@ def test_apply_local_live_usage_overrides_keeps_baseline_for_ambiguous_deferred_
 
     assert primary_usage[account.id].used_percent == pytest.approx(55.0)
     assert secondary_usage[account.id].used_percent == pytest.approx(55.0)
+    # In strict deferred mode, keep active-snapshot session presence visible
+    # when default-scope telemetry exists, even if per-account attribution is
+    # unresolved.
     assert codex_auth_by_account[account.id].has_live_session is True
     assert codex_auth_by_account[other.id].has_live_session is False
     debug = debug_by_account[account.id]
