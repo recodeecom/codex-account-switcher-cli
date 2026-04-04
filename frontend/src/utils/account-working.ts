@@ -6,6 +6,13 @@ const WORKING_NOW_LIMIT_HIT_GRACE_MS = 60 * 1000;
 const RECENT_USAGE_SIGNAL_STALE_AFTER_MS = 36 * 60 * 60 * 1000;
 const RESET_ALIGNMENT_TOLERANCE_MS = 30 * 1000;
 
+type UsageLimitHitEntry = {
+  fingerprint: string;
+  startedAtMs: number;
+};
+
+const usageLimitHitByAccount = new Map<string, UsageLimitHitEntry>();
+
 function parseRecordedAtMs(value: string | null | undefined): number | null {
   if (!value) return null;
   const timestampMs = Date.parse(value);
@@ -18,6 +25,81 @@ function normalizeSnapshotName(value: string | null | undefined): string | null 
   return normalized ? normalized : null;
 }
 
+function getScopedQuotaDebugSamples(
+  account: Pick<AccountSummary, "codexAuth" | "liveQuotaDebug">,
+) {
+  const rawSamples = account.liveQuotaDebug?.rawSamples ?? [];
+  const targetSnapshot =
+    normalizeSnapshotName(account.codexAuth?.expectedSnapshotName) ??
+    normalizeSnapshotName(account.codexAuth?.snapshotName);
+  if (!targetSnapshot) {
+    return rawSamples;
+  }
+
+  const exactSnapshotMatch = rawSamples.filter(
+    (sample) => normalizeSnapshotName(sample.snapshotName) === targetSnapshot,
+  );
+  if (exactSnapshotMatch.length > 0) {
+    return exactSnapshotMatch;
+  }
+
+  const unnamedSamples = rawSamples.filter(
+    (sample) => normalizeSnapshotName(sample.snapshotName) == null,
+  );
+  if (unnamedSamples.length === 0) {
+    return [];
+  }
+
+  const consideredSnapshots = (account.liveQuotaDebug?.snapshotsConsidered ?? [])
+    .map((snapshot) => normalizeSnapshotName(snapshot))
+    .filter((snapshot): snapshot is string => snapshot != null);
+  const consideredOnlyTarget =
+    consideredSnapshots.length === 0 ||
+    consideredSnapshots.every((snapshot) => snapshot === targetSnapshot);
+  return consideredOnlyTarget ? unnamedSamples : [];
+}
+
+function shouldSuppressNoCliSampleSessionSignal(
+  account: Pick<
+    AccountSummary,
+    | "codexAuth"
+    | "codexLiveSessionCount"
+    | "codexTrackedSessionCount"
+    | "codexSessionCount"
+    | "liveQuotaDebug"
+    | "lastUsageRecordedAtPrimary"
+    | "lastUsageRecordedAtSecondary"
+  >,
+  nowMs: number,
+): boolean {
+  const overrideReason = (account.liveQuotaDebug?.overrideReason ?? "").trim().toLowerCase();
+  if (overrideReason !== "no_live_telemetry") {
+    return false;
+  }
+
+  const scopedSamples = getScopedQuotaDebugSamples(account);
+  if (scopedSamples.length > 0) {
+    return false;
+  }
+
+  const hasSessionCounterSignal =
+    Math.max(
+      account.codexLiveSessionCount ?? 0,
+      account.codexTrackedSessionCount ?? 0,
+      account.codexSessionCount ?? 0,
+      0,
+    ) > 0;
+  if (hasSessionCounterSignal) {
+    return false;
+  }
+
+  if (hasFreshLiveTelemetry(account, nowMs)) {
+    return false;
+  }
+
+  return true;
+}
+
 function isFreshTimestamp(
   value: string | null | undefined,
   nowMs: number,
@@ -28,10 +110,10 @@ function isFreshTimestamp(
 }
 
 export function getFreshDebugRawSampleCount(
-  account: Pick<AccountSummary, "liveQuotaDebug">,
+  account: Pick<AccountSummary, "liveQuotaDebug" | "codexAuth">,
   nowMs: number = Date.now(),
 ): number {
-  const rawSamples = account.liveQuotaDebug?.rawSamples ?? [];
+  const rawSamples = getScopedQuotaDebugSamples(account);
   if (rawSamples.length === 0) {
     return 0;
   }
@@ -313,14 +395,23 @@ export function hasFreshLiveTelemetry(
   );
 }
 
+function hasFreshTaskPreviewSignal(
+  account: Pick<AccountSummary, "codexCurrentTaskPreview">,
+): boolean {
+  return (account.codexCurrentTaskPreview?.trim().length ?? 0) > 0;
+}
+
 export function hasActiveCliSessionSignal(
   account: Pick<
     AccountSummary,
+    | "accountId"
     | "codexAuth"
     | "codexLiveSessionCount"
     | "codexTrackedSessionCount"
     | "codexSessionCount"
     | "liveQuotaDebug"
+    | "codexCurrentTaskPreview"
+    | "usage"
     | "lastUsageRecordedAtPrimary"
     | "lastUsageRecordedAtSecondary"
   >,
@@ -330,22 +421,30 @@ export function hasActiveCliSessionSignal(
   // Keep this as a strict cascade so the UI remains stable:
   //   1) codexAuth.hasLiveSession
   //   2) fresh live telemetry (including live process count)
-  //   3) tracked/compat counters
+  //   3) tracked/compat counters or fresh current-task preview
   //   4) fresh raw debug samples
   // Any change here must be explicitly requested and protected by regression tests.
-  if (account.codexAuth?.hasLiveSession ?? false) {
-    return true;
+  const hasHardSignal =
+    (account.codexAuth?.hasLiveSession ?? false) ||
+    hasFreshLiveTelemetry(account, nowMs) ||
+    Math.max(account.codexTrackedSessionCount ?? 0, account.codexSessionCount ?? 0, 0) > 0 ||
+    hasFreshTaskPreviewSignal(account) ||
+    getFreshDebugRawSampleCount(account, nowMs) > 0;
+  if (!hasHardSignal) {
+    usageLimitHitByAccount.delete(account.accountId);
+    return false;
+  }
+  if (shouldSuppressNoCliSampleSessionSignal(account, nowMs)) {
+    usageLimitHitByAccount.delete(account.accountId);
+    return false;
   }
 
-  if (hasFreshLiveTelemetry(account, nowMs)) {
-    return true;
+  const usageLimitHitCountdownMs = getWorkingNowUsageLimitHitCountdownMs(account, nowMs);
+  if (usageLimitHitCountdownMs != null && usageLimitHitCountdownMs <= 0) {
+    return false;
   }
 
-  if (Math.max(account.codexTrackedSessionCount ?? 0, account.codexSessionCount ?? 0, 0) > 0) {
-    return true;
-  }
-
-  return getFreshDebugRawSampleCount(account, nowMs) > 0;
+  return true;
 }
 
 export function hasRecentUsageSignal(
@@ -375,15 +474,46 @@ export function hasRecentUsageSignal(
 
 type WorkingNowAccount = Pick<
   AccountSummary,
+  | "accountId"
   | "codexAuth"
   | "codexLiveSessionCount"
   | "codexSessionCount"
   | "codexTrackedSessionCount"
   | "liveQuotaDebug"
+  | "codexCurrentTaskPreview"
   | "usage"
   | "lastUsageRecordedAtPrimary"
   | "lastUsageRecordedAtSecondary"
 >;
+
+function buildWorkingNowSessionFingerprint(account: WorkingNowAccount): string {
+  const targetSnapshot =
+    normalizeSnapshotName(account.codexAuth?.expectedSnapshotName) ??
+    normalizeSnapshotName(account.codexAuth?.snapshotName) ??
+    "none";
+  const rawSnapshots = (account.liveQuotaDebug?.rawSamples ?? [])
+    .filter((sample) => sample.stale !== true)
+    .map((sample) => normalizeSnapshotName(sample.snapshotName) ?? "none")
+    .sort();
+  const snapshotsFingerprint =
+    rawSnapshots.length > 0 ? rawSnapshots.join("|") : "raw:none";
+  const countersFingerprint = [
+    Math.max(account.codexLiveSessionCount ?? 0, 0),
+    Math.max(account.codexTrackedSessionCount ?? 0, 0),
+    Math.max(account.codexSessionCount ?? 0, 0),
+  ].join("/");
+  const taskFingerprint = account.codexCurrentTaskPreview?.trim() || "task:none";
+
+  // Do not include volatile rollout file names / merged source ids here.
+  // They can rotate on every telemetry poll and would keep restarting the
+  // 60-second usage-limit grace window for the same stuck session.
+  return [
+    targetSnapshot,
+    snapshotsFingerprint,
+    `counters:${countersFingerprint}`,
+    taskFingerprint,
+  ].join("::");
+}
 
 function isDepletedPrimaryQuota(value: number | null | undefined): boolean {
   if (typeof value !== "number" || Number.isNaN(value)) {
@@ -459,9 +589,17 @@ export function getWorkingNowUsageLimitHitCountdownMs(
       account.codexSessionCount ?? 0,
       0,
     ) > 0;
+  const hasTaskPreviewSignal = hasFreshTaskPreviewSignal(account);
   const hasActiveCliSessionSignal =
-    hasActiveSessionCounterSignal || (account.codexAuth?.hasLiveSession ?? false);
+    hasActiveSessionCounterSignal ||
+    (account.codexAuth?.hasLiveSession ?? false) ||
+    hasTaskPreviewSignal;
   if (!hasActiveCliSessionSignal) {
+    usageLimitHitByAccount.delete(account.accountId);
+    return null;
+  }
+  if (shouldSuppressNoCliSampleSessionSignal(account, nowMs)) {
+    usageLimitHitByAccount.delete(account.accountId);
     return null;
   }
 
@@ -470,27 +608,39 @@ export function getWorkingNowUsageLimitHitCountdownMs(
     isDepletedPrimaryQuota(quotaState.mergedPrimaryRemaining) ||
     isDepletedPrimaryQuota(quotaState.primaryRemaining);
   if (!hasDepletedPrimaryQuota) {
+    usageLimitHitByAccount.delete(account.accountId);
     return null;
   }
 
-  const hitRecordedAtMs = resolveUsageLimitHitRecordedAtMs(account, quotaState);
-  if (hitRecordedAtMs == null) {
-    return WORKING_NOW_LIMIT_HIT_GRACE_MS;
+  const hitRecordedAtMs = resolveUsageLimitHitRecordedAtMs(account, quotaState) ?? nowMs;
+  const sessionFingerprint = buildWorkingNowSessionFingerprint(account);
+  const existing = usageLimitHitByAccount.get(account.accountId);
+  const startedAtMs =
+    existing && existing.fingerprint === sessionFingerprint
+      ? existing.startedAtMs
+      : Math.min(nowMs, hitRecordedAtMs);
+  if (!existing || existing.fingerprint !== sessionFingerprint) {
+    usageLimitHitByAccount.set(account.accountId, {
+      fingerprint: sessionFingerprint,
+      startedAtMs,
+    });
   }
 
-  const elapsedMs = Math.max(0, nowMs - hitRecordedAtMs);
+  const elapsedMs = Math.max(0, nowMs - startedAtMs);
   return Math.max(0, WORKING_NOW_LIMIT_HIT_GRACE_MS - elapsedMs);
 }
 
 export function isAccountWorkingNow(
   account: Pick<
     AccountSummary,
+    | "accountId"
     | "codexAuth"
     | "status"
     | "codexLiveSessionCount"
     | "codexSessionCount"
     | "codexTrackedSessionCount"
     | "liveQuotaDebug"
+    | "codexCurrentTaskPreview"
     | "usage"
     | "lastUsageRecordedAtPrimary"
     | "lastUsageRecordedAtSecondary"
@@ -521,11 +671,17 @@ export function isAccountWorkingNow(
       account.codexSessionCount ?? 0,
       0,
     ) > 0;
+  const hasTaskPreviewSignal = hasFreshTaskPreviewSignal(account);
   const hasActiveCliSessionSignal =
-    hasActiveSessionCounterSignal || (account.codexAuth?.hasLiveSession ?? false);
+    hasActiveSessionCounterSignal ||
+    (account.codexAuth?.hasLiveSession ?? false) ||
+    hasTaskPreviewSignal;
   // Keep disconnected accounts out of "Working now" unless they still have a
   // verifiable live session signal.
   if (account.status === "deactivated" && !hasFreshLiveSession) {
+    return false;
+  }
+  if (shouldSuppressNoCliSampleSessionSignal(account, nowMs)) {
     return false;
   }
 
@@ -562,8 +718,11 @@ export function isAccountWorkingNow(
     const overrideReason = (account.liveQuotaDebug?.overrideReason ?? "").trim().toLowerCase();
     const deferredMixedDefaultSessions =
       overrideReason.startsWith("deferred_active_snapshot_mixed_default_sessions");
-    if (deferredMixedDefaultSessions && !hasActiveCliSessionSignal) {
-      return false;
+    if (deferredMixedDefaultSessions) {
+      if (!hasActiveCliSessionSignal) {
+        return false;
+      }
+      return true;
     }
 
     const primaryFallbackRecordedAt = getRawQuotaWindowFallback(account, "primary")?.recordedAt;
@@ -579,4 +738,8 @@ export function isAccountWorkingNow(
   }
 
   return Math.max(account.codexTrackedSessionCount ?? 0, account.codexSessionCount ?? 0, 0) > 0;
+}
+
+export function resetWorkingNowLimitHitStateForTests(): void {
+  usageLimitHitByAccount.clear();
 }

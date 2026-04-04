@@ -35,6 +35,7 @@ export function DashboardPage() {
     resumeMutation,
     useLocalMutation,
     openTerminalMutation,
+    terminateCliSessionsMutation,
     repairSnapshotMutation,
   } = useAccountMutations();
 
@@ -71,6 +72,9 @@ export function DashboardPage() {
         case "sessions":
           navigate(`/sessions?accountId=${encodeURIComponent(account.accountId)}`);
           break;
+        case "terminateCliSessions":
+          terminateCliSessionsMutation.mutate(account.accountId);
+          break;
         case "repairSnapshotReadd":
           repairSnapshotMutation.mutate({
             accountId: account.accountId,
@@ -90,6 +94,7 @@ export function DashboardPage() {
       openTerminalMutation,
       repairSnapshotMutation,
       resumeMutation,
+      terminateCliSessionsMutation,
       useLocalMutation,
     ],
   );

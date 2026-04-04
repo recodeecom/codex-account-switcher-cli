@@ -269,6 +269,8 @@ export function SessionsPage() {
   }, [overviewQuery.data?.accounts, selectedAccountId]);
   const shouldUseFallbackOverview = stickyActivityRows.length === 0 && fallbackActivityRows.length > 0;
   const activityRows = shouldUseFallbackOverview ? fallbackActivityRows : stickyActivityRows;
+  const unmappedCliSessions = sessionsQuery.data?.unmappedCliSessions ?? [];
+  const hasUnmappedCliRows = unmappedCliSessions.length > 0;
   const stickyAccountCount = new Set(stickyActivityRows.map((row) => row.accountId)).size;
 
   const total = shouldUseFallbackOverview
@@ -295,7 +297,7 @@ export function SessionsPage() {
         <div className="py-8">
           <SpinnerBlock />
         </div>
-      ) : !hasSessionRows ? (
+      ) : !hasSessionRows && !hasUnmappedCliRows ? (
         <EmptyState
           icon={Pin}
           title="No Codex sessions"
@@ -303,7 +305,7 @@ export function SessionsPage() {
         />
       ) : (
         <>
-          <section className="grid gap-3 sm:grid-cols-2">
+          <section className="grid gap-3 sm:grid-cols-3">
             <div className="rounded-xl border bg-card px-4 py-3">
               <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Codex sessions</p>
               <p className="mt-1 text-xl font-semibold tabular-nums">{total}</p>
@@ -312,85 +314,133 @@ export function SessionsPage() {
               <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Accounts with sessions</p>
               <p className="mt-1 text-xl font-semibold tabular-nums">{accountCount}</p>
             </div>
+            <div className="rounded-xl border bg-card px-4 py-3">
+              <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Unmapped CLI sessions</p>
+              <p className="mt-1 text-xl font-semibold tabular-nums">
+                {unmappedCliSessions.reduce((sum, item) => sum + item.totalSessionCount, 0)}
+              </p>
+            </div>
           </section>
 
           <section className="space-y-4">
-            <div className="rounded-xl border bg-card">
-              <div className="flex items-center justify-between border-b px-4 py-3">
-                <div>
-                  <p className="text-sm font-semibold">Session activity</p>
-                  <p className="text-xs text-muted-foreground">
-                    {shouldUseFallbackOverview
-                      ? "Sticky mappings are empty, so this view falls back to dashboard overview telemetry."
-                      : "Sticky session mappings provide per-session activity telemetry."}
-                  </p>
+            {hasSessionRows ? (
+              <div className="rounded-xl border bg-card">
+                <div className="flex items-center justify-between border-b px-4 py-3">
+                  <div>
+                    <p className="text-sm font-semibold">Session activity</p>
+                    <p className="text-xs text-muted-foreground">
+                      {shouldUseFallbackOverview
+                        ? "Sticky mappings are empty, so this view falls back to dashboard overview telemetry."
+                        : "Sticky session mappings provide per-session activity telemetry."}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/80">Account</TableHead>
+                        <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/80">Session / source</TableHead>
+                        <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/80">Status</TableHead>
+                        <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/80">Current task</TableHead>
+                        <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/80">Progress</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {activityRows.map((row) => (
+                        <TableRow key={row.rowKey}>
+                          <TableCell>
+                            <p className="text-sm font-medium">
+                              {blurred ? <span className="privacy-blur">{row.displayName}</span> : row.displayName}
+                            </p>
+                            <p className="font-mono text-[11px] text-muted-foreground">{row.accountId}</p>
+                          </TableCell>
+                          <TableCell>
+                            <p
+                              className={cn(
+                                "max-w-[28rem] truncate text-xs",
+                                row.sourceLabel === "Sticky mapping" && "font-mono",
+                              )}
+                              title={row.identity}
+                            >
+                              {row.identity}
+                            </p>
+                            <p className="text-[11px] text-muted-foreground">{row.sourceLabel}</p>
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={row.status === "live" ? "secondary" : "outline"}
+                              className={cn(
+                                "text-[11px]",
+                                row.status === "live" && "font-semibold text-emerald-700 dark:text-emerald-300",
+                              )}
+                            >
+                              {row.status === "live" ? "Live" : "Idle"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="max-w-[28rem] text-xs text-muted-foreground" title={row.currentTask ?? undefined}>
+                            {row.currentTask ?? "—"}
+                          </TableCell>
+                          <TableCell
+                            className={cn(
+                              "text-xs",
+                              row.progressTone === "upToDate" && "font-medium text-emerald-600 dark:text-emerald-300",
+                              row.progressTone === "pending" && "text-muted-foreground",
+                              row.progressTone === "muted" && "text-muted-foreground",
+                            )}
+                          >
+                            {row.progressLabel}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </div>
               </div>
+            ) : null}
 
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/80">Account</TableHead>
-                      <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/80">Session / source</TableHead>
-                      <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/80">Status</TableHead>
-                      <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/80">Current task</TableHead>
-                      <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/80">Progress</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {activityRows.map((row) => (
-                      <TableRow key={row.rowKey}>
-                        <TableCell>
-                          <p className="text-sm font-medium">
-                            {blurred ? <span className="privacy-blur">{row.displayName}</span> : row.displayName}
-                          </p>
-                          <p className="font-mono text-[11px] text-muted-foreground">{row.accountId}</p>
-                        </TableCell>
-                        <TableCell>
-                          <p
-                            className={cn(
-                              "max-w-[28rem] truncate text-xs",
-                              row.sourceLabel === "Sticky mapping" && "font-mono",
-                            )}
-                            title={row.identity}
-                          >
-                            {row.identity}
-                          </p>
-                          <p className="text-[11px] text-muted-foreground">{row.sourceLabel}</p>
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={row.status === "live" ? "secondary" : "outline"}
-                            className={cn(
-                              "text-[11px]",
-                              row.status === "live" && "font-semibold text-emerald-700 dark:text-emerald-300",
-                            )}
-                          >
-                            {row.status === "live" ? "Live" : "Idle"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="max-w-[28rem] text-xs text-muted-foreground" title={row.currentTask ?? undefined}>
-                          {row.currentTask ?? "—"}
-                        </TableCell>
-                        <TableCell
-                          className={cn(
-                            "text-xs",
-                            row.progressTone === "upToDate" && "font-medium text-emerald-600 dark:text-emerald-300",
-                            row.progressTone === "pending" && "text-muted-foreground",
-                            row.progressTone === "muted" && "text-muted-foreground",
-                          )}
-                        >
-                          {row.progressLabel}
-                        </TableCell>
+            {hasUnmappedCliRows ? (
+              <div className="rounded-xl border bg-card">
+                <div className="flex items-center justify-between border-b px-4 py-3">
+                  <div>
+                    <p className="text-sm font-semibold">Unmapped CLI sessions</p>
+                    <p className="text-xs text-muted-foreground">
+                      Active Codex CLI sessions detected by snapshot, but not matched to any account.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/80">Snapshot</TableHead>
+                        <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/80">Total</TableHead>
+                        <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/80">Process</TableHead>
+                        <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/80">Runtime</TableHead>
+                        <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/80">Reason</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {unmappedCliSessions.map((session) => (
+                        <TableRow key={`unmapped:${session.snapshotName}`}>
+                          <TableCell>
+                            <p className="font-mono text-xs">{session.snapshotName}</p>
+                          </TableCell>
+                          <TableCell className="text-xs">{session.totalSessionCount}</TableCell>
+                          <TableCell className="text-xs">{session.processSessionCount}</TableCell>
+                          <TableCell className="text-xs">{session.runtimeSessionCount}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground">{session.reason}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               </div>
-            </div>
+            ) : null}
 
-            {!shouldUseFallbackOverview ? (
+            {hasSessionRows && !shouldUseFallbackOverview ? (
               <div className="flex justify-end pt-1">
                 <PaginationControls
                   total={sessionsQuery.data?.total ?? 0}

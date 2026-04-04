@@ -148,6 +148,13 @@ export const AccountOpenTerminalResponseSchema = z.object({
   snapshotName: z.string(),
 });
 
+export const AccountTerminateCliSessionsResponseSchema = z.object({
+  status: z.string(),
+  accountId: z.string(),
+  snapshotName: z.string(),
+  terminatedSessionCount: z.number().int().nonnegative(),
+});
+
 export const AccountSnapshotRepairResponseSchema = z.object({
   status: z.string(),
   accountId: z.string(),
@@ -229,6 +236,9 @@ export type AccountTrendsResponse = z.infer<typeof AccountTrendsResponseSchema>;
 export type AccountUseLocalResponse = z.infer<typeof AccountUseLocalResponseSchema>;
 export type AccountRefreshAuthResponse = z.infer<typeof AccountRefreshAuthResponseSchema>;
 export type AccountOpenTerminalResponse = z.infer<typeof AccountOpenTerminalResponseSchema>;
+export type AccountTerminateCliSessionsResponse = z.infer<
+  typeof AccountTerminateCliSessionsResponseSchema
+>;
 export type AccountSnapshotRepairResponse = z.infer<typeof AccountSnapshotRepairResponseSchema>;
 export type OauthStartResponse = z.infer<typeof OauthStartResponseSchema>;
 export type OauthStatusResponse = z.infer<typeof OauthStatusResponseSchema>;

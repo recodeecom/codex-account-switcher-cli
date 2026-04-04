@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { createAccountSummary } from "@/test/mocks/factories";
 import {
@@ -6,9 +6,14 @@ import {
   hasActiveCliSessionSignal,
   getMergedQuotaRemainingPercent,
   getRawQuotaWindowFallback,
+  resetWorkingNowLimitHitStateForTests,
   isAccountWorkingNow,
   selectStableRemainingPercent,
 } from "@/utils/account-working";
+
+afterEach(() => {
+  resetWorkingNowLimitHitStateForTests();
+});
 
 describe("isAccountWorkingNow", () => {
   it("returns true when codex auth reports a live session with fresh telemetry", () => {
@@ -157,6 +162,108 @@ describe("isAccountWorkingNow", () => {
     expect(countdownMs).toBeLessThanOrEqual(30_000);
   });
 
+  it("does not restart the usage-limit grace window for the same stuck session", () => {
+    const base = createAccountSummary({
+      usage: {
+        primaryRemainingPercent: 0,
+        secondaryRemainingPercent: 88,
+      },
+      codexLiveSessionCount: 1,
+      codexTrackedSessionCount: 1,
+      codexSessionCount: 1,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+      lastUsageRecordedAtPrimary: "2026-04-04T11:58:30.000Z",
+      lastUsageRecordedAtSecondary: "2026-04-04T11:58:30.000Z",
+    });
+
+    const firstNowMs = new Date("2026-04-04T11:59:00.000Z").getTime();
+    const initialCountdownMs = getWorkingNowUsageLimitHitCountdownMs(base, firstNowMs);
+    expect(initialCountdownMs).toBeGreaterThan(0);
+
+    const refreshedButSameSession = {
+      ...base,
+      lastUsageRecordedAtPrimary: "2026-04-04T12:00:10.000Z",
+      lastUsageRecordedAtSecondary: "2026-04-04T12:00:10.000Z",
+    };
+    const secondNowMs = new Date("2026-04-04T12:00:10.000Z").getTime();
+
+    expect(getWorkingNowUsageLimitHitCountdownMs(refreshedButSameSession, secondNowMs)).toBe(0);
+    expect(isAccountWorkingNow(refreshedButSameSession, secondNowMs)).toBe(false);
+    expect(hasActiveCliSessionSignal(refreshedButSameSession, secondNowMs)).toBe(false);
+  });
+
+  it("does not restart usage-limit grace when raw rollout source names rotate", () => {
+    const base = createAccountSummary({
+      usage: {
+        primaryRemainingPercent: 0,
+        secondaryRemainingPercent: 88,
+      },
+      codexLiveSessionCount: 1,
+      codexTrackedSessionCount: 1,
+      codexSessionCount: 1,
+      codexCurrentTaskPreview: "Investigate codexina rate-limit aging",
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "codexina",
+        activeSnapshotName: "codexina",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+      liveQuotaDebug: {
+        snapshotsConsidered: ["codexina"],
+        overrideApplied: false,
+        overrideReason: "no_live_telemetry",
+        merged: null,
+        rawSamples: [
+          {
+            source: "/tmp/rollout-2026-04-04T23-22-15-019d5a60.jsonl",
+            snapshotName: "codexina",
+            recordedAt: "2026-04-04T11:58:30.000Z",
+            stale: false,
+            primary: { usedPercent: 100, remainingPercent: 0, resetAt: 1760000000, windowMinutes: 300 },
+            secondary: { usedPercent: 73, remainingPercent: 27, resetAt: 1760600000, windowMinutes: 10080 },
+          },
+        ],
+      },
+      lastUsageRecordedAtPrimary: "2026-04-04T11:58:30.000Z",
+      lastUsageRecordedAtSecondary: "2026-04-04T11:58:30.000Z",
+    });
+
+    const firstNowMs = new Date("2026-04-04T11:59:00.000Z").getTime();
+    const firstCountdownMs = getWorkingNowUsageLimitHitCountdownMs(base, firstNowMs);
+    expect(firstCountdownMs).toBeGreaterThan(0);
+
+    const sameSessionWithRotatedSource = {
+      ...base,
+      liveQuotaDebug: {
+        ...base.liveQuotaDebug!,
+        rawSamples: [
+          {
+            source: "/tmp/rollout-2026-04-04T23-23-30-0aaabbbb.jsonl",
+            snapshotName: "codexina",
+            recordedAt: "2026-04-04T12:00:10.000Z",
+            stale: false,
+            primary: { usedPercent: 100, remainingPercent: 0, resetAt: 1760000000, windowMinutes: 300 },
+            secondary: { usedPercent: 73, remainingPercent: 27, resetAt: 1760600000, windowMinutes: 10080 },
+          },
+        ],
+      },
+      lastUsageRecordedAtPrimary: "2026-04-04T12:00:10.000Z",
+      lastUsageRecordedAtSecondary: "2026-04-04T12:00:10.000Z",
+    };
+    const secondNowMs = new Date("2026-04-04T12:00:10.000Z").getTime();
+
+    expect(getWorkingNowUsageLimitHitCountdownMs(sameSessionWithRotatedSource, secondNowMs)).toBe(0);
+    expect(isAccountWorkingNow(sameSessionWithRotatedSource, secondNowMs)).toBe(false);
+    expect(hasActiveCliSessionSignal(sameSessionWithRotatedSource, secondNowMs)).toBe(false);
+  });
+
   it("returns false when no-live-telemetry fallback reports 0% even if baseline usage is higher", () => {
     const nowMs = new Date("2026-04-04T12:00:00.000Z").getTime();
     const account = createAccountSummary({
@@ -196,6 +303,44 @@ describe("isAccountWorkingNow", () => {
     });
 
     expect(isAccountWorkingNow(account, nowMs)).toBe(false);
+  });
+
+  it("returns false when no-live-telemetry has no scoped cli sessions sampled", () => {
+    const nowMs = new Date("2026-04-04T12:00:00.000Z").getTime();
+    const account = createAccountSummary({
+      codexLiveSessionCount: 0,
+      codexTrackedSessionCount: 0,
+      codexSessionCount: 0,
+      codexCurrentTaskPreview: "no cli sessions sampled should not keep working-now",
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "itrexsale",
+        activeSnapshotName: "codexina",
+        isActiveSnapshot: false,
+        hasLiveSession: true,
+      },
+      lastUsageRecordedAtPrimary: null,
+      lastUsageRecordedAtSecondary: null,
+      liveQuotaDebug: {
+        snapshotsConsidered: ["itrexsale"],
+        overrideApplied: false,
+        overrideReason: "no_live_telemetry",
+        merged: null,
+        rawSamples: [
+          {
+            source: "/tmp/rollout-codexina.jsonl",
+            snapshotName: "codexina",
+            recordedAt: "2026-04-04T11:59:00.000Z",
+            stale: false,
+            primary: { usedPercent: 56, remainingPercent: 44, resetAt: 1760000000, windowMinutes: 300 },
+            secondary: { usedPercent: 40, remainingPercent: 60, resetAt: 1760600000, windowMinutes: 10080 },
+          },
+        ],
+      },
+    });
+
+    expect(isAccountWorkingNow(account, nowMs)).toBe(false);
+    expect(hasActiveCliSessionSignal(account, nowMs)).toBe(false);
   });
 
   it("returns true when compatibility codexSessionCount is present", () => {
@@ -251,6 +396,43 @@ describe("isAccountWorkingNow", () => {
 
     const nowMs = new Date("2026-04-04T12:00:00.000Z").getTime();
     expect(isAccountWorkingNow(account, nowMs)).toBe(false);
+  });
+
+  it("returns true for deferred mixed-default samples when a current task preview is present", () => {
+    const account = createAccountSummary({
+      codexLiveSessionCount: 0,
+      codexTrackedSessionCount: 0,
+      codexSessionCount: 0,
+      codexCurrentTaskPreview: "Investigate session attribution for edixai runtime",
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "viktor",
+        activeSnapshotName: "viktor",
+        isActiveSnapshot: true,
+        hasLiveSession: false,
+      },
+      lastUsageRecordedAtPrimary: null,
+      lastUsageRecordedAtSecondary: null,
+      liveQuotaDebug: {
+        snapshotsConsidered: ["viktor"],
+        overrideApplied: false,
+        overrideReason: "deferred_active_snapshot_mixed_default_sessions",
+        merged: null,
+        rawSamples: [
+          {
+            source: "/tmp/rollout-a.jsonl",
+            snapshotName: "viktor",
+            recordedAt: "2026-04-04T11:58:00.000Z",
+            stale: false,
+            primary: { usedPercent: 56, remainingPercent: 44, resetAt: 1760000000, windowMinutes: 300 },
+            secondary: { usedPercent: 32, remainingPercent: 68, resetAt: 1760600000, windowMinutes: 10080 },
+          },
+        ],
+      },
+    });
+
+    const nowMs = new Date("2026-04-04T12:00:00.000Z").getTime();
+    expect(isAccountWorkingNow(account, nowMs)).toBe(true);
   });
 
   it("returns true when fresh non-deferred raw samples exist", () => {
@@ -848,6 +1030,30 @@ describe("hasActiveCliSessionSignal", () => {
     });
     expect(hasActiveCliSessionSignal(trackedOnly, nowMs)).toBe(true);
 
+    const taskPreviewOnly = createAccountSummary({
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
+        hasLiveSession: false,
+      },
+      codexLiveSessionCount: 0,
+      codexTrackedSessionCount: 0,
+      codexSessionCount: 0,
+      codexCurrentTaskPreview: "Trace startup session detection lag",
+      lastUsageRecordedAtPrimary: null,
+      lastUsageRecordedAtSecondary: null,
+      liveQuotaDebug: {
+        snapshotsConsidered: ["main"],
+        overrideApplied: false,
+        overrideReason: "none",
+        merged: null,
+        rawSamples: [],
+      },
+    });
+    expect(hasActiveCliSessionSignal(taskPreviewOnly, nowMs)).toBe(true);
+
     const debugOnly = createAccountSummary({
       codexAuth: {
         hasSnapshot: true,
@@ -889,5 +1095,52 @@ describe("hasActiveCliSessionSignal", () => {
       },
     });
     expect(hasActiveCliSessionSignal(debugOnly, nowMs)).toBe(true);
+  });
+
+  it("returns false for no-live-telemetry when account-scoped cli samples are missing", () => {
+    const nowMs = new Date("2026-04-04T12:00:00.000Z").getTime();
+    const account = createAccountSummary({
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "itrexsale",
+        activeSnapshotName: "codexina",
+        isActiveSnapshot: false,
+        hasLiveSession: true,
+      },
+      codexLiveSessionCount: 0,
+      codexTrackedSessionCount: 0,
+      codexSessionCount: 0,
+      codexCurrentTaskPreview: "keep only real cli sessions in working now",
+      lastUsageRecordedAtPrimary: null,
+      lastUsageRecordedAtSecondary: null,
+      liveQuotaDebug: {
+        snapshotsConsidered: ["itrexsale"],
+        overrideApplied: false,
+        overrideReason: "no_live_telemetry",
+        merged: null,
+        rawSamples: [
+          {
+            source: "/tmp/rollout-codexina.jsonl",
+            snapshotName: "codexina",
+            recordedAt: "2026-04-04T11:58:00.000Z",
+            stale: false,
+            primary: {
+              usedPercent: 44,
+              remainingPercent: 56,
+              resetAt: 1760000000,
+              windowMinutes: 300,
+            },
+            secondary: {
+              usedPercent: 22,
+              remainingPercent: 78,
+              resetAt: 1760600000,
+              windowMinutes: 10080,
+            },
+          },
+        ],
+      },
+    });
+
+    expect(hasActiveCliSessionSignal(account, nowMs)).toBe(false);
   });
 });

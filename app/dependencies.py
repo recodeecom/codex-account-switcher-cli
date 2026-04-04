@@ -274,7 +274,8 @@ def get_sticky_sessions_context(
 ) -> StickySessionsContext:
     repository = StickySessionsRepository(session)
     settings_repository = SettingsRepository(session)
-    service = StickySessionsService(repository, settings_repository)
+    accounts_repository = AccountsRepository(session)
+    service = StickySessionsService(repository, settings_repository, accounts_repository)
     return StickySessionsContext(
         session=session,
         repository=repository,

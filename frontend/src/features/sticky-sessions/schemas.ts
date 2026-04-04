@@ -23,12 +23,21 @@ export const StickySessionIdentifierSchema = z.object({
   kind: StickySessionKindSchema,
 });
 
+export const UnmappedCliSessionSchema = z.object({
+  snapshotName: z.string().min(1),
+  processSessionCount: z.number().int().nonnegative().default(0),
+  runtimeSessionCount: z.number().int().nonnegative().default(0),
+  totalSessionCount: z.number().int().nonnegative().default(0),
+  reason: z.string().min(1).default("No account matched this snapshot."),
+});
+
 export const StickySessionsDeleteRequestSchema = z.object({
   sessions: z.array(StickySessionIdentifierSchema).min(1).max(500),
 });
 
 export const StickySessionsListResponseSchema = z.object({
   entries: z.array(StickySessionEntrySchema).default([]),
+  unmappedCliSessions: z.array(UnmappedCliSessionSchema).default([]),
   stalePromptCacheCount: z.number().int().nonnegative().default(0),
   total: z.number().int().nonnegative().default(0),
   hasMore: z.boolean().default(false),
@@ -57,6 +66,7 @@ export const StickySessionsPurgeResponseSchema = z.object({
 export type StickySessionKind = z.infer<typeof StickySessionKindSchema>;
 export type StickySessionEntry = z.infer<typeof StickySessionEntrySchema>;
 export type StickySessionIdentifier = z.infer<typeof StickySessionIdentifierSchema>;
+export type UnmappedCliSession = z.infer<typeof UnmappedCliSessionSchema>;
 export type StickySessionsDeleteRequest = z.infer<typeof StickySessionsDeleteRequestSchema>;
 export type StickySessionsListResponse = z.infer<typeof StickySessionsListResponseSchema>;
 export type StickySessionsListParams = z.infer<typeof StickySessionsListParamsSchema>;

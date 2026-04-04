@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import os
 import re
+import signal
+import time
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -15,6 +17,8 @@ from app.modules.accounts.codex_auth_switcher import build_snapshot_index
 _DEFAULT_ACTIVE_WINDOW_SECONDS = 300
 _DEFAULT_SWITCH_PROCESS_FALLBACK_SECONDS = 60
 _DEFAULT_UNLABELED_PROCESS_START_TOLERANCE_SECONDS = 5
+_DEFAULT_SESSION_TERMINATE_GRACE_SECONDS = 2
+_DEFAULT_SESSION_TERMINATE_MAX_TARGETS = 20
 _TAIL_LINE_LIMIT = 400
 _FALLBACK_SCAN_LIMIT = 200
 _RATE_LIMIT_SNAPSHOTS_PER_FILE = 8
@@ -166,18 +170,6 @@ def read_live_codex_process_session_counts_by_snapshot() -> dict[str, int]:
     for pid, _command in _iter_running_codex_commands(proc_root):
         processes.append((pid, _read_process_env(pid) or {}))
 
-    eligible_unlabeled_default_scope_pids = [
-        pid
-        for pid, env in processes
-        if _is_eligible_unlabeled_default_scope_process(
-            pid=pid,
-            env=env,
-            default_current_path=default_current_path,
-            default_auth_path=default_auth_path,
-        )
-    ]
-    allow_unlabeled_default_scope_mapping = len(eligible_unlabeled_default_scope_pids) == 1
-
     counts: dict[str, int] = {}
     for pid, env in processes:
         snapshot_name = _resolve_process_snapshot_name(
@@ -185,13 +177,48 @@ def read_live_codex_process_session_counts_by_snapshot() -> dict[str, int]:
             env=env,
             default_current_path=default_current_path,
             default_auth_path=default_auth_path,
-            allow_unlabeled_default_scope_mapping=allow_unlabeled_default_scope_mapping,
+            allow_unlabeled_default_scope_mapping=True,
         )
         if not snapshot_name:
             continue
         counts[snapshot_name] = counts.get(snapshot_name, 0) + 1
 
     return counts
+
+
+def terminate_live_codex_processes_for_snapshot(snapshot_name: str) -> int:
+    normalized_snapshot_name = snapshot_name.strip()
+    if not normalized_snapshot_name:
+        return 0
+
+    proc_root = Path("/proc")
+    if not proc_root.exists() or not proc_root.is_dir():
+        return 0
+
+    default_current_path = _resolve_current_path()
+    default_auth_path = _resolve_auth_path()
+    processes: list[tuple[int, dict[str, str]]] = []
+    for pid, _command in _iter_running_codex_commands(proc_root):
+        processes.append((pid, _read_process_env(pid) or {}))
+
+    target_pids: list[int] = []
+    for pid, env in processes:
+        resolved_snapshot_name = _resolve_process_snapshot_name(
+            pid,
+            env=env,
+            default_current_path=default_current_path,
+            default_auth_path=default_auth_path,
+            allow_unlabeled_default_scope_mapping=True,
+        )
+        if resolved_snapshot_name == normalized_snapshot_name:
+            target_pids.append(pid)
+
+    max_targets = _session_terminate_max_targets()
+    terminated = 0
+    for pid in sorted(set(target_pids))[:max_targets]:
+        if _terminate_codex_process(pid):
+            terminated += 1
+    return terminated
 
 
 def read_runtime_live_session_counts_by_snapshot(*, now: datetime | None = None) -> dict[str, int]:
@@ -741,18 +768,6 @@ def _resolve_unlabeled_default_scope_snapshot_name(
     if not snapshot_name:
         return None
 
-    current_selected_at = _safe_mtime(default_current_path)
-    process_started_at = _read_process_started_at(pid)
-
-    if process_started_at is None:
-        return None
-
-    if (
-        current_selected_at > 0
-        and process_started_at + _unlabeled_process_start_tolerance_seconds() < current_selected_at
-    ):
-        return None
-
     return snapshot_name
 
 
@@ -812,6 +827,76 @@ def _unlabeled_process_start_tolerance_seconds() -> int:
     except ValueError:
         return _DEFAULT_UNLABELED_PROCESS_START_TOLERANCE_SECONDS
     return max(0, value)
+
+
+def _session_terminate_grace_seconds() -> int:
+    raw = os.environ.get("CODEX_LB_TERMINATE_SESSION_GRACE_SECONDS")
+    if raw is None:
+        return _DEFAULT_SESSION_TERMINATE_GRACE_SECONDS
+    try:
+        value = int(raw)
+    except ValueError:
+        return _DEFAULT_SESSION_TERMINATE_GRACE_SECONDS
+    return max(1, value)
+
+
+def _session_terminate_max_targets() -> int:
+    raw = os.environ.get("CODEX_LB_TERMINATE_SESSION_MAX_TARGETS")
+    if raw is None:
+        return _DEFAULT_SESSION_TERMINATE_MAX_TARGETS
+    try:
+        value = int(raw)
+    except ValueError:
+        return _DEFAULT_SESSION_TERMINATE_MAX_TARGETS
+    return max(1, value)
+
+
+def _is_pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+
+
+def _send_process_signal(pid: int, sig: signal.Signals) -> None:
+    try:
+        pgid = os.getpgid(pid)
+    except ProcessLookupError:
+        return
+
+    if hasattr(os, "killpg"):
+        try:
+            os.killpg(pgid, sig)
+            return
+        except ProcessLookupError:
+            return
+        except PermissionError:
+            pass
+
+    try:
+        os.kill(pid, sig)
+    except ProcessLookupError:
+        return
+
+
+def _terminate_codex_process(pid: int) -> bool:
+    if not _is_pid_alive(pid):
+        return False
+
+    _send_process_signal(pid, signal.SIGTERM)
+    deadline = time.monotonic() + _session_terminate_grace_seconds()
+    while time.monotonic() < deadline:
+        if not _is_pid_alive(pid):
+            return True
+        time.sleep(0.05)
+
+    if _is_pid_alive(pid):
+        _send_process_signal(pid, signal.SIGKILL)
+        time.sleep(0.05)
+    return not _is_pid_alive(pid)
 
 
 def _has_runtime_scoped_auth_paths(

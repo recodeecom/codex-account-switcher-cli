@@ -18,6 +18,7 @@ from app.modules.accounts.codex_live_usage import (
     read_local_codex_task_previews_by_session_id,
     read_local_codex_task_previews_by_snapshot,
     read_runtime_live_session_counts_by_snapshot,
+    terminate_live_codex_processes_for_snapshot,
 )
 
 
@@ -687,6 +688,64 @@ def test_read_live_codex_process_session_counts_by_snapshot_uses_explicit_snapsh
     assert counts == {"work": 1}
 
 
+def test_terminate_live_codex_processes_for_snapshot_only_targets_matching_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._iter_running_codex_commands",
+        lambda _proc_root: [
+            (101, ["/usr/bin/codex", "model_instructions_file=agents"]),
+            (102, ["/usr/bin/codex", "model_instructions_file=agents"]),
+            (103, ["/usr/bin/codex", "model_instructions_file=agents"]),
+        ],
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._read_process_env",
+        lambda pid: (
+            {"CODEX_AUTH_ACTIVE_SNAPSHOT": "work"}
+            if pid in {101, 103}
+            else {"CODEX_AUTH_ACTIVE_SNAPSHOT": "other"}
+        ),
+    )
+    terminated: list[int] = []
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._terminate_codex_process",
+        lambda pid: terminated.append(pid) or True,
+    )
+
+    terminated_count = terminate_live_codex_processes_for_snapshot("work")
+
+    assert terminated_count == 2
+    assert terminated == [101, 103]
+
+
+def test_terminate_live_codex_processes_for_snapshot_respects_max_target_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CODEX_LB_TERMINATE_SESSION_MAX_TARGETS", "1")
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._iter_running_codex_commands",
+        lambda _proc_root: [
+            (201, ["/usr/bin/codex", "model_instructions_file=agents"]),
+            (202, ["/usr/bin/codex", "model_instructions_file=agents"]),
+        ],
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._read_process_env",
+        lambda _pid: {"CODEX_AUTH_ACTIVE_SNAPSHOT": "work"},
+    )
+    terminated: list[int] = []
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._terminate_codex_process",
+        lambda pid: terminated.append(pid) or True,
+    )
+
+    terminated_count = terminate_live_codex_processes_for_snapshot("work")
+
+    assert terminated_count == 1
+    assert terminated == [201]
+
+
 def test_read_live_codex_process_session_counts_prefers_current_path_over_stale_explicit_snapshot(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -750,7 +809,7 @@ def test_read_live_codex_process_session_counts_by_snapshot_uses_runtime_current
     assert counts == {"personal": 1}
 
 
-def test_read_live_codex_process_session_counts_by_snapshot_ignores_unlabeled_processes(
+def test_read_live_codex_process_session_counts_by_snapshot_maps_unlabeled_default_scope_processes_without_start_time_gate(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -771,13 +830,9 @@ def test_read_live_codex_process_session_counts_by_snapshot_ignores_unlabeled_pr
         "app.modules.accounts.codex_live_usage._process_belongs_to_current_user",
         lambda _pid: True,
     )
-    monkeypatch.setattr(
-        "app.modules.accounts.codex_live_usage._read_process_started_at",
-        lambda _pid: default_current.stat().st_mtime - 60,
-    )
 
     counts = read_live_codex_process_session_counts_by_snapshot()
-    assert counts == {}
+    assert counts == {"work": 1}
 
 
 def test_read_live_codex_process_session_counts_by_snapshot_maps_unlabeled_default_scope_processes(
@@ -810,7 +865,7 @@ def test_read_live_codex_process_session_counts_by_snapshot_maps_unlabeled_defau
     assert counts == {"work": 1}
 
 
-def test_read_live_codex_process_session_counts_by_snapshot_skips_ambiguous_unlabeled_default_scope_processes(
+def test_read_live_codex_process_session_counts_by_snapshot_maps_multiple_unlabeled_default_scope_processes(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -840,10 +895,10 @@ def test_read_live_codex_process_session_counts_by_snapshot_skips_ambiguous_unla
     )
 
     counts = read_live_codex_process_session_counts_by_snapshot()
-    assert counts == {}
+    assert counts == {"work": 2}
 
 
-def test_read_live_codex_process_session_counts_by_snapshot_maps_single_eligible_unlabeled_process_when_others_are_old(
+def test_read_live_codex_process_session_counts_by_snapshot_maps_multiple_unlabeled_default_scope_processes_without_start_time_gate(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -867,13 +922,9 @@ def test_read_live_codex_process_session_counts_by_snapshot_maps_single_eligible
         "app.modules.accounts.codex_live_usage._process_belongs_to_current_user",
         lambda _pid: True,
     )
-    monkeypatch.setattr(
-        "app.modules.accounts.codex_live_usage._read_process_started_at",
-        lambda pid: default_current.stat().st_mtime + 1 if pid == 404 else default_current.stat().st_mtime - 120,
-    )
 
     counts = read_live_codex_process_session_counts_by_snapshot()
-    assert counts == {"work": 1}
+    assert counts == {"work": 2}
 
 
 def test_read_live_codex_process_session_counts_by_snapshot_ignores_unlabeled_foreign_processes(

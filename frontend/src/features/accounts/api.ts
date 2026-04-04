@@ -4,6 +4,7 @@ import {
   AccountActionResponseSchema,
   AccountImportResponseSchema,
   AccountOpenTerminalResponseSchema,
+  AccountTerminateCliSessionsResponseSchema,
   AccountRefreshAuthResponseSchema,
   AccountSnapshotRepairResponseSchema,
   AccountUseLocalResponseSchema,
@@ -80,6 +81,13 @@ export function openAccountTerminal(accountId: string) {
   return post(
     `${ACCOUNTS_BASE_PATH}/${encodeURIComponent(accountId)}/open-terminal`,
     AccountOpenTerminalResponseSchema,
+  );
+}
+
+export function terminateAccountCliSessions(accountId: string) {
+  return post(
+    `${ACCOUNTS_BASE_PATH}/${encodeURIComponent(accountId)}/terminate-cli-sessions`,
+    AccountTerminateCliSessionsResponseSchema,
   );
 }
 

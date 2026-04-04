@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import re
 
 from app.db.models import Account
 from app.modules.accounts.codex_live_usage import (
@@ -9,6 +10,10 @@ from app.modules.accounts.codex_live_usage import (
     read_local_codex_task_previews_by_snapshot,
 )
 from app.modules.accounts.schemas import AccountCodexAuthStatus, AccountLiveQuotaDebug
+
+_ROLLOUT_SESSION_FILE_RE = re.compile(
+    r"^rollout-(?P<start>\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2})-(?P<session>[0-9a-fA-F-]{36})\.jsonl$"
+)
 
 
 def overlay_live_codex_task_previews(
@@ -29,15 +34,6 @@ def overlay_live_codex_task_previews(
         if codex_current_task_preview_by_account.get(account.id):
             continue
 
-        codex_auth_status = codex_auth_by_account.get(account.id)
-        if codex_auth_status is not None:
-            snapshot_name = codex_auth_status.snapshot_name
-            if snapshot_name:
-                preview = previews_by_snapshot.get(snapshot_name)
-                if preview is not None:
-                    codex_current_task_preview_by_account[account.id] = preview.text
-                    continue
-
         preview_from_source = _resolve_preview_from_debug_sources(
             debug=live_quota_debug_by_account.get(account.id)
             if live_quota_debug_by_account is not None
@@ -46,6 +42,16 @@ def overlay_live_codex_task_previews(
         )
         if preview_from_source is not None:
             codex_current_task_preview_by_account[account.id] = preview_from_source.text
+            continue
+
+        codex_auth_status = codex_auth_by_account.get(account.id)
+        if codex_auth_status is not None:
+            snapshot_name = codex_auth_status.snapshot_name
+            if snapshot_name:
+                preview = previews_by_snapshot.get(snapshot_name)
+                if preview is not None:
+                    codex_current_task_preview_by_account[account.id] = preview.text
+                    continue
 
 
 def _resolve_preview_from_debug_sources(
@@ -64,11 +70,10 @@ def _resolve_preview_from_debug_sources(
                 continue
 
             source_name = sample.source.rsplit("/", 1)[-1]
-            if not source_name.startswith("rollout-") or not source_name.endswith(".jsonl"):
+            source_match = _ROLLOUT_SESSION_FILE_RE.match(source_name)
+            if source_match is None:
                 continue
-            session_id = source_name.removesuffix(".jsonl").rsplit("-", 1)[-1]
-            if len(session_id) != 36:
-                continue
+            session_id = source_match.group("session")
 
             preview = previews_by_session_id.get(session_id)
             if preview is None:

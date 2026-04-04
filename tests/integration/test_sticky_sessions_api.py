@@ -4,6 +4,7 @@ import json
 import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from urllib.parse import quote
 
 import pytest
@@ -254,6 +255,55 @@ async def test_sticky_sessions_api_falls_back_to_local_rollout_task_preview_when
     assert entry["key"] == f"{session_id}::auth:scope"
     assert entry["taskPreview"] == "Bridge codex MCP session task titles"
     assert entry["taskUpdatedAt"] is not None
+
+
+@pytest.mark.asyncio
+async def test_sticky_sessions_api_returns_unmapped_cli_sessions(async_client, monkeypatch):
+    accounts = await _create_accounts()
+    await _set_affinity_ttl(60)
+
+    import app.modules.sticky_sessions.service as sticky_service_module
+
+    monkeypatch.setattr(
+        sticky_service_module,
+        "build_snapshot_index",
+        lambda: SimpleNamespace(
+            snapshots_by_account_id={accounts[0].id: ["mapped-snapshot"]},
+            active_snapshot_name="mapped-snapshot",
+        ),
+    )
+    monkeypatch.setattr(
+        sticky_service_module,
+        "resolve_snapshot_names_for_account",
+        lambda *, snapshot_index, account_id, chatgpt_account_id, email: snapshot_index.snapshots_by_account_id.get(
+            account_id,
+            [],
+        ),
+    )
+    monkeypatch.setattr(
+        sticky_service_module,
+        "read_live_codex_process_session_counts_by_snapshot",
+        lambda: {"mapped-snapshot": 1, "edixai": 3},
+    )
+    monkeypatch.setattr(
+        sticky_service_module,
+        "read_runtime_live_session_counts_by_snapshot",
+        lambda: {"edixai": 2},
+    )
+
+    response = await async_client.get("/api/sticky-sessions", params={"kind": "codex_session", "activeOnly": "true"})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["entries"] == []
+    assert payload["unmappedCliSessions"] == [
+        {
+            "snapshotName": "edixai",
+            "processSessionCount": 3,
+            "runtimeSessionCount": 2,
+            "totalSessionCount": 3,
+            "reason": "No account matched this snapshot.",
+        }
+    ]
 
 
 @pytest.mark.asyncio

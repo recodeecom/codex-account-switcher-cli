@@ -5,10 +5,17 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 import re
 
+from app.modules.accounts.codex_auth_switcher import (
+    build_snapshot_index,
+    resolve_snapshot_names_for_account,
+)
 from app.modules.accounts.codex_live_usage import (
     LocalCodexTaskPreview,
     read_local_codex_task_previews_by_session_id,
+    read_live_codex_process_session_counts_by_snapshot,
+    read_runtime_live_session_counts_by_snapshot,
 )
+from app.modules.accounts.repository import AccountsRepository
 from app.core.utils.time import to_utc_naive, utcnow
 from app.db.models import StickySessionKind
 from app.modules.proxy.sticky_repository import StickySessionListEntryRecord, StickySessionsRepository
@@ -36,9 +43,19 @@ class StickySessionEntryData:
 @dataclass(frozen=True, slots=True)
 class StickySessionListData:
     entries: list[StickySessionEntryData]
+    unmapped_cli_sessions: list["UnmappedCliSessionData"]
     stale_prompt_cache_count: int
     total: int
     has_more: bool
+
+
+@dataclass(frozen=True, slots=True)
+class UnmappedCliSessionData:
+    snapshot_name: str
+    process_session_count: int
+    runtime_session_count: int
+    total_session_count: int
+    reason: str
 
 
 class StickySessionsService:
@@ -46,9 +63,11 @@ class StickySessionsService:
         self,
         repository: StickySessionsRepository,
         settings_repository: SettingsRepository,
+        accounts_repository: AccountsRepository,
     ) -> None:
         self._repository = repository
         self._settings_repository = settings_repository
+        self._accounts_repository = accounts_repository
 
     async def list_entries(
         self,
@@ -64,9 +83,11 @@ class StickySessionsService:
         stale_cutoff = utcnow() - timedelta(seconds=ttl_seconds)
         active_cutoff = utcnow() - timedelta(seconds=_ACTIVE_SESSION_WINDOW_SECONDS) if active_only else None
         stale_prompt_cache_count = await self._count_stale_prompt_cache_entries(kind=kind, stale_cutoff=stale_cutoff)
+        unmapped_cli_sessions = await self._list_unmapped_cli_sessions()
         if stale_only and kind not in (None, StickySessionKind.PROMPT_CACHE):
             return StickySessionListData(
                 entries=[],
+                unmapped_cli_sessions=unmapped_cli_sessions,
                 stale_prompt_cache_count=stale_prompt_cache_count,
                 total=0,
                 has_more=False,
@@ -95,6 +116,7 @@ class StickySessionsService:
         ]
         return StickySessionListData(
             entries=entries,
+            unmapped_cli_sessions=unmapped_cli_sessions,
             stale_prompt_cache_count=stale_prompt_cache_count,
             total=total,
             has_more=offset + len(entries) < total,
@@ -159,6 +181,66 @@ class StickySessionsService:
         return await self._repository.count_entries(
             kind=StickySessionKind.PROMPT_CACHE,
             updated_before=stale_cutoff,
+        )
+
+    async def _list_unmapped_cli_sessions(self) -> list[UnmappedCliSessionData]:
+        process_counts_by_snapshot = read_live_codex_process_session_counts_by_snapshot()
+        runtime_counts_by_snapshot = read_runtime_live_session_counts_by_snapshot()
+        if not process_counts_by_snapshot and not runtime_counts_by_snapshot:
+            return []
+
+        snapshot_index = build_snapshot_index()
+        accounts = await self._accounts_repository.list_accounts()
+        mapped_snapshot_names: set[str] = set()
+        for account in accounts:
+            snapshot_names = resolve_snapshot_names_for_account(
+                snapshot_index=snapshot_index,
+                account_id=account.id,
+                chatgpt_account_id=account.chatgpt_account_id,
+                email=account.email,
+            )
+            mapped_snapshot_names.update(
+                snapshot_name.strip().lower()
+                for snapshot_name in snapshot_names
+                if snapshot_name.strip()
+            )
+
+        all_snapshot_names = (
+            set(process_counts_by_snapshot.keys())
+            | set(runtime_counts_by_snapshot.keys())
+        )
+        unmapped: list[UnmappedCliSessionData] = []
+        for snapshot_name in all_snapshot_names:
+            normalized_snapshot = snapshot_name.strip().lower()
+            if not normalized_snapshot:
+                continue
+
+            process_count = max(0, int(process_counts_by_snapshot.get(snapshot_name, 0)))
+            runtime_count = max(0, int(runtime_counts_by_snapshot.get(snapshot_name, 0)))
+            total_count = max(process_count, runtime_count)
+            if total_count <= 0:
+                continue
+            if normalized_snapshot in mapped_snapshot_names:
+                continue
+
+            unmapped.append(
+                UnmappedCliSessionData(
+                    snapshot_name=snapshot_name,
+                    process_session_count=process_count,
+                    runtime_session_count=runtime_count,
+                    total_session_count=total_count,
+                    reason="No account matched this snapshot.",
+                )
+            )
+
+        return sorted(
+            unmapped,
+            key=lambda item: (
+                -item.total_session_count,
+                -item.process_session_count,
+                -item.runtime_session_count,
+                item.snapshot_name,
+            ),
         )
 
 

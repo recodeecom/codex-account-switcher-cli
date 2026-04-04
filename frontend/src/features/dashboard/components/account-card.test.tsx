@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { AccountCard } from "@/features/dashboard/components/account-card";
 import { usePrivacyStore } from "@/hooks/use-privacy";
 import { createAccountSummary } from "@/test/mocks/factories";
+import { resetWorkingNowLimitHitStateForTests } from "@/utils/account-working";
 import { resetQuotaDisplayFloorCacheForTests } from "@/utils/quota-display";
 
 afterEach(() => {
@@ -12,6 +13,7 @@ afterEach(() => {
     usePrivacyStore.setState({ blurred: false });
   });
   resetQuotaDisplayFloorCacheForTests();
+  resetWorkingNowLimitHitStateForTests();
 });
 
 describe("AccountCard", () => {
@@ -112,7 +114,7 @@ describe("AccountCard", () => {
     expect(screen.queryByText("5h")).not.toBeInTheDocument();
   });
 
-  it("blurs the dashboard card title when privacy mode is enabled", () => {
+  it("keeps account title visible while blurring subtitle when privacy mode is enabled", () => {
     act(() => {
       usePrivacyStore.setState({ blurred: true });
     });
@@ -123,7 +125,12 @@ describe("AccountCard", () => {
 
     const { container } = render(<AccountCard account={account} />);
 
-    expect(screen.getByText("AWS Account MSP")).toBeInTheDocument();
+    const title = screen.getByText("AWS Account MSP");
+    const email = screen.getByText("aws-account@example.com");
+
+    expect(title).toBeInTheDocument();
+    expect(title.closest(".privacy-blur")).toBeNull();
+    expect(email.closest(".privacy-blur")).not.toBeNull();
     expect(container.querySelector(".privacy-blur")).not.toBeNull();
   });
 
@@ -596,6 +603,54 @@ describe("AccountCard", () => {
     expect(card?.className).toContain("border-red-500/40");
   });
 
+  it("auto-terminates CLI sessions once the usage-limit grace window expires", () => {
+    vi.useFakeTimers();
+    try {
+      const now = new Date("2026-04-05T00:00:00.000Z");
+      vi.setSystemTime(now);
+      const nowIso = now.toISOString();
+      const account = createAccountSummary({
+        status: "active",
+        usage: {
+          primaryRemainingPercent: 0,
+          secondaryRemainingPercent: 66,
+        },
+        codexLiveSessionCount: 1,
+        codexTrackedSessionCount: 1,
+        codexSessionCount: 1,
+        codexAuth: {
+          hasSnapshot: true,
+          snapshotName: "main",
+          activeSnapshotName: "main",
+          isActiveSnapshot: true,
+          hasLiveSession: true,
+        },
+        lastUsageRecordedAtPrimary: nowIso,
+        lastUsageRecordedAtSecondary: nowIso,
+      });
+      const onAction = vi.fn();
+
+      render(<AccountCard account={account} onAction={onAction} />);
+      expect(onAction).not.toHaveBeenCalledWith(account, "terminateCliSessions");
+
+      act(() => {
+        vi.advanceTimersByTime(61_000);
+      });
+      expect(onAction).toHaveBeenCalledWith(account, "terminateCliSessions");
+
+      act(() => {
+        vi.advanceTimersByTime(5_000);
+      });
+      const terminateCalls = onAction.mock.calls.filter(
+        ([calledAccount, action]) =>
+          calledAccount === account && action === "terminateCliSessions",
+      );
+      expect(terminateCalls).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("shows live-session fallback label when runtime sessions have no telemetry timestamps yet", () => {
     const account = createAccountSummary({
       usage: {
@@ -893,6 +948,37 @@ describe("AccountCard", () => {
 
     expect(screen.getByText("Current task")).toBeInTheDocument();
     expect(screen.getByText("No active task reported")).toBeInTheDocument();
+  });
+
+  it("hides stale current task preview after usage-limit grace expires", () => {
+    const staleRecordedAt = new Date(Date.now() - 90_000).toISOString();
+    const account = createAccountSummary({
+      status: "active",
+      codexCurrentTaskPreview: "Investigate codexina rollout session mapping",
+      usage: {
+        primaryRemainingPercent: 0,
+        secondaryRemainingPercent: 66,
+      },
+      codexLiveSessionCount: 1,
+      codexSessionCount: 1,
+      codexTrackedSessionCount: 1,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "codexina",
+        activeSnapshotName: "codexina",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+      lastUsageRecordedAtPrimary: staleRecordedAt,
+      lastUsageRecordedAtSecondary: staleRecordedAt,
+    });
+
+    render(<AccountCard account={account} />);
+
+    expect(screen.getByText("Current task")).toBeInTheDocument();
+    expect(screen.queryByText("Investigate codexina rollout session mapping")).not.toBeInTheDocument();
+    expect(screen.getByText("No active task reported")).toBeInTheDocument();
+    expect(screen.queryByText(/leaves in/i)).not.toBeInTheDocument();
   });
 
   it("hides working indicator when account snapshot is not active", () => {

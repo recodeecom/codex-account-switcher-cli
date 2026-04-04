@@ -26,6 +26,7 @@ from app.modules.accounts.schemas import (
     AccountRefreshAuthResponse,
     AccountReactivateResponse,
     AccountSnapshotRepairResponse,
+    AccountTerminateCliSessionsResponse,
     AccountsResponse,
     AccountTrendsResponse,
     AccountUseLocalResponse,
@@ -205,6 +206,24 @@ async def open_account_terminal(
         account_id=resolved_account_id,
         snapshot_name=resolved_snapshot_name,
     )
+
+
+@router.post(
+    "/{account_id}/terminate-cli-sessions",
+    response_model=AccountTerminateCliSessionsResponse,
+)
+async def terminate_account_cli_sessions(
+    account_id: str,
+    context: AccountsContext = Depends(get_accounts_context),
+) -> AccountTerminateCliSessionsResponse:
+    try:
+        result = await context.service.terminate_account_live_codex_sessions(account_id)
+    except CodexAuthSnapshotNotFoundError as exc:
+        raise DashboardBadRequestError(str(exc), code="codex_auth_snapshot_not_found") from exc
+
+    if result is None:
+        raise DashboardNotFoundError("Account not found", code="account_not_found")
+    return result
 
 
 @ws_router.websocket("/{account_id}/terminal/ws")

@@ -1,4 +1,4 @@
-- [ ] Update task preview overlay logic to support account-attributed mixed default-session sources.
-- [ ] Wire the updated overlay into both accounts list and dashboard overview services.
-- [ ] Add integration tests for `/api/accounts` and `/api/dashboard/overview` proving per-account preview coverage in mixed default-session mode.
-- [ ] Validate specs with `openspec validate --specs`.
+- [x] Update task preview overlay logic to support account-attributed mixed default-session sources.
+- [x] Wire the updated overlay into both accounts list and dashboard overview services.
+- [x] Add integration tests for `/api/accounts` and `/api/dashboard/overview` proving per-account preview coverage in mixed default-session mode.
+- [x] Validate specs with `openspec validate --specs`.

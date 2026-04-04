@@ -14,6 +14,7 @@ from app.modules.sticky_sessions.schemas import (
     StickySessionsListResponse,
     StickySessionsPurgeRequest,
     StickySessionsPurgeResponse,
+    UnmappedCliSessionResponse,
 )
 
 router = APIRouter(
@@ -55,6 +56,16 @@ async def list_sticky_sessions(
                 is_stale=entry.is_stale,
             )
             for entry in result.entries
+        ],
+        unmapped_cli_sessions=[
+            UnmappedCliSessionResponse(
+                snapshot_name=entry.snapshot_name,
+                process_session_count=entry.process_session_count,
+                runtime_session_count=entry.runtime_session_count,
+                total_session_count=entry.total_session_count,
+                reason=entry.reason,
+            )
+            for entry in result.unmapped_cli_sessions
         ],
         stale_prompt_cache_count=result.stale_prompt_cache_count,
         total=result.total,

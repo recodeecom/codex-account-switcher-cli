@@ -163,6 +163,13 @@ class AccountOpenTerminalResponse(DashboardModel):
     snapshot_name: str
 
 
+class AccountTerminateCliSessionsResponse(DashboardModel):
+    status: str
+    account_id: str
+    snapshot_name: str
+    terminated_session_count: int
+
+
 class AccountSnapshotRepairResponse(DashboardModel):
     status: str
     account_id: str

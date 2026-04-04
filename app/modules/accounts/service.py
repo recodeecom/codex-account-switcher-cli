@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import cast
 
 from pydantic import ValidationError
@@ -33,6 +33,7 @@ from app.modules.accounts.codex_auth_switcher import (
     switch_snapshot,
 )
 from app.modules.accounts.auth_manager import AuthManager
+from app.modules.accounts.codex_live_usage import terminate_live_codex_processes_for_snapshot
 from app.modules.accounts.live_usage_overrides import apply_local_live_usage_overrides
 from app.modules.accounts.live_usage_persistence import persist_live_usage_overrides
 from app.modules.accounts.mappers import build_account_summaries, build_account_usage_trends
@@ -46,6 +47,7 @@ from app.modules.accounts.schemas import (
     AccountImportResponse,
     AccountRefreshAuthResponse,
     AccountRequestUsage,
+    AccountTerminateCliSessionsResponse,
     AccountSummary,
     AccountTrendsResponse,
     AccountSnapshotRepairResponse,
@@ -305,6 +307,23 @@ class AccountsService:
             account_id=refreshed.id,
             email=refreshed.email,
             plan_type=refreshed.plan_type,
+        )
+
+    async def terminate_account_live_codex_sessions(
+        self,
+        account_id: str,
+    ) -> AccountTerminateCliSessionsResponse | None:
+        resolved = await self.resolve_account_snapshot(account_id)
+        if resolved is None:
+            return None
+
+        resolved_account_id, snapshot_name = resolved
+        terminated_session_count = terminate_live_codex_processes_for_snapshot(snapshot_name)
+        return AccountTerminateCliSessionsResponse(
+            status="terminated",
+            account_id=resolved_account_id,
+            snapshot_name=snapshot_name,
+            terminated_session_count=terminated_session_count,
         )
 
     async def repair_account_snapshot(

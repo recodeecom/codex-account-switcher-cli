@@ -23,8 +23,17 @@ class StickySessionEntryResponse(DashboardModel):
     is_stale: bool
 
 
+class UnmappedCliSessionResponse(DashboardModel):
+    snapshot_name: str
+    process_session_count: int = 0
+    runtime_session_count: int = 0
+    total_session_count: int = 0
+    reason: str = "No account matched this snapshot."
+
+
 class StickySessionsListResponse(DashboardModel):
     entries: list[StickySessionEntryResponse] = Field(default_factory=list)
+    unmapped_cli_sessions: list[UnmappedCliSessionResponse] = Field(default_factory=list)
     stale_prompt_cache_count: int = 0
     total: int = 0
     has_more: bool = False

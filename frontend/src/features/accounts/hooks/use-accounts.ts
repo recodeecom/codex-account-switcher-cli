@@ -8,6 +8,7 @@ import {
   openAccountTerminal,
   repairAccountSnapshot,
   refreshAccountAuth,
+  terminateAccountCliSessions,
   listAccounts,
   pauseAccount,
   reactivateAccount,
@@ -140,6 +141,20 @@ export function useAccountMutations() {
     },
   });
 
+  const terminateCliSessionsMutation = useMutation({
+    mutationFn: terminateAccountCliSessions,
+    onSuccess: (response) => {
+      const noun = response.terminatedSessionCount === 1 ? "session" : "sessions";
+      toast.success(
+        `Terminated ${response.terminatedSessionCount} CLI ${noun} for ${response.snapshotName}`,
+      );
+      void invalidateAccountRelatedQueries(queryClient);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Failed to terminate CLI sessions");
+    },
+  });
+
   const repairSnapshotMutation = useMutation({
     mutationFn: (params: { accountId: string; mode: "readd" | "rename" }) =>
       repairAccountSnapshot(params.accountId, params.mode),
@@ -164,6 +179,7 @@ export function useAccountMutations() {
     useLocalMutation,
     refreshAuthMutation,
     openTerminalMutation,
+    terminateCliSessionsMutation,
     repairSnapshotMutation,
   };
 }

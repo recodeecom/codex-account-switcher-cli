@@ -337,11 +337,45 @@ async def test_accounts_list_sets_current_task_preview_for_each_account_in_mixed
 
     get_settings.cache_clear()
 
+    initial_response = await async_client.get("/api/accounts")
+    assert initial_response.status_code == 200
+
+    work_account_id = generate_unique_account_id("acc_work", "work@example.com")
+    personal_account_id = generate_unique_account_id("acc_personal", "personal@example.com")
+    async with SessionLocal() as session:
+        usage_repo = UsageRepository(session)
+        await usage_repo.add_entry(
+            work_account_id,
+            20.0,
+            window="primary",
+            window_minutes=300,
+            recorded_at=work_ts,
+        )
+        await usage_repo.add_entry(
+            work_account_id,
+            30.0,
+            window="secondary",
+            window_minutes=10080,
+            recorded_at=work_ts,
+        )
+        await usage_repo.add_entry(
+            personal_account_id,
+            40.0,
+            window="primary",
+            window_minutes=300,
+            recorded_at=personal_ts,
+        )
+        await usage_repo.add_entry(
+            personal_account_id,
+            50.0,
+            window="secondary",
+            window_minutes=10080,
+            recorded_at=personal_ts,
+        )
+
     list_response = await async_client.get("/api/accounts")
     assert list_response.status_code == 200
     accounts = {item["accountId"]: item for item in list_response.json()["accounts"]}
-    work_account_id = generate_unique_account_id("acc_work", "work@example.com")
-    personal_account_id = generate_unique_account_id("acc_personal", "personal@example.com")
     assert (
         accounts[work_account_id]["codexCurrentTaskPreview"]
         == "Investigate work account fallback routing"
@@ -1719,3 +1753,94 @@ async def test_open_account_terminal_returns_launch_error(async_client, monkeypa
     open_response = await async_client.post(f"/api/accounts/{expected_account_id}/open-terminal")
     assert open_response.status_code == 400
     assert open_response.json()["error"]["code"] == "terminal_launch_failed"
+
+
+@pytest.mark.asyncio
+async def test_terminate_account_cli_sessions_terminates_snapshot_scoped_codex_sessions(
+    async_client, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    email = "terminate-sessions@example.com"
+    raw_account_id = "acc_terminate_sessions"
+    payload = {
+        "email": email,
+        "chatgpt_account_id": raw_account_id,
+        "https://api.openai.com/auth": {"chatgpt_plan_type": "plus"},
+    }
+    auth_json = {
+        "tokens": {
+            "idToken": _encode_jwt(payload),
+            "accessToken": "access",
+            "refreshToken": "refresh",
+            "accountId": raw_account_id,
+        },
+    }
+    expected_account_id = generate_unique_account_id(raw_account_id, email)
+    files = {"auth_json": ("auth.json", json.dumps(auth_json), "application/json")}
+    response = await async_client.post("/api/accounts/import", files=files)
+    assert response.status_code == 200
+
+    accounts_dir = tmp_path / "accounts"
+    accounts_dir.mkdir()
+    _write_auth_snapshot(accounts_dir / "work.json", email=email, account_id=raw_account_id)
+    monkeypatch.setenv("CODEX_AUTH_ACCOUNTS_DIR", str(accounts_dir))
+    monkeypatch.setenv("CODEX_AUTH_CURRENT_PATH", str(tmp_path / "current"))
+    monkeypatch.setenv("CODEX_AUTH_JSON_PATH", str(tmp_path / "auth.json"))
+
+    terminated_snapshots: list[str] = []
+    from app.modules.accounts import service as accounts_service
+
+    def _terminate_live_codex_processes_for_snapshot(snapshot_name: str) -> int:
+        terminated_snapshots.append(snapshot_name)
+        return 2
+
+    monkeypatch.setattr(
+        accounts_service,
+        "terminate_live_codex_processes_for_snapshot",
+        _terminate_live_codex_processes_for_snapshot,
+    )
+
+    terminate_response = await async_client.post(
+        f"/api/accounts/{expected_account_id}/terminate-cli-sessions"
+    )
+    assert terminate_response.status_code == 200
+    payload = terminate_response.json()
+    assert payload["status"] == "terminated"
+    assert payload["accountId"] == expected_account_id
+    assert payload["snapshotName"] == "work"
+    assert payload["terminatedSessionCount"] == 2
+    assert terminated_snapshots == ["work"]
+
+
+@pytest.mark.asyncio
+async def test_terminate_account_cli_sessions_returns_not_found_snapshot_error(
+    async_client, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    email = "terminate-missing-snapshot@example.com"
+    raw_account_id = "acc_terminate_missing_snapshot"
+    payload = {
+        "email": email,
+        "chatgpt_account_id": raw_account_id,
+        "https://api.openai.com/auth": {"chatgpt_plan_type": "plus"},
+    }
+    auth_json = {
+        "tokens": {
+            "idToken": _encode_jwt(payload),
+            "accessToken": "access",
+            "refreshToken": "refresh",
+            "accountId": raw_account_id,
+        },
+    }
+    expected_account_id = generate_unique_account_id(raw_account_id, email)
+    files = {"auth_json": ("auth.json", json.dumps(auth_json), "application/json")}
+    response = await async_client.post("/api/accounts/import", files=files)
+    assert response.status_code == 200
+
+    monkeypatch.setenv("CODEX_AUTH_ACCOUNTS_DIR", str(tmp_path / "accounts"))
+    monkeypatch.setenv("CODEX_AUTH_CURRENT_PATH", str(tmp_path / "current"))
+    monkeypatch.setenv("CODEX_AUTH_JSON_PATH", str(tmp_path / "auth.json"))
+
+    terminate_response = await async_client.post(
+        f"/api/accounts/{expected_account_id}/terminate-cli-sessions"
+    )
+    assert terminate_response.status_code == 400
+    assert terminate_response.json()["error"]["code"] == "codex_auth_snapshot_not_found"

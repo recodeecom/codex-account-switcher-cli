@@ -265,6 +265,54 @@ describe("AccountCards", () => {
     expect(screen.getByText("depleted-idle@example.com")).toBeInTheDocument();
   });
 
+  it("keeps no-live-telemetry accounts out of working-now when no scoped cli sessions were sampled", () => {
+    const account = createAccountSummary({
+      accountId: "acc_itrexsale",
+      email: "itrexsale@example.com",
+      displayName: "itrexsale@example.com",
+      codexLiveSessionCount: 0,
+      codexTrackedSessionCount: 0,
+      codexSessionCount: 0,
+      codexCurrentTaskPreview: "no cli sessions sampled",
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "itrexsale",
+        activeSnapshotName: "codexina",
+        isActiveSnapshot: false,
+        hasLiveSession: true,
+      },
+      lastUsageRecordedAtPrimary: null,
+      lastUsageRecordedAtSecondary: null,
+      liveQuotaDebug: {
+        snapshotsConsidered: ["itrexsale"],
+        overrideApplied: false,
+        overrideReason: "no_live_telemetry",
+        merged: null,
+        rawSamples: [
+          {
+            source: "/tmp/rollout-codexina.jsonl",
+            snapshotName: "codexina",
+            recordedAt: "2026-04-04T11:59:00.000Z",
+            stale: false,
+            primary: { usedPercent: 56, remainingPercent: 44, resetAt: 1760000000, windowMinutes: 300 },
+            secondary: { usedPercent: 40, remainingPercent: 60, resetAt: 1760600000, windowMinutes: 10080 },
+          },
+        ],
+      },
+    });
+
+    render(
+      <AccountCards
+        accounts={[account]}
+        primaryWindow={buildWindow("primary", "acc_itrexsale", 1000, 440)}
+        secondaryWindow={buildWindow("secondary", "acc_itrexsale", 1000, 600)}
+      />,
+    );
+
+    expect(screen.queryByRole("heading", { name: "Working now" })).not.toBeInTheDocument();
+    expect(screen.getByText("itrexsale@example.com")).toBeInTheDocument();
+  });
+
   it("uses secondary window remaining for weekly-only-account token balance", () => {
     const account = createAccountSummary({
       accountId: "acc_weekly",
@@ -638,6 +686,48 @@ describe("AccountCards", () => {
 
     expect(screen.queryByRole("heading", { name: "Working now" })).not.toBeInTheDocument();
     expect(screen.getByText("sampled@example.com")).toBeInTheDocument();
+  });
+
+  it("shows deferred mixed-session accounts in working-now when task preview is present", () => {
+    const sampled = createAccountSummary({
+      accountId: "acc_sampled_preview",
+      email: "sampled-preview@example.com",
+      displayName: "sampled-preview@example.com",
+      codexLiveSessionCount: 0,
+      codexTrackedSessionCount: 0,
+      codexSessionCount: 0,
+      codexCurrentTaskPreview: "Investigate runtime session start for edixai account",
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "viktor",
+        activeSnapshotName: "viktor",
+        isActiveSnapshot: true,
+        hasLiveSession: false,
+      },
+      lastUsageRecordedAtPrimary: null,
+      lastUsageRecordedAtSecondary: null,
+      liveQuotaDebug: {
+        snapshotsConsidered: ["viktor"],
+        overrideApplied: false,
+        overrideReason: "deferred_active_snapshot_mixed_default_sessions",
+        merged: null,
+        rawSamples: [
+          {
+            source: "/tmp/rollout-a.jsonl",
+            snapshotName: "viktor",
+            recordedAt: new Date().toISOString(),
+            stale: false,
+            primary: { usedPercent: 56, remainingPercent: 44, resetAt: 1760000000, windowMinutes: 300 },
+            secondary: { usedPercent: 32, remainingPercent: 68, resetAt: 1760600000, windowMinutes: 10080 },
+          },
+        ],
+      },
+    });
+
+    render(<AccountCards accounts={[sampled]} primaryWindow={null} secondaryWindow={null} />);
+
+    expect(screen.getByRole("heading", { name: "Working now" })).toBeInTheDocument();
+    expect(screen.getByText("sampled-preview@example.com")).toBeInTheDocument();
   });
 
   it("keeps disconnected accounts with debug-only telemetry out of working-now", () => {

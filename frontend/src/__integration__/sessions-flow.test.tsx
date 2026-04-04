@@ -88,6 +88,39 @@ describe("sessions flow integration", () => {
     expect(await screen.findByRole("heading", { name: "Sessions" })).toBeInTheDocument();
   });
 
+  it("shows unmapped cli sessions when sticky mappings are empty", async () => {
+    server.use(
+      http.get("/api/sticky-sessions", () =>
+        HttpResponse.json({
+          entries: [],
+          unmappedCliSessions: [
+            {
+              snapshotName: "edixai",
+              processSessionCount: 3,
+              runtimeSessionCount: 2,
+              totalSessionCount: 3,
+              reason: "No account matched this snapshot.",
+            },
+          ],
+          stalePromptCacheCount: 0,
+          total: 0,
+          hasMore: false,
+        }),
+      ),
+      http.get("/api/dashboard/overview", () =>
+        HttpResponse.json(createDashboardOverview({ accounts: [] })),
+      ),
+    );
+
+    window.history.pushState({}, "", "/sessions");
+    renderWithProviders(<App />);
+
+    expect(await screen.findByRole("heading", { name: "Sessions" })).toBeInTheDocument();
+    expect((await screen.findAllByText("Unmapped CLI sessions")).length).toBeGreaterThan(0);
+    expect(screen.getByText("edixai")).toBeInTheDocument();
+    expect(screen.getByText("No account matched this snapshot.")).toBeInTheDocument();
+  });
+
   it("fallback mode renders account-level live status, task preview, and recency from overview telemetry", async () => {
     const now = Date.now();
     server.use(

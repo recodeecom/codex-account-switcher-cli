@@ -8,7 +8,7 @@ import {
   RotateCcw,
   SquareTerminal,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { CopyButton } from "@/components/copy-button";
 import { usePrivacyStore } from "@/hooks/use-privacy";
@@ -56,6 +56,7 @@ type AccountAction =
   | "terminal"
   | "useLocal"
   | "sessions"
+  | "terminateCliSessions"
   | "repairSnapshotReadd"
   | "repairSnapshotRename";
 
@@ -541,6 +542,43 @@ export function AccountCard({
     hasRecentUsageSignal: recentUsageSignal,
     codexSessionCount: account.codexSessionCount,
   });
+  const autoTerminateSignature = [
+    account.accountId,
+    account.codexAuth?.snapshotName ?? "",
+    account.status,
+    String(account.codexLiveSessionCount ?? 0),
+    String(account.codexTrackedSessionCount ?? 0),
+    String(account.codexSessionCount ?? 0),
+    String(primaryRemaining ?? ""),
+    primaryLastRecordedAt ?? "",
+    secondaryLastRecordedAt ?? "",
+  ].join("|");
+  const lastAutoTerminateSignatureRef = useRef<string | null>(null);
+  useEffect(() => {
+    const shouldAutoTerminateLiveSessions =
+      usageLimitHit &&
+      usageLimitHitCountdownMs != null &&
+      usageLimitHitCountdownMs <= 0;
+
+    if (!shouldAutoTerminateLiveSessions) {
+      if (!usageLimitHit) {
+        lastAutoTerminateSignatureRef.current = null;
+      }
+      return;
+    }
+
+    if (lastAutoTerminateSignatureRef.current === autoTerminateSignature) {
+      return;
+    }
+    lastAutoTerminateSignatureRef.current = autoTerminateSignature;
+    onAction?.(account, "terminateCliSessions");
+  }, [
+    account,
+    autoTerminateSignature,
+    onAction,
+    usageLimitHit,
+    usageLimitHitCountdownMs,
+  ]);
 
   const primaryReset = formatQuotaResetLabel(primaryResetAt);
   const secondaryReset = formatQuotaResetLabel(secondaryResetAt);
@@ -585,17 +623,27 @@ export function AccountCard({
   const tokenMetricValue = isWorkingNow
     ? formatTokenUsagePrecise(tokenMetricValueRaw)
     : formatTokenUsageCompact(tokenMetricValueRaw);
-  const codexLiveSessionCount = hasLiveSession
-    ? Math.max(account.codexLiveSessionCount ?? 0, 1)
-    : Math.max(account.codexLiveSessionCount ?? 0, 0);
+  const hasRuntimeLiveSessionSignal =
+    hasLiveSession ||
+    (account.codexAuth?.hasLiveSession ?? false) ||
+    Math.max(account.codexLiveSessionCount ?? 0, 0) > 0;
+  const codexLiveSessionCount = hasActiveCliSession
+    ? hasRuntimeLiveSessionSignal
+      ? Math.max(account.codexLiveSessionCount ?? 0, 1)
+      : Math.max(account.codexLiveSessionCount ?? 0, 0)
+    : 0;
   const codexTrackedSessionCount = Math.max(
     account.codexTrackedSessionCount ?? 0,
     0,
   );
   const hasSessionInventory =
     codexLiveSessionCount > 0 || codexTrackedSessionCount > 0;
-  const codexCurrentTaskPreview =
-    account.codexCurrentTaskPreview?.trim() || null;
+  const usageLimitHitGraceExpired = Boolean(
+    usageLimitHit && usageLimitHitCountdownMs != null && usageLimitHitCountdownMs <= 0,
+  );
+  const codexCurrentTaskPreview = usageLimitHitGraceExpired
+    ? null
+    : account.codexCurrentTaskPreview?.trim() || null;
   const quotaDebugLogText = useMemo(
     () =>
       liveQuotaDebug
@@ -630,7 +678,7 @@ export function AccountCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold leading-tight">
-            {blurred ? <span className="privacy-blur">{title}</span> : title}
+            {title}
           </p>
           <p className="mt-0.5 truncate text-xs text-muted-foreground">
             {planWithSnapshot}
@@ -711,37 +759,39 @@ export function AccountCard({
         </div>
       </div>
 
-      <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.35fr)]">
-        <div className="min-w-0">
-          <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-            {tokenMetricLabel}
-          </p>
-          <p className="mt-0.5 flex items-center gap-1.5 text-sm font-semibold tabular-nums">
-            <span>{tokenMetricValue}</span>
-            {isWorkingNow ? (
-              <span className="inline-flex items-center gap-1 rounded-md border border-cyan-500/30 bg-cyan-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-700 dark:text-cyan-300">
-                live
-              </span>
-            ) : null}
-          </p>
-        </div>
-        <div className="min-w-0">
-          <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-            Codex CLI sessions
-          </p>
-          <p className="mt-0.5 text-xs font-semibold tabular-nums">
-            {codexLiveSessionCount}
-          </p>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">
-            Tracked: {codexTrackedSessionCount}
-          </p>
+      <div className="mt-3 grid gap-3 md:grid-cols-[minmax(10.75rem,0.85fr)_minmax(0,1.7fr)]">
+        <div className="min-w-0 space-y-2">
+          <div className="min-w-0">
+            <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+              {tokenMetricLabel}
+            </p>
+            <p className="mt-0.5 flex items-center gap-1.5 text-xs font-semibold tabular-nums">
+              <span>{tokenMetricValue}</span>
+              {isWorkingNow ? (
+                <span className="inline-flex items-center gap-1 rounded-md border border-cyan-500/30 bg-cyan-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-cyan-700 dark:text-cyan-300">
+                  live
+                </span>
+              ) : null}
+            </p>
+          </div>
+          <div className="min-w-0">
+            <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+              Codex CLI sessions
+            </p>
+            <p className="mt-0.5 text-xs font-semibold tabular-nums">
+              {codexLiveSessionCount}
+            </p>
+            <p className="mt-0.5 text-[10px] text-muted-foreground">
+              Tracked: {codexTrackedSessionCount}
+            </p>
+          </div>
         </div>
         <div className="min-w-0">
           <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
             Current task
           </p>
           <p
-            className="mt-0.5 truncate text-xs text-muted-foreground"
+            className="mt-0.5 break-words whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground"
             title={codexCurrentTaskPreview ?? undefined}
           >
             {codexCurrentTaskPreview ?? "No active task reported"}
