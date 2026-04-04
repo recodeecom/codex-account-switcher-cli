@@ -7,7 +7,7 @@ from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from app.modules.accounts.codex_auth_switcher import build_snapshot_index
 
@@ -17,6 +17,7 @@ _DEFAULT_SWITCH_PROCESS_FALLBACK_SECONDS = 60
 _TAIL_LINE_LIMIT = 400
 _FALLBACK_SCAN_LIMIT = 200
 _ROLLOUT_SESSION_PREFIX_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}$")
+_RESET_AT_MATCH_TOLERANCE_SECONDS = 30
 
 
 @dataclass(frozen=True)
@@ -55,6 +56,7 @@ def read_local_codex_live_usage_by_snapshot(*, now: datetime | None = None) -> d
         default_usage = _read_local_codex_live_usage_for_sessions_dir(
             sessions_dir=_resolve_sessions_dir(),
             now=current,
+            aggregation_mode="latest",
         )
         if default_usage is not None:
             usage_by_snapshot[active_snapshot_name] = default_usage
@@ -74,6 +76,7 @@ def read_local_codex_live_usage_by_snapshot(*, now: datetime | None = None) -> d
         runtime_usage = _read_local_codex_live_usage_for_sessions_dir(
             sessions_dir=runtime_dir / "sessions",
             now=current,
+            aggregation_mode="max_used",
         )
         if runtime_usage is None:
             continue
@@ -82,6 +85,28 @@ def read_local_codex_live_usage_by_snapshot(*, now: datetime | None = None) -> d
         usage_by_snapshot[snapshot_name] = _merge_live_usage(previous, runtime_usage)
 
     return usage_by_snapshot
+
+
+def read_live_codex_process_session_counts_by_snapshot() -> dict[str, int]:
+    proc_root = Path("/proc")
+    if not proc_root.exists() or not proc_root.is_dir():
+        return {}
+
+    default_current_path = _resolve_current_path()
+    default_auth_path = _resolve_auth_path()
+    counts: dict[str, int] = {}
+
+    for pid, _command in _iter_running_codex_commands(proc_root):
+        snapshot_name = _resolve_process_snapshot_name(
+            pid,
+            default_current_path=default_current_path,
+            default_auth_path=default_auth_path,
+        )
+        if not snapshot_name:
+            continue
+        counts[snapshot_name] = counts.get(snapshot_name, 0) + 1
+
+    return counts
 
 
 def has_recent_active_snapshot_process_fallback(*, now: datetime | None = None) -> bool:
@@ -95,6 +120,7 @@ def _read_local_codex_live_usage_for_sessions_dir(
     *,
     sessions_dir: Path,
     now: datetime,
+    aggregation_mode: Literal["latest", "max_used"] = "latest",
 ) -> LocalCodexLiveUsage | None:
     active_window_seconds = _active_window_seconds()
     if not sessions_dir.exists() or not sessions_dir.is_dir():
@@ -109,7 +135,13 @@ def _read_local_codex_live_usage_for_sessions_dir(
     if not active_files:
         return None
 
-    latest = _extract_latest_rate_limit_from_paths(_prefer_newest_sessions(active_files))
+    if aggregation_mode == "max_used":
+        latest = _extract_max_used_rate_limit_from_paths(
+            _prefer_newest_sessions(active_files),
+            now=now,
+        )
+    else:
+        latest = _extract_latest_rate_limit_from_paths(_prefer_newest_sessions(active_files))
     if latest is None:
         # A newly started session can be active before it emits its first token_count
         # event. In that case, fall back to the most recent known rate-limit payload
@@ -212,8 +244,22 @@ def _merge_live_usage(
     return LocalCodexLiveUsage(
         recorded_at=max(previous.recorded_at, current.recorded_at),
         active_session_count=max(0, previous.active_session_count) + max(0, current.active_session_count),
-        primary=preferred.primary if preferred.primary is not None else fallback.primary,
-        secondary=preferred.secondary if preferred.secondary is not None else fallback.secondary,
+        primary=_merge_usage_windows(
+            previous=preferred.primary,
+            current=fallback.primary,
+            preferred_recorded_at=preferred.recorded_at,
+            fallback_recorded_at=fallback.recorded_at,
+            now=max(previous.recorded_at, current.recorded_at),
+            prefer_max_used_within_cycle=True,
+        ),
+        secondary=_merge_usage_windows(
+            previous=preferred.secondary,
+            current=fallback.secondary,
+            preferred_recorded_at=preferred.recorded_at,
+            fallback_recorded_at=fallback.recorded_at,
+            now=max(previous.recorded_at, current.recorded_at),
+            prefer_max_used_within_cycle=True,
+        ),
     )
 
 
@@ -341,9 +387,89 @@ def _has_running_default_scope_codex_process() -> bool:
             default_auth_path=default_auth_path,
         ):
             continue
+        snapshot_name = _resolve_process_snapshot_name(
+            pid,
+            default_current_path=default_current_path,
+            default_auth_path=default_auth_path,
+        )
+        if not snapshot_name:
+            continue
         if command:
             return True
     return False
+
+
+def _resolve_process_snapshot_name(
+    pid: int,
+    *,
+    default_current_path: Path,
+    default_auth_path: Path,
+) -> str | None:
+    env = _read_process_env(pid)
+    if not env:
+        return None
+
+    explicit_snapshot = env.get("CODEX_AUTH_ACTIVE_SNAPSHOT", "").strip()
+    if explicit_snapshot:
+        return explicit_snapshot
+
+    current_override = _resolve_process_path(env.get("CODEX_AUTH_CURRENT_PATH"), pid)
+    auth_override = _resolve_process_path(env.get("CODEX_AUTH_JSON_PATH"), pid)
+    if not _has_runtime_scoped_auth_paths(
+        current_override=current_override,
+        auth_override=auth_override,
+        default_current_path=default_current_path,
+        default_auth_path=default_auth_path,
+    ):
+        return None
+
+    snapshot_from_current = _read_current_snapshot_name(current_override)
+    if snapshot_from_current:
+        return snapshot_from_current
+
+    return _infer_snapshot_name_from_auth_path(auth_override)
+
+
+def _has_runtime_scoped_auth_paths(
+    *,
+    current_override: Path | None,
+    auth_override: Path | None,
+    default_current_path: Path,
+    default_auth_path: Path,
+) -> bool:
+    if current_override is not None and current_override != default_current_path:
+        return True
+    if auth_override is not None and auth_override != default_auth_path:
+        return True
+    return False
+
+
+def _read_current_snapshot_name(current_path: Path | None) -> str | None:
+    if current_path is None or not current_path.exists() or not current_path.is_file():
+        return None
+    try:
+        value = current_path.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return None
+    return value or None
+
+
+def _infer_snapshot_name_from_auth_path(auth_path: Path | None) -> str | None:
+    if auth_path is None:
+        return None
+
+    candidate = auth_path
+    if candidate.is_symlink():
+        try:
+            candidate = candidate.resolve()
+        except OSError:
+            pass
+
+    if candidate.suffix != ".json":
+        return None
+    if candidate.name == "auth.json":
+        return None
+    return candidate.stem or None
 
 
 def _iter_running_codex_commands(proc_root: Path) -> list[tuple[int, list[str]]]:
@@ -484,6 +610,46 @@ def _extract_latest_rate_limit_from_paths(
     return None
 
 
+def _extract_max_used_rate_limit_from_paths(
+    paths: list[Path],
+    *,
+    now: datetime,
+) -> tuple[datetime, LocalUsageWindow | None, LocalUsageWindow | None] | None:
+    snapshots: list[tuple[datetime, LocalUsageWindow | None, LocalUsageWindow | None]] = []
+    for path in paths:
+        snapshot = _extract_latest_rate_limit_from_file(path)
+        if snapshot is not None:
+            snapshots.append(snapshot)
+
+    if not snapshots:
+        return None
+
+    snapshots.sort(key=lambda item: item[0], reverse=True)
+    latest_recorded_at = snapshots[0][0]
+    merged_primary: LocalUsageWindow | None = None
+    merged_secondary: LocalUsageWindow | None = None
+
+    for recorded_at, primary, secondary in snapshots:
+        merged_primary = _merge_usage_windows(
+            previous=merged_primary,
+            current=primary,
+            preferred_recorded_at=latest_recorded_at,
+            fallback_recorded_at=recorded_at,
+            now=now,
+            prefer_max_used_within_cycle=True,
+        )
+        merged_secondary = _merge_usage_windows(
+            previous=merged_secondary,
+            current=secondary,
+            preferred_recorded_at=latest_recorded_at,
+            fallback_recorded_at=recorded_at,
+            now=now,
+            prefer_max_used_within_cycle=True,
+        )
+
+    return latest_recorded_at, merged_primary, merged_secondary
+
+
 def _extract_latest_rate_limit_from_file(
     path: Path,
 ) -> tuple[datetime, LocalUsageWindow | None, LocalUsageWindow | None] | None:
@@ -576,6 +742,54 @@ def _window_from_payload(window: dict[str, Any] | None, timestamp: datetime) -> 
         reset_at=reset_at,
         window_minutes=window_minutes,
     )
+
+
+def _merge_usage_windows(
+    *,
+    previous: LocalUsageWindow | None,
+    current: LocalUsageWindow | None,
+    preferred_recorded_at: datetime,
+    fallback_recorded_at: datetime,
+    now: datetime,
+    prefer_max_used_within_cycle: bool,
+) -> LocalUsageWindow | None:
+    if previous is None:
+        return current
+    if current is None:
+        return previous
+
+    preferred_window = previous if preferred_recorded_at >= fallback_recorded_at else current
+    fallback_window = current if preferred_window is previous else previous
+    now_ts = int(now.timestamp())
+
+    preferred_reset = preferred_window.reset_at
+    fallback_reset = fallback_window.reset_at
+
+    if (
+        prefer_max_used_within_cycle
+        and preferred_reset is not None
+        and fallback_reset is not None
+    ):
+        preferred_is_current_cycle = preferred_reset > now_ts
+        fallback_is_current_cycle = fallback_reset > now_ts
+
+        if preferred_is_current_cycle and not fallback_is_current_cycle:
+            return preferred_window
+        if fallback_is_current_cycle and not preferred_is_current_cycle:
+            return fallback_window
+
+        same_cycle = abs(preferred_reset - fallback_reset) <= _RESET_AT_MATCH_TOLERANCE_SECONDS
+        same_window = (
+            preferred_window.window_minutes is not None
+            and fallback_window.window_minutes is not None
+            and preferred_window.window_minutes == fallback_window.window_minutes
+        )
+        if same_cycle or same_window:
+            if fallback_window.used_percent > preferred_window.used_percent:
+                return fallback_window
+            return preferred_window
+
+    return preferred_window
 
 
 def _parse_timestamp(value: Any) -> datetime | None:

@@ -702,12 +702,14 @@ async def test_dashboard_overview_matches_default_mixed_sessions_without_reset_t
     accounts = {item["accountId"]: item for item in payload["accounts"]}
 
     assert accounts[work_account_id]["codexAuth"]["hasLiveSession"] is True
+    assert accounts[work_account_id]["codexAuth"]["liveUsageConfidence"] == "high"
     assert accounts[work_account_id]["codexSessionCount"] == 1
     assert accounts[work_account_id]["usage"]["primaryRemainingPercent"] == pytest.approx(80.0)
     assert accounts[work_account_id]["usage"]["secondaryRemainingPercent"] == pytest.approx(70.0)
 
-    assert accounts[personal_account_id]["codexAuth"]["hasLiveSession"] is False
-    assert accounts[personal_account_id]["codexSessionCount"] == 0
+    assert accounts[personal_account_id]["codexAuth"]["hasLiveSession"] is True
+    assert accounts[personal_account_id]["codexAuth"]["liveUsageConfidence"] == "high"
+    assert accounts[personal_account_id]["codexSessionCount"] == 1
     assert accounts[personal_account_id]["usage"]["primaryRemainingPercent"] == pytest.approx(60.0)
     assert accounts[personal_account_id]["usage"]["secondaryRemainingPercent"] == pytest.approx(50.0)
 

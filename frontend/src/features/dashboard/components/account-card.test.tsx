@@ -22,6 +22,7 @@ describe("AccountCard", () => {
         cachedInputTokens: 0,
         totalCostUsd: 1.23,
       },
+      codexLiveSessionCount: 3,
       codexSessionCount: 3,
       codexAuth: {
         hasSnapshot: true,
@@ -335,6 +336,7 @@ describe("AccountCard", () => {
   it("shows live token and 5h status affordances for working accounts", () => {
     const nowIso = new Date().toISOString();
     const account = createAccountSummary({
+      codexLiveSessionCount: 1,
       codexSessionCount: 1,
       codexAuth: {
         hasSnapshot: true,
@@ -355,6 +357,7 @@ describe("AccountCard", () => {
 
   it("renders current task preview for working accounts when provided", () => {
     const account = createAccountSummary({
+      codexLiveSessionCount: 2,
       codexSessionCount: 2,
       codexCurrentTaskPreview: "Trace session-affinity fallback for codex websocket flow",
       codexAuth: {
@@ -410,7 +413,13 @@ describe("AccountCard", () => {
 
   it("does not show working indicator when only tracked codex sessions exist", () => {
     const account = createAccountSummary({
-      codexSessionCount: 2,
+      codexLiveSessionCount: 0,
+      codexTrackedSessionCount: 2,
+      codexSessionCount: 0,
+      usage: {
+        primaryRemainingPercent: 100,
+        secondaryRemainingPercent: 63,
+      },
       codexAuth: {
         hasSnapshot: true,
         snapshotName: "secondary",
@@ -423,6 +432,28 @@ describe("AccountCard", () => {
     render(<AccountCard account={account} />);
 
     expect(screen.queryByText("Working now")).not.toBeInTheDocument();
+    expect(screen.queryByText("Live token status")).not.toBeInTheDocument();
+    expect(screen.getByText("63%")).toBeInTheDocument();
+  });
+
+  it("keeps sessions action enabled for tracked-only accounts", () => {
+    const account = createAccountSummary({
+      codexLiveSessionCount: 0,
+      codexTrackedSessionCount: 2,
+      codexSessionCount: 0,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "secondary",
+        activeSnapshotName: "main",
+        isActiveSnapshot: false,
+        hasLiveSession: false,
+      },
+    });
+
+    render(<AccountCard account={account} />);
+
+    expect(screen.getByText("Tracked: 2")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sessions" })).toBeEnabled();
   });
 
   it("keeps card codex sessions at zero when only active snapshot is present without live telemetry", () => {

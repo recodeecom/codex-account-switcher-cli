@@ -7,6 +7,7 @@ Live quota percentages can oscillate upward on refresh when concurrent terminals
 - Add frontend quota-display stabilization that keeps the lowest observed remaining percent per account/window within the same reset cycle.
 - Reset the floor automatically when the window reset timestamp changes.
 - Apply stabilized values across dashboard cards and accounts list/detail views.
+- For runtime-profile session telemetry, aggregate concurrent session files per snapshot/window using the highest observed `used_percent` within the same active cycle (equivalent to lowest remaining).
 - Add test coverage for floor behavior and reset-cycle rollover.
 
 ## Impact

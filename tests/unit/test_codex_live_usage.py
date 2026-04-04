@@ -5,8 +5,11 @@ import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import pytest
+
 from app.modules.accounts.codex_live_usage import (
     has_recent_active_snapshot_process_fallback,
+    read_live_codex_process_session_counts_by_snapshot,
     read_local_codex_live_usage,
     read_local_codex_live_usage_samples,
     read_local_codex_live_usage_by_snapshot,
@@ -282,6 +285,48 @@ def test_read_local_codex_live_usage_by_snapshot_reads_multiple_runtime_profiles
     assert usage_by_snapshot["personal"].secondary.used_percent == 40.0
 
 
+def test_read_local_codex_live_usage_by_snapshot_runtime_prefers_highest_used_within_runtime(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    now = datetime.now(timezone.utc)
+    runtime_root = tmp_path / "runtimes"
+    monkeypatch.setenv("CODEX_AUTH_RUNTIME_ROOT", str(runtime_root))
+
+    accounts_dir = tmp_path / "accounts"
+    accounts_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("CODEX_AUTH_ACCOUNTS_DIR", str(accounts_dir))
+    monkeypatch.setenv("CODEX_AUTH_CURRENT_PATH", str(tmp_path / "current"))
+    monkeypatch.setenv("CODEX_AUTH_JSON_PATH", str(tmp_path / "auth.json"))
+
+    runtime = runtime_root / "terminal-work"
+    runtime.mkdir(parents=True, exist_ok=True)
+    (runtime / "current").write_text("work", encoding="utf-8")
+    day_dir = _sessions_day_dir(runtime / "sessions", now)
+    _write_rollout(
+        day_dir / "rollout-2026-04-03T16-13-25-older-session.jsonl",
+        timestamp=now - timedelta(seconds=12),
+        primary_used=95.0,
+        secondary_used=80.0,
+    )
+    _write_rollout(
+        day_dir / "rollout-2026-04-03T16-22-44-newer-session.jsonl",
+        timestamp=now - timedelta(seconds=6),
+        primary_used=12.0,
+        secondary_used=25.0,
+    )
+
+    usage_by_snapshot = read_local_codex_live_usage_by_snapshot(now=now)
+
+    assert set(usage_by_snapshot.keys()) == {"work"}
+    work_usage = usage_by_snapshot["work"]
+    assert work_usage.active_session_count == 2
+    assert work_usage.primary is not None
+    assert work_usage.secondary is not None
+    assert work_usage.primary.used_percent == 95.0
+    assert work_usage.secondary.used_percent == 80.0
+
+
 def test_read_local_codex_live_usage_by_snapshot_merges_same_snapshot_across_runtimes(
     monkeypatch,
     tmp_path: Path,
@@ -329,6 +374,53 @@ def test_read_local_codex_live_usage_by_snapshot_merges_same_snapshot_across_run
     assert merged.secondary.used_percent == 44.0
 
 
+def test_read_local_codex_live_usage_by_snapshot_merges_same_snapshot_with_max_used_floor(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    now = datetime.now(timezone.utc)
+    runtime_root = tmp_path / "runtimes"
+    monkeypatch.setenv("CODEX_AUTH_RUNTIME_ROOT", str(runtime_root))
+
+    accounts_dir = tmp_path / "accounts"
+    accounts_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("CODEX_AUTH_ACCOUNTS_DIR", str(accounts_dir))
+    monkeypatch.setenv("CODEX_AUTH_CURRENT_PATH", str(tmp_path / "current"))
+    monkeypatch.setenv("CODEX_AUTH_JSON_PATH", str(tmp_path / "auth.json"))
+
+    runtime_a = runtime_root / "terminal-a"
+    runtime_a.mkdir(parents=True, exist_ok=True)
+    (runtime_a / "current").write_text("work", encoding="utf-8")
+    day_dir_a = _sessions_day_dir(runtime_a / "sessions", now)
+    _write_rollout(
+        day_dir_a / "rollout-a.jsonl",
+        timestamp=now - timedelta(minutes=2),
+        primary_used=81.0,
+        secondary_used=66.0,
+    )
+
+    runtime_b = runtime_root / "terminal-b"
+    runtime_b.mkdir(parents=True, exist_ok=True)
+    (runtime_b / "current").write_text("work", encoding="utf-8")
+    day_dir_b = _sessions_day_dir(runtime_b / "sessions", now)
+    _write_rollout(
+        day_dir_b / "rollout-b.jsonl",
+        timestamp=now - timedelta(minutes=1),
+        primary_used=14.0,
+        secondary_used=22.0,
+    )
+
+    usage_by_snapshot = read_local_codex_live_usage_by_snapshot(now=now)
+
+    assert set(usage_by_snapshot.keys()) == {"work"}
+    merged = usage_by_snapshot["work"]
+    assert merged.active_session_count == 2
+    assert merged.primary is not None
+    assert merged.secondary is not None
+    assert merged.primary.used_percent == 81.0
+    assert merged.secondary.used_percent == 66.0
+
+
 def test_recent_active_snapshot_process_fallback_requires_recent_snapshot_switch(
     monkeypatch,
     tmp_path: Path,
@@ -347,3 +439,70 @@ def test_recent_active_snapshot_process_fallback_requires_recent_snapshot_switch
     stale = now - timedelta(minutes=10)
     os.utime(current_path, (stale.timestamp(), stale.timestamp()))
     assert has_recent_active_snapshot_process_fallback(now=now) is False
+
+
+def test_read_live_codex_process_session_counts_by_snapshot_uses_explicit_snapshot_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._iter_running_codex_commands",
+        lambda _proc_root: [(101, ["/usr/bin/codex", "model_instructions_file=agents"])],
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._read_process_env",
+        lambda _pid: {"CODEX_AUTH_ACTIVE_SNAPSHOT": "work"},
+    )
+
+    counts = read_live_codex_process_session_counts_by_snapshot()
+    assert counts == {"work": 1}
+
+
+def test_read_live_codex_process_session_counts_by_snapshot_uses_runtime_current_path(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    default_current = tmp_path / "default" / "current"
+    default_current.parent.mkdir(parents=True, exist_ok=True)
+    default_current.write_text("default", encoding="utf-8")
+    default_auth = tmp_path / "default" / "auth.json"
+    default_auth.parent.mkdir(parents=True, exist_ok=True)
+    default_auth.write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("CODEX_AUTH_CURRENT_PATH", str(default_current))
+    monkeypatch.setenv("CODEX_AUTH_JSON_PATH", str(default_auth))
+
+    runtime_current = tmp_path / "runtimes" / "terminal-b" / "current"
+    runtime_current.parent.mkdir(parents=True, exist_ok=True)
+    runtime_current.write_text("personal", encoding="utf-8")
+    runtime_auth = tmp_path / "runtimes" / "terminal-b" / "auth.json"
+    runtime_auth.write_text("{}", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._iter_running_codex_commands",
+        lambda _proc_root: [(202, ["/usr/bin/codex", "model_instructions_file=agents"])],
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._read_process_env",
+        lambda _pid: {
+            "CODEX_AUTH_CURRENT_PATH": str(runtime_current),
+            "CODEX_AUTH_JSON_PATH": str(runtime_auth),
+        },
+    )
+
+    counts = read_live_codex_process_session_counts_by_snapshot()
+    assert counts == {"personal": 1}
+
+
+def test_read_live_codex_process_session_counts_by_snapshot_ignores_unlabeled_processes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._iter_running_codex_commands",
+        lambda _proc_root: [(303, ["/usr/bin/codex", "model_instructions_file=agents"])],
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._read_process_env",
+        lambda _pid: {},
+    )
+
+    counts = read_live_codex_process_session_counts_by_snapshot()
+    assert counts == {}

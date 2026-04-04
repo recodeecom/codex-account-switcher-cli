@@ -284,7 +284,7 @@ export function AccountCard({
     ? formatTokenUsagePrecise(totalTokensUsed)
     : formatTokenUsageCompact(totalTokensUsed);
   const codexLiveSessionCount = hasLiveSession
-    ? Math.max(account.codexLiveSessionCount ?? account.codexSessionCount ?? 0, 1)
+    ? Math.max(account.codexLiveSessionCount ?? 0, 1)
     : 0;
   const codexTrackedSessionCount = Math.max(account.codexTrackedSessionCount ?? 0, 0);
   const hasSessionInventory = codexLiveSessionCount > 0 || codexTrackedSessionCount > 0;

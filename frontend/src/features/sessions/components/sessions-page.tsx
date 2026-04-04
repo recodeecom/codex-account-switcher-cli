@@ -142,7 +142,7 @@ export function SessionsPage() {
         const codexSessionCount = Math.max(account.codexTrackedSessionCount ?? 0, 0);
         const hasLiveSession = Boolean(
           account.codexAuth?.hasLiveSession
-            ?? (account.codexLiveSessionCount ?? account.codexSessionCount ?? 0) > 0,
+            ?? (account.codexLiveSessionCount ?? 0) > 0,
         );
         const progress = resolveProgressDisplay(
           hasLiveSession,

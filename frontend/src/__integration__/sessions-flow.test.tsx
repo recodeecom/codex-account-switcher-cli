@@ -108,7 +108,9 @@ describe("sessions flow integration", () => {
                 accountId: "acc_zeus",
                 email: "zeus@example.com",
                 displayName: "zeus@example.com",
-                codexSessionCount: 6,
+                codexLiveSessionCount: 0,
+                codexTrackedSessionCount: 6,
+                codexSessionCount: 0,
                 codexCurrentTaskPreview: "Prepare release checklist for Zeus account",
                 lastUsageRecordedAtPrimary: new Date(now - 30 * 60_000).toISOString(),
                 lastUsageRecordedAtSecondary: new Date(now - 2 * 60 * 60_000).toISOString(),
@@ -139,7 +141,7 @@ describe("sessions flow integration", () => {
     expect(screen.getAllByText("6").length).toBeGreaterThan(0);
   });
 
-  it("fallback counters include runtime-live accounts even when persisted session count is zero", async () => {
+  it("fallback counters use tracked inventory while live badge follows live status", async () => {
     server.use(
       http.get("/api/sticky-sessions", () =>
         HttpResponse.json({
@@ -157,6 +159,8 @@ describe("sessions flow integration", () => {
                 accountId: "acc_runtime",
                 email: "runtime@example.com",
                 displayName: "runtime@example.com",
+                codexLiveSessionCount: 0,
+                codexTrackedSessionCount: 1,
                 codexSessionCount: 0,
                 codexAuth: {
                   hasSnapshot: true,
@@ -165,6 +169,7 @@ describe("sessions flow integration", () => {
                   isActiveSnapshot: false,
                   hasLiveSession: true,
                 },
+                lastUsageRecordedAtPrimary: new Date().toISOString(),
               }),
             ],
           }),
@@ -180,6 +185,7 @@ describe("sessions flow integration", () => {
     expect(screen.getByText("runtime@example.com")).toBeInTheDocument();
     expect(screen.getByText("Live")).toBeInTheDocument();
     expect(screen.getByText("Up to date")).toBeInTheDocument();
+    expect(screen.getByText("1 tracked session")).toBeInTheDocument();
     expect(screen.getAllByText("1").length).toBeGreaterThan(0);
   });
 
@@ -201,7 +207,9 @@ describe("sessions flow integration", () => {
                 accountId: "acc_pending",
                 email: "pending@example.com",
                 displayName: "pending@example.com",
-                codexSessionCount: 2,
+                codexLiveSessionCount: 0,
+                codexTrackedSessionCount: 2,
+                codexSessionCount: 0,
                 codexCurrentTaskPreview: null,
                 lastUsageRecordedAtPrimary: null,
                 lastUsageRecordedAtSecondary: null,

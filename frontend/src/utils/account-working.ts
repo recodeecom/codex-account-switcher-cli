@@ -23,16 +23,12 @@ export function hasFreshLiveTelemetry(
     AccountSummary,
     | "codexAuth"
     | "codexLiveSessionCount"
-    | "codexSessionCount"
     | "lastUsageRecordedAtPrimary"
     | "lastUsageRecordedAtSecondary"
   >,
   nowMs: number = Date.now(),
 ): boolean {
-  const liveSessionCount = Math.max(
-    account.codexLiveSessionCount ?? account.codexSessionCount ?? 0,
-    0,
-  );
+  const liveSessionCount = Math.max(account.codexLiveSessionCount ?? 0, 0);
   if (liveSessionCount > 0) {
     return true;
   }
@@ -52,7 +48,6 @@ export function isAccountWorkingNow(
     AccountSummary,
     | "codexAuth"
     | "codexLiveSessionCount"
-    | "codexSessionCount"
     | "lastUsageRecordedAtPrimary"
     | "lastUsageRecordedAtSecondary"
   >,

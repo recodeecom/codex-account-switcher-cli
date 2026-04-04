@@ -115,7 +115,7 @@ export function AccountCards({
       if (!hasFreshLiveTelemetry(account)) {
         return sum;
       }
-      return sum + Math.max(account.codexLiveSessionCount ?? account.codexSessionCount ?? 0, 1);
+      return sum + Math.max(account.codexLiveSessionCount ?? 0, 1);
     }, 0);
 
     return {

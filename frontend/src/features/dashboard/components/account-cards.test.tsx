@@ -47,6 +47,7 @@ describe("AccountCards", () => {
       accountId: "acc_working",
       email: "working@example.com",
       displayName: "working@example.com",
+      codexLiveSessionCount: 2,
       codexSessionCount: 2,
       codexAuth: {
         hasSnapshot: true,
@@ -116,6 +117,7 @@ describe("AccountCards", () => {
       accountId: "acc_working",
       email: "working@example.com",
       displayName: "working@example.com",
+      codexLiveSessionCount: 1,
       codexSessionCount: 1,
       codexAuth: {
         hasSnapshot: true,
@@ -151,6 +153,7 @@ describe("AccountCards", () => {
         secondaryRemainingPercent: 88,
       },
       resetAtPrimary: new Date(Date.now() - 60_000).toISOString(),
+      codexLiveSessionCount: 1,
       codexSessionCount: 1,
       codexAuth: {
         hasSnapshot: true,
