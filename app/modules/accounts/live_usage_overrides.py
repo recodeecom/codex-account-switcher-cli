@@ -196,18 +196,6 @@ def apply_local_live_usage_overrides(
             or has_live_runtime_session
             or has_deferred_default_scope_session_hint
         )
-        if (
-            not codex_auth_status.has_live_session
-            and should_defer_active_snapshot_usage
-            and is_effective_active_snapshot
-            and has_live_telemetry
-            and not deferred_default_scope_session_hints_by_account
-            and any(live_usage_samples_by_snapshot.get(name) for name in snapshots_considered)
-        ):
-            # In strict deferred mode, keep active-snapshot session presence
-            # visible when default-scope telemetry exists, even if per-account
-            # attribution is still unresolved.
-            codex_auth_status.has_live_session = True
         account_id = account.id
         override_reason: str | None = None
         override_applied = False

@@ -386,6 +386,7 @@ export function AccountCard({
   }, []);
 
   const [showQuotaDebug, setShowQuotaDebug] = useState(false);
+  const [showUsageDetails, setShowUsageDetails] = useState(false);
   const liveQuotaDebug = account.liveQuotaDebug ?? null;
   const mergedPrimaryRemainingPercent = getMergedQuotaRemainingPercent(
     account,
@@ -672,31 +673,69 @@ export function AccountCard({
         </div>
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-2.5 rounded-lg border border-border/60 bg-background/35 px-2.5 py-2.5">
-        <div>
-          <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-            {tokenMetricLabel}
+      <div className="mt-3 rounded-lg border border-border/60 bg-background/35 px-2.5 py-2">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            Usage details
           </p>
-          <p className="mt-0.5 flex items-center gap-1.5 text-sm font-semibold tabular-nums">
-            <span>{tokenMetricValue}</span>
-            {isWorkingNow ? (
-              <span className="inline-flex items-center gap-1 rounded-md border border-cyan-500/30 bg-cyan-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-700 dark:text-cyan-300">
-                live
-              </span>
-            ) : null}
-          </p>
+          <button
+            type="button"
+            className="inline-flex items-center gap-1 rounded-md border border-cyan-500/25 bg-cyan-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-700/90 transition-colors hover:bg-cyan-500/15 hover:text-cyan-800 dark:text-cyan-200/90 dark:hover:text-cyan-100"
+            aria-expanded={showUsageDetails}
+            aria-label={showUsageDetails ? "Hide usage details" : "Show usage details"}
+            onClick={() => setShowUsageDetails((current) => !current)}
+          >
+            {showUsageDetails ? "Hide details" : "Show details"}
+            <ChevronDown
+              className={cn(
+                "h-3 w-3 transition-transform duration-200",
+                showUsageDetails && "rotate-180",
+              )}
+            />
+          </button>
         </div>
-        <div>
-          <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-            Codex CLI sessions
-          </p>
-          <p className="mt-0.5 text-xs font-semibold tabular-nums">
-            {codexLiveSessionCount}
-          </p>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">
-            Tracked: {codexTrackedSessionCount}
-          </p>
+        <div
+          className={cn(
+            "grid transition-[grid-template-rows,opacity,margin] duration-200",
+            showUsageDetails
+              ? "mt-2 grid-rows-[1fr] opacity-100"
+              : "mt-1 grid-rows-[0fr] opacity-85",
+          )}
+        >
+          <div className="overflow-hidden">
+            <div className="grid grid-cols-2 gap-2.5 rounded-lg border border-border/55 bg-background/25 px-2.5 py-2.5">
+              <div>
+                <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                  {tokenMetricLabel}
+                </p>
+                <p className="mt-0.5 flex items-center gap-1.5 text-sm font-semibold tabular-nums">
+                  <span>{tokenMetricValue}</span>
+                  {isWorkingNow ? (
+                    <span className="inline-flex items-center gap-1 rounded-md border border-cyan-500/30 bg-cyan-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-700 dark:text-cyan-300">
+                      live
+                    </span>
+                  ) : null}
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Codex CLI sessions
+                </p>
+                <p className="mt-0.5 text-xs font-semibold tabular-nums">
+                  {codexLiveSessionCount}
+                </p>
+                <p className="mt-0.5 text-[11px] text-muted-foreground">
+                  Tracked: {codexTrackedSessionCount}
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
+        {!showUsageDetails ? (
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Showing live usage bars only.
+          </p>
+        ) : null}
       </div>
 
       {isWorkingNow && codexCurrentTaskPreview ? (
@@ -783,9 +822,21 @@ export function AccountCard({
                   <CopyButton value={quotaDebugLogText} label="Copy logs" />
                 </div>
               </div>
-              <pre className="max-h-56 overflow-y-auto rounded-md border border-cyan-500/20 bg-[#020812] p-2.5 font-mono text-[11px] leading-5 text-cyan-100">
-                <code>{quotaDebugLogText}</code>
-              </pre>
+              <div className="rounded-md border border-cyan-500/20 bg-[#020812] p-1.5">
+                <ol className="max-h-56 overflow-y-auto font-mono text-[11px] leading-5 text-cyan-100">
+                  {quotaDebugLogText.split("\n").map((line, index) => (
+                    <li
+                      key={`${account.accountId}-debug-line-${index}`}
+                      className="grid grid-cols-[2.2rem_minmax(0,1fr)] gap-2 rounded-sm px-1.5 even:bg-cyan-500/[0.06]"
+                    >
+                      <span className="select-none text-right text-cyan-400/55">
+                        {String(index + 1).padStart(2, "0")}
+                      </span>
+                      <span className="break-all">{line}</span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
             </div>
           ) : null}
         </div>

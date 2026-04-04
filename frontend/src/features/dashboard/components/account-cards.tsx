@@ -390,7 +390,7 @@ export function AccountCards({
   }
 
   const renderGrid = (items: AccountSummary[], keyPrefix: string) => (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-2 2xl:grid-cols-3">
       {items.map((account, index) => (
         <div
           key={`${keyPrefix}-${account.accountId}`}
@@ -433,7 +433,7 @@ export function AccountCards({
 
   return (
     <div className="space-y-5">
-      <section className="space-y-4 rounded-2xl border border-cyan-500/25 bg-cyan-500/[0.04] p-4 md:p-5">
+      <section className="space-y-4 rounded-2xl border border-cyan-500/25 bg-cyan-500/[0.04] p-4 md:p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-1">
             <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-cyan-700 dark:text-cyan-300">

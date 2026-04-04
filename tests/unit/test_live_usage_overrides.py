@@ -2926,10 +2926,9 @@ def test_apply_local_live_usage_overrides_keeps_baseline_for_ambiguous_deferred_
 
     assert primary_usage[account.id].used_percent == pytest.approx(55.0)
     assert secondary_usage[account.id].used_percent == pytest.approx(55.0)
-    # In strict deferred mode, keep active-snapshot session presence visible
-    # when default-scope telemetry exists, even if per-account attribution is
-    # unresolved.
-    assert codex_auth_by_account[account.id].has_live_session is True
+    # In strict deferred mode, unresolved mixed default-scope samples should
+    # not auto-mark the active snapshot as live.
+    assert codex_auth_by_account[account.id].has_live_session is False
     assert codex_auth_by_account[other.id].has_live_session is False
     debug = debug_by_account[account.id]
     assert debug.override_applied is False
