@@ -77,6 +77,29 @@ describe("isAccountWorkingNow", () => {
     expect(isAccountWorkingNow(account, new Date("2026-04-04T12:00:00.000Z").getTime())).toBe(false);
   });
 
+  it("returns false when 5h rounds down to 0% even if live session telemetry is present", () => {
+    const account = createAccountSummary({
+      usage: {
+        primaryRemainingPercent: 0.4,
+        secondaryRemainingPercent: 88,
+      },
+      codexLiveSessionCount: 1,
+      codexTrackedSessionCount: 1,
+      codexSessionCount: 1,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+      lastUsageRecordedAtPrimary: "2026-04-04T11:59:00.000Z",
+      lastUsageRecordedAtSecondary: "2026-04-04T11:59:00.000Z",
+    });
+
+    expect(isAccountWorkingNow(account, new Date("2026-04-04T12:00:00.000Z").getTime())).toBe(false);
+  });
+
   it("returns true when compatibility codexSessionCount is present", () => {
     const account = createAccountSummary({
       codexLiveSessionCount: 0,

@@ -142,7 +142,7 @@ describe("AccountCards", () => {
     expect(screen.queryByText(/5h avg \d+%/i)).not.toBeInTheDocument();
   });
 
-  it("keeps working primary avg from reported values when primary reset is already past", () => {
+  it("does not keep accounts in working-now when primary rounds to 0%", () => {
     const nowIso = new Date().toISOString();
     const working = createAccountSummary({
       accountId: "acc_reset",
@@ -174,8 +174,9 @@ describe("AccountCards", () => {
       />,
     );
 
-    expect(screen.getByText("5h avg 0%")).toBeInTheDocument();
-    expect(screen.getByText("Weekly avg 88%")).toBeInTheDocument();
+    expect(screen.queryByText("Working now")).not.toBeInTheDocument();
+    expect(screen.queryByText("5h avg 0%")).not.toBeInTheDocument();
+    expect(screen.queryByText("Weekly avg 88%")).not.toBeInTheDocument();
   });
 
   it("uses secondary window consumption for weekly-only-account tokens used", () => {

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Activity, ArrowRightLeft, Tag } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 
+import { fetchRuntimeAppVersion } from "@/components/layout/app-version";
 import { getDashboardOverview } from "@/features/dashboard/api";
 import { getSettings } from "@/features/settings/api";
 import { formatTimeLong } from "@/utils/formatters";
@@ -35,6 +36,13 @@ export function StatusBar() {
     queryKey: ["settings", "detail"],
     queryFn: getSettings,
   });
+  const { data: runtimeVersion } = useQuery({
+    queryKey: ["app", "runtime-version"],
+    queryFn: () => fetchRuntimeAppVersion(),
+    staleTime: 60_000,
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
+  });
   const lastSync = formatTimeLong(lastSyncAt);
   const [isLive, setIsLive] = useState(false);
   useEffect(() => {
@@ -49,6 +57,10 @@ export function StatusBar() {
   const routingLabel = settings
     ? getRoutingLabel(settings.routingStrategy, settings.stickyThreadsEnabled, settings.preferEarlierResetAccounts)
     : "—";
+  const displayVersion =
+    typeof runtimeVersion === "string" && runtimeVersion.trim().length > 0
+      ? runtimeVersion
+      : __APP_VERSION__;
 
   return (
     <footer className="fixed bottom-0 left-0 right-0 z-50 border-t border-white/[0.08] bg-background/50 px-4 py-2 shadow-[0_-1px_12px_rgba(0,0,0,0.06)] backdrop-blur-xl backdrop-saturate-[1.8] supports-[backdrop-filter]:bg-background/40 dark:shadow-[0_-1px_12px_rgba(0,0,0,0.25)]">
@@ -67,7 +79,7 @@ export function StatusBar() {
         </span>
         <span className="inline-flex items-center gap-1.5">
           <Tag className="h-3 w-3" aria-hidden="true" />
-          <span className="font-medium">Version:</span> {__APP_VERSION__}
+          <span className="font-medium">Version:</span> {displayVersion}
         </span>
       </div>
     </footer>

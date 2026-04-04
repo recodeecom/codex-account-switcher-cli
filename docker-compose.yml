@@ -46,19 +46,18 @@ services:
         CMD ["bun", "run", "dev", "--host", "0.0.0.0"]
     ports:
       - "5173:5173"
+    command:
+      - sh
+      - -c
+      - bun install --frozen-lockfile && (bun run build --watch &) && bun run dev --host 0.0.0.0
     environment:
       API_PROXY_TARGET: http://server:2455
-    develop:
-      watch:
-        - action: sync
-          path: ./frontend
-          target: /app
-          ignore:
-            - node_modules/
-        - action: rebuild
-          path: ./frontend/package.json
-        - action: rebuild
-          path: ./frontend/bun.lock
+      CHOKIDAR_USEPOLLING: "true"
+      CHOKIDAR_INTERVAL: "100"
+    volumes:
+      - ./frontend:/app:rw
+      - ./app/static:/app/static:rw
+      - codex-lb-frontend-node-modules:/app/node_modules
 
   postgres:
     image: postgres:16-alpine
@@ -83,3 +82,5 @@ volumes:
     name: codex-lb-data
   codex-lb-postgres-data:
     name: codex-lb-postgres-data
+  codex-lb-frontend-node-modules:
+    name: codex-lb-frontend-node-modules

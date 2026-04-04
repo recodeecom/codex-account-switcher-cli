@@ -121,9 +121,13 @@ export function isAccountWorkingNow(
       ? mergedPrimaryRemaining
       : account.usage?.primaryRemainingPercent ?? null;
 
-  // If the 5h window is fully depleted, the account should not stay in
-  // "Working now" even when stale tracked/session telemetry lingers.
-  if (typeof primaryRemaining === "number" && primaryRemaining <= 0) {
+  // Keep the grouping logic aligned with the UI percent label (rounded).
+  // When the 5h budget renders as 0%, the account should not stay in
+  // "Working now" even if session telemetry is still present.
+  if (
+    typeof primaryRemaining === "number" &&
+    Math.round(Math.max(0, primaryRemaining)) <= 0
+  ) {
     return false;
   }
 
