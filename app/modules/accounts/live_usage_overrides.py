@@ -94,7 +94,7 @@ def apply_local_live_usage_overrides(
     )
     (
         debug_raw_samples_by_account,
-        _confident_raw_samples_by_account,
+        confident_raw_samples_by_account,
     ) = _build_default_sample_debug_overrides(
         accounts=accounts,
         snapshot_index=snapshot_index,
@@ -160,6 +160,7 @@ def apply_local_live_usage_overrides(
         override_reason: str | None = None
         override_applied = False
         raw_samples_override = debug_raw_samples_by_account.get(account_id)
+        confident_raw_samples_override = confident_raw_samples_by_account.get(account_id)
 
         if has_live_process_session or has_live_runtime_session:
             codex_live_session_counts_by_account[account_id] = max(
@@ -240,12 +241,41 @@ def apply_local_live_usage_overrides(
                     else "deferred_active_snapshot_mixed_default_sessions"
                 )
             else:
-                # After a manual "Use this account" switch, default-session
-                # samples can still contain mixed fingerprints from another
-                # snapshot. For active accounts we keep baseline 5h/weekly
-                # windows until process-scoped attribution is available.
-                override_applied = False
-                override_reason = "deferred_active_snapshot_mixed_default_sessions"
+                (
+                    applied_confident_sample_override,
+                    confident_sample_live_usage,
+                ) = _apply_deferred_confident_sample_override(
+                    account_id=account_id,
+                    raw_samples_override=confident_raw_samples_override,
+                    primary_usage=primary_usage,
+                    secondary_usage=secondary_usage,
+                    persist_candidates=persist_candidates,
+                )
+                if applied_confident_sample_override:
+                    override_applied = True
+                    override_reason = "deferred_active_snapshot_confident_sample_override"
+                    if confident_sample_live_usage is not None:
+                        debug_live_usage = confident_sample_live_usage
+                else:
+                    (
+                        applied_sample_floor_override,
+                        sample_floor_live_usage,
+                    ) = _apply_deferred_sample_floor_override(
+                        account_id=account_id,
+                        snapshots_considered=snapshots_considered,
+                        live_usage_samples_by_snapshot=live_usage_samples_by_snapshot,
+                        primary_usage=primary_usage,
+                        secondary_usage=secondary_usage,
+                        persist_candidates=persist_candidates,
+                    )
+                    if applied_sample_floor_override:
+                        override_applied = True
+                        override_reason = "deferred_active_snapshot_sample_floor_override"
+                        if sample_floor_live_usage is not None:
+                            debug_live_usage = sample_floor_live_usage
+                    else:
+                        override_applied = False
+                        override_reason = "deferred_active_snapshot_mixed_default_sessions"
             _set_live_quota_debug(
                 account_id=account_id,
                 snapshots_considered=snapshots_considered,
@@ -351,6 +381,7 @@ def apply_local_live_usage_overrides(
             primary_usage=primary_usage,
             secondary_usage=secondary_usage,
             codex_session_counts_by_account=codex_live_session_counts_by_account,
+            allow_quota_override=not should_defer_active_snapshot_usage,
         )
     return _coalesce_persist_candidates(persist_candidates)
 
@@ -984,6 +1015,7 @@ def _apply_local_default_session_fingerprint_overrides(
     primary_usage: dict[str, UsageHistory],
     secondary_usage: dict[str, UsageHistory],
     codex_session_counts_by_account: dict[str, int],
+    allow_quota_override: bool = True,
 ) -> None:
     active_snapshot_name = snapshot_index.active_snapshot_name
     if not active_snapshot_name:
@@ -1083,7 +1115,7 @@ def _apply_local_default_session_fingerprint_overrides(
         if latest_attribution is None:
             continue
 
-        if not latest_attribution.match.allows_quota_override:
+        if not allow_quota_override or not latest_attribution.match.allows_quota_override:
             # Ambiguous or presence-only attribution still contributes to
             # live/session recall, but quota windows remain conservative.
             continue

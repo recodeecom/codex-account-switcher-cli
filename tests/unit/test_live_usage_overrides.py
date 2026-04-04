@@ -1413,7 +1413,7 @@ def test_apply_local_live_usage_overrides_keeps_cached_source_ownership_across_s
     assert [sample.source for sample in amodeus_debug.raw_samples] == ["rollout-amodeus.jsonl"]
 
 
-def test_apply_local_live_usage_overrides_applies_confident_deferred_sample_override_for_active_snapshot(
+def test_apply_local_live_usage_overrides_keeps_baseline_for_active_snapshot_when_deferred_samples_exist(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     amodeus = _make_account("acc-amodeus", "amodeus@example.com")
