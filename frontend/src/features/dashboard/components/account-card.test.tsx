@@ -60,6 +60,25 @@ describe("AccountCard", () => {
     expect(screen.getByText("Weekly")).toBeInTheDocument();
   });
 
+  it("renders zero token usage without a k suffix", () => {
+    const account = createAccountSummary({
+      requestUsage: {
+        requestCount: 0,
+        totalTokens: 0,
+        cachedInputTokens: 0,
+        totalCostUsd: 0,
+      },
+    });
+
+    render(<AccountCard account={account} />);
+
+    const tokensLabel = screen.getByText("Tokens used");
+    const tokensValue = tokensLabel.parentElement?.querySelector("p.mt-0\\.5 > span");
+    expect(tokensValue).not.toBeNull();
+    expect(tokensValue).toHaveTextContent(/^0$/);
+    expect(tokensValue).not.toHaveTextContent(/k$/i);
+  });
+
   it("uses the configured primary window label when it is not 5h", () => {
     const account = createAccountSummary({
       windowMinutesPrimary: 480,
@@ -305,6 +324,7 @@ describe("AccountCard", () => {
   });
 
   it("shows live token and 5h status affordances for working accounts", () => {
+    const nowIso = new Date().toISOString();
     const account = createAccountSummary({
       codexSessionCount: 1,
       codexAuth: {
@@ -314,6 +334,8 @@ describe("AccountCard", () => {
         isActiveSnapshot: true,
         hasLiveSession: true,
       },
+      lastUsageRecordedAtPrimary: nowIso,
+      lastUsageRecordedAtSecondary: nowIso,
     });
 
     render(<AccountCard account={account} />);
@@ -439,7 +461,7 @@ describe("AccountCard", () => {
     expect(sessionsValue).toHaveTextContent(/^1$/);
   });
 
-  it("shows 100% for 5h when reset time already passed, including deactivated accounts", () => {
+  it("keeps reported 5h value when reset time already passed, including deactivated accounts", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-01T00:10:00.000Z"));
 
@@ -455,7 +477,7 @@ describe("AccountCard", () => {
 
     render(<AccountCard account={account} />);
 
-    expect(screen.getByText("100%")).toBeInTheDocument();
+    expect(screen.getByText("2%")).toBeInTheDocument();
     vi.useRealTimers();
   });
 
@@ -591,6 +613,6 @@ describe("AccountCard", () => {
     const sessionsValue = sessionsLabel.parentElement?.querySelector("p.mt-0\\.5.text-xs.font-semibold.tabular-nums");
     expect(sessionsValue).not.toBeNull();
     expect(sessionsValue).toHaveTextContent(/^0$/);
-    expect(within(card as HTMLElement).queryByRole("button", { name: "Sessions" })).not.toBeInTheDocument();
+    expect(within(card as HTMLElement).getByRole("button", { name: "Sessions" })).toBeDisabled();
   });
 });

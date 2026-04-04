@@ -22,7 +22,8 @@ import {
   formatLastUsageLabel,
   formatPercentNullable,
   formatQuotaResetLabel,
-  formatTokenCredits,
+  formatTokenUsageCompact,
+  formatTokenUsagePrecise,
   formatWindowLabel,
   formatSlug,
 } from "@/utils/formatters";
@@ -82,6 +83,7 @@ function QuotaBar({
 }) {
   const clamped = percent === null ? 0 : Math.max(0, Math.min(100, percent));
   const hasPercent = percent !== null;
+  const liveTelemetryStale = isLive && !deactivated && percent === null;
   const tone = deactivated
     ? "deactivated"
     : !hasPercent
@@ -152,24 +154,25 @@ function QuotaBar({
         <Clock className="h-3 w-3 shrink-0" />
         <span>{resetLabel}</span>
       </div>
-      {isLive && !deactivated ? (
-        <div className="flex items-center gap-1.5 text-[11px] font-medium text-cyan-700 dark:text-cyan-300">
-          <Activity className="h-3 w-3" />
-          <span>Live token status</span>
-        </div>
-      ) : null}
-      {lastSeenLabel ? (
-        <div
-          className={cn(
-            "text-[11px]",
-            lastSeenUpToDate
-              ? "font-medium text-emerald-600 dark:text-emerald-300"
-              : "text-muted-foreground",
-          )}
-        >
-          {lastSeenLabel}
-        </div>
-      ) : null}
+      <div className="min-h-[16px]">
+        {isLive && !deactivated ? (
+          <div className="flex items-center gap-1.5 text-[11px] font-medium text-cyan-700 dark:text-cyan-300">
+            <Activity className={cn("h-3 w-3", liveTelemetryStale && "animate-pulse")} />
+            <span>{liveTelemetryStale ? "Syncing live telemetry" : "Live token status"}</span>
+          </div>
+        ) : lastSeenLabel ? (
+          <div
+            className={cn(
+              "text-[11px]",
+              lastSeenUpToDate
+                ? "font-medium text-emerald-600 dark:text-emerald-300"
+                : "text-muted-foreground",
+            )}
+          >
+            {lastSeenLabel}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -209,8 +212,16 @@ export function AccountCard({
     windowKey: "primary",
     remainingPercent: primaryRemainingRaw,
     resetAt: account.resetAtPrimary ?? null,
+    hasLiveSession,
+    lastRecordedAt: account.lastUsageRecordedAtPrimary ?? null,
   });
-  const secondaryRemaining = account.usage?.secondaryRemainingPercent ?? null;
+  const secondaryRemaining = normalizeRemainingPercentForDisplay({
+    windowKey: "secondary",
+    remainingPercent: account.usage?.secondaryRemainingPercent ?? null,
+    resetAt: account.resetAtSecondary ?? null,
+    hasLiveSession,
+    lastRecordedAt: account.lastUsageRecordedAtSecondary ?? null,
+  });
   const weeklyOnly =
     account.windowMinutesPrimary == null &&
     account.windowMinutesSecondary != null;
@@ -263,6 +274,9 @@ export function AccountCard({
     snapshotName && expectedSnapshotName && snapshotName !== expectedSnapshotName,
   );
   const totalTokensUsed = tokensUsed ?? account.requestUsage?.totalTokens ?? 0;
+  const tokenUsageLabel = isWorkingNow
+    ? formatTokenUsagePrecise(totalTokensUsed)
+    : formatTokenUsageCompact(totalTokensUsed);
   const codexSessionCount = hasLiveSession
     ? Math.max(account.codexSessionCount ?? 0, 1)
     : 0;
@@ -337,7 +351,7 @@ export function AccountCard({
             Tokens used
           </p>
           <p className="mt-0.5 flex items-center gap-1.5 text-sm font-semibold tabular-nums">
-            <span>{formatTokenCredits(totalTokensUsed)}</span>
+            <span>{tokenUsageLabel}</span>
             {isWorkingNow ? (
               <span className="inline-flex items-center gap-1 rounded-md border border-cyan-500/30 bg-cyan-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-700 dark:text-cyan-300">
                 live
@@ -454,18 +468,18 @@ export function AccountCard({
           <ExternalLink className="h-3 w-3" />
           Details
         </Button>
-        {codexSessionCount > 0 ? (
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            className="h-7 gap-1.5 rounded-lg text-xs text-cyan-700 hover:bg-cyan-500/10 hover:text-cyan-800 dark:text-cyan-300 dark:hover:text-cyan-200"
-            onClick={() => onAction?.(account, "sessions")}
-          >
-            <ExternalLink className="h-3 w-3" />
-            Sessions
-          </Button>
-        ) : null}
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className="h-7 gap-1.5 rounded-lg text-xs text-cyan-700 hover:bg-cyan-500/10 hover:text-cyan-800 disabled:pointer-events-none disabled:text-muted-foreground dark:text-cyan-300 dark:hover:text-cyan-200"
+          disabled={codexSessionCount <= 0}
+          title={codexSessionCount <= 0 ? "No active sessions" : undefined}
+          onClick={() => onAction?.(account, "sessions")}
+        >
+          <ExternalLink className="h-3 w-3" />
+          Sessions
+        </Button>
         {status === "paused" && (
           <Button
             type="button"

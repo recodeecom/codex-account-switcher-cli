@@ -192,6 +192,16 @@ def _snapshot_account_id(snapshot_path: Path) -> str | None:
 
 def _resolve_active_snapshot_name(accounts_dir: Path) -> str | None:
     active_auth_path = _resolve_active_auth_path()
+    current_path = _resolve_current_path()
+    current_snapshot_name: str | None = None
+    if current_path.exists() and current_path.is_file():
+        try:
+            name = current_path.read_text(encoding="utf-8", errors="replace").strip()
+        except OSError:
+            name = ""
+        current_snapshot_name = _validate_snapshot_name(name, accounts_dir=accounts_dir)
+
+    auth_snapshot_name: str | None = None
     if active_auth_path.exists() and active_auth_path.is_symlink():
         try:
             target = active_auth_path.resolve()
@@ -199,25 +209,39 @@ def _resolve_active_snapshot_name(accounts_dir: Path) -> str | None:
             target = None
 
         if target is not None and target.suffix == ".json":
-            resolved = _validate_snapshot_name(target.stem, accounts_dir=accounts_dir)
-            if resolved:
-                return resolved
+            auth_snapshot_name = _validate_snapshot_name(target.stem, accounts_dir=accounts_dir)
 
-    current_path = _resolve_current_path()
-    if current_path.exists() and current_path.is_file():
-        try:
-            name = current_path.read_text(encoding="utf-8", errors="replace").strip()
-        except OSError:
-            name = ""
-        resolved = _validate_snapshot_name(name, accounts_dir=accounts_dir)
-        if resolved:
-            return resolved
+    if current_snapshot_name and auth_snapshot_name:
+        if current_snapshot_name == auth_snapshot_name:
+            return current_snapshot_name
+
+        current_mtime = _safe_file_mtime(current_path)
+        auth_pointer_mtime = _safe_file_mtime(active_auth_path, follow_symlinks=False)
+        if current_mtime > auth_pointer_mtime:
+            return current_snapshot_name
+        if auth_pointer_mtime > current_mtime:
+            return auth_snapshot_name
+        # Tie-break toward `current`, which is the user-facing selection marker.
+        return current_snapshot_name
+
+    if current_snapshot_name:
+        return current_snapshot_name
+
+    if auth_snapshot_name:
+        return auth_snapshot_name
 
     registry_active = _resolve_active_snapshot_name_from_registry(accounts_dir)
     if registry_active:
         return registry_active
 
     return None
+
+
+def _safe_file_mtime(path: Path, *, follow_symlinks: bool = True) -> float:
+    try:
+        return path.stat(follow_symlinks=follow_symlinks).st_mtime
+    except OSError:
+        return 0.0
 
 
 def build_snapshot_index() -> CodexAuthSnapshotIndex:

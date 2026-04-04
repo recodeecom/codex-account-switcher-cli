@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+from collections.abc import Mapping
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -36,7 +37,7 @@ def _make_account(account_id: str, email: str, plan_type: str = "plus") -> Accou
     )
 
 
-def _encode_jwt(payload: dict[str, object]) -> str:
+def _encode_jwt(payload: Mapping[str, object]) -> str:
     raw = json.dumps(payload, separators=(",", ":")).encode("utf-8")
     body = base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
     return f"header.{body}.sig"
@@ -510,7 +511,7 @@ async def test_dashboard_overview_applies_runtime_live_usage_per_snapshot(
 
 
 @pytest.mark.asyncio
-async def test_dashboard_overview_limits_default_mixed_sessions_to_active_snapshot_presence(
+async def test_dashboard_overview_matches_default_mixed_sessions_by_fingerprint(
     async_client,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -606,14 +607,14 @@ async def test_dashboard_overview_limits_default_mixed_sessions_to_active_snapsh
     assert accounts[work_account_id]["usage"]["primaryRemainingPercent"] == pytest.approx(80.0)
     assert accounts[work_account_id]["usage"]["secondaryRemainingPercent"] == pytest.approx(70.0)
 
-    assert accounts[personal_account_id]["codexAuth"]["hasLiveSession"] is False
-    assert accounts[personal_account_id]["codexSessionCount"] == 0
+    assert accounts[personal_account_id]["codexAuth"]["hasLiveSession"] is True
+    assert accounts[personal_account_id]["codexSessionCount"] == 1
     assert accounts[personal_account_id]["usage"]["primaryRemainingPercent"] == pytest.approx(60.0)
     assert accounts[personal_account_id]["usage"]["secondaryRemainingPercent"] == pytest.approx(50.0)
 
 
 @pytest.mark.asyncio
-async def test_dashboard_overview_limits_default_mixed_sessions_without_reset_timestamps(
+async def test_dashboard_overview_matches_default_mixed_sessions_without_reset_timestamps(
     async_client,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -702,8 +703,8 @@ async def test_dashboard_overview_limits_default_mixed_sessions_without_reset_ti
     assert accounts[work_account_id]["usage"]["primaryRemainingPercent"] == pytest.approx(80.0)
     assert accounts[work_account_id]["usage"]["secondaryRemainingPercent"] == pytest.approx(70.0)
 
-    assert accounts[personal_account_id]["codexAuth"]["hasLiveSession"] is False
-    assert accounts[personal_account_id]["codexSessionCount"] == 0
+    assert accounts[personal_account_id]["codexAuth"]["hasLiveSession"] is True
+    assert accounts[personal_account_id]["codexSessionCount"] == 1
     assert accounts[personal_account_id]["usage"]["primaryRemainingPercent"] == pytest.approx(60.0)
     assert accounts[personal_account_id]["usage"]["secondaryRemainingPercent"] == pytest.approx(50.0)
 

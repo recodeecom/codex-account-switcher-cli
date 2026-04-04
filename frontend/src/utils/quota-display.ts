@@ -1,35 +1,42 @@
-import { parseDate } from "@/utils/formatters";
-
 type QuotaDisplayInput = {
   windowKey: "primary" | "secondary";
   remainingPercent: number | null;
   resetAt: string | null | undefined;
+  hasLiveSession?: boolean;
+  lastRecordedAt?: string | null;
+  staleAfterMs?: number;
   nowMs?: number;
 };
 
+const DEFAULT_LIVE_STALE_AFTER_MS = 6 * 60 * 1000;
+
+function parseRecordedAtMs(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const timestampMs = Date.parse(value);
+  if (!Number.isFinite(timestampMs)) return null;
+  return timestampMs;
+}
+
 export function normalizeRemainingPercentForDisplay({
-  windowKey,
   remainingPercent,
-  resetAt,
+  hasLiveSession = false,
+  lastRecordedAt,
+  staleAfterMs = DEFAULT_LIVE_STALE_AFTER_MS,
   nowMs = Date.now(),
 }: QuotaDisplayInput): number | null {
+  if (!hasLiveSession) {
+    return remainingPercent;
+  }
   if (remainingPercent === null) {
     return null;
   }
-
-  if (windowKey !== "primary") {
-    return remainingPercent;
+  const recordedAtMs = parseRecordedAtMs(lastRecordedAt);
+  if (recordedAtMs === null) {
+    return null;
   }
-
-  const resetDate = parseDate(resetAt);
-  if (!resetDate || resetDate.getTime() <= 0) {
-    return remainingPercent;
+  const ageMs = nowMs - recordedAtMs;
+  if (ageMs > staleAfterMs) {
+    return null;
   }
-
-  if (resetDate.getTime() <= nowMs) {
-    return 100;
-  }
-
   return remainingPercent;
 }
-

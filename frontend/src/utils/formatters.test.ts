@@ -22,6 +22,8 @@ import {
   formatRefreshTokenLabel,
   formatRelative,
   formatTokenCredits,
+  formatTokenUsageCompact,
+  formatTokenUsagePrecise,
   formatTimeLong,
   formatTokensWithCached,
   formatWindowLabel,
@@ -59,6 +61,13 @@ describe("formatters", () => {
     expect(formatCompactNumber(1200)).toMatch(/K$/);
     expect(formatTokenCredits(225)).toBe("225k");
     expect(formatTokenCredits(220.5)).toBe("220.5k");
+    expect(formatTokenUsageCompact(0)).toBe("0");
+    expect(formatTokenUsageCompact(225)).toBe("225k");
+    expect(formatTokenUsageCompact(1500)).toBe("1.5m");
+    expect(formatTokenUsageCompact(98_765)).toBe("98.77m");
+    expect(formatTokenUsagePrecise(0)).toBe("0");
+    expect(formatTokenUsagePrecise(225)).toBe("225k");
+    expect(formatTokenUsagePrecise(98_765)).toBe("98,765k");
     expect(formatCurrency(12)).toMatch(/^\$/);
     expect(formatNumber("abc")).toBe("--");
   });

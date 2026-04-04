@@ -115,12 +115,14 @@ def test_build_snapshot_index_falls_back_to_auth_pointer_when_registry_active_ac
     _write_auth_snapshot(accounts_dir / "bia.json", email="bia@example.com", account_id="acc-bia")
 
     (codex_dir / "current").write_text("tokio")
+    os.utime(codex_dir / "current", (1, 1))
     auth_path = codex_dir / "auth.json"
     auth_path.symlink_to(accounts_dir / "bia.json")
     (accounts_dir / "registry.json").write_text(
         json.dumps({"activeAccountName": "missing-snapshot"}),
         encoding="utf-8",
     )
+    os.utime(auth_path, None, follow_symlinks=False)
 
     monkeypatch.setenv("CODEX_AUTH_ACCOUNTS_DIR", str(accounts_dir))
     monkeypatch.setenv("CODEX_AUTH_CURRENT_PATH", str(codex_dir / "current"))
@@ -129,6 +131,28 @@ def test_build_snapshot_index_falls_back_to_auth_pointer_when_registry_active_ac
     index = build_snapshot_index()
 
     assert index.active_snapshot_name == "bia"
+
+
+def test_build_snapshot_index_prefers_newer_current_when_current_and_auth_pointer_disagree(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    codex_dir = tmp_path / ".codex"
+    accounts_dir = codex_dir / "accounts"
+    accounts_dir.mkdir(parents=True)
+    _write_auth_snapshot(accounts_dir / "tokio.json", email="tokio@example.com", account_id="acc-tokio")
+    _write_auth_snapshot(accounts_dir / "bia.json", email="bia@example.com", account_id="acc-bia")
+
+    auth_path = codex_dir / "auth.json"
+    auth_path.symlink_to(accounts_dir / "bia.json")
+    (codex_dir / "current").write_text("tokio")
+
+    monkeypatch.setenv("CODEX_AUTH_ACCOUNTS_DIR", str(accounts_dir))
+    monkeypatch.setenv("CODEX_AUTH_CURRENT_PATH", str(codex_dir / "current"))
+    monkeypatch.setenv("CODEX_AUTH_JSON_PATH", str(auth_path))
+
+    index = build_snapshot_index()
+
+    assert index.active_snapshot_name == "tokio"
 
 
 def test_build_snapshot_index_falls_back_to_current_when_auth_pointer_is_invalid(

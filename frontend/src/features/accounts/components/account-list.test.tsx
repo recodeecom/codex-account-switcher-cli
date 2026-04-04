@@ -188,7 +188,7 @@ describe("AccountList", () => {
     ]);
   });
 
-  it("uses reset-adjusted 5h quota when ordering sidebar accounts", () => {
+  it("does not inflate stale 5h quota when ordering sidebar accounts", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
     try {
@@ -234,8 +234,8 @@ describe("AccountList", () => {
 
       const renderedEmails = screen.getAllByText(/@example\.com$/).map((node) => node.textContent);
       expect(renderedEmails).toEqual([
-        "stale@example.com",
         "fresh@example.com",
+        "stale@example.com",
       ]);
     } finally {
       vi.useRealTimers();

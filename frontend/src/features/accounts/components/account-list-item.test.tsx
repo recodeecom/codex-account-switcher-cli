@@ -99,7 +99,7 @@ describe("AccountListItem", () => {
     expect(screen.getByRole("button", { name: "Use this" })).toBeDisabled();
   });
 
-  it("treats 5h quota as reset when reset time has passed", () => {
+  it("keeps reported 5h quota when reset time has passed", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
     try {
@@ -127,7 +127,7 @@ describe("AccountListItem", () => {
         />,
       );
 
-      expect(screen.getByTestId("mini-quota-5h-fill")).toHaveStyle({ width: "100%" });
+      expect(screen.getByTestId("mini-quota-5h-fill")).toHaveStyle({ width: "2%" });
       expect(screen.getByRole("button", { name: "Use this" })).toBeEnabled();
     } finally {
       vi.useRealTimers();

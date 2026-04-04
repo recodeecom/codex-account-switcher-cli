@@ -1,0 +1,7 @@
+- [x] Add dedicated frontend formatter support for precise live token usage and compact non-live usage.
+- [x] Apply the new formatter logic to `Tokens used` in dashboard account cards.
+- [x] Add/adjust frontend tests for zero usage, live precision, and compact non-live rendering.
+- [x] Preserve matched non-active live sessions during mixed default-session attribution.
+- [x] Add/adjust integration tests for accounts/dashboard mixed-session switching behavior.
+- [x] Run targeted frontend/backend tests for formatter/account-card and live-session attribution coverage.
+- [x] Validate OpenSpec artifacts with `openspec validate --specs`.

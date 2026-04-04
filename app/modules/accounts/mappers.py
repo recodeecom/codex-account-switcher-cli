@@ -72,11 +72,6 @@ def _account_to_summary(
         primary_usage,
         secondary_usage,
     )
-    weekly_only_usage = (
-        effective_primary_usage is None
-        and primary_usage is not None
-        and usage_core.is_weekly_window_minutes(primary_usage.window_minutes)
-    )
     # Keep account payload aligned with UI semantics: weekly-only plans expose
     # their quota as secondary/7d and omit primary/5h fields.
     primary_used_percent = _normalize_used_percent(effective_primary_usage)
@@ -84,8 +79,6 @@ def _account_to_summary(
     primary_remaining_percent = usage_core.remaining_percent_from_used(primary_used_percent)
     secondary_remaining_percent = usage_core.remaining_percent_from_used(secondary_used_percent)
 
-    if primary_remaining_percent is None and not weekly_only_usage:
-        primary_remaining_percent = 100.0
     reset_at_primary = (
         from_epoch_seconds(effective_primary_usage.reset_at) if effective_primary_usage is not None else None
     )

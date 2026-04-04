@@ -7,6 +7,7 @@ from pathlib import Path
 
 from app.modules.accounts.codex_live_usage import (
     read_local_codex_live_usage,
+    read_local_codex_live_usage_samples,
     read_local_codex_live_usage_by_snapshot,
 )
 
@@ -203,6 +204,34 @@ def test_read_local_codex_live_usage_reports_live_session_even_without_rate_limi
     assert usage.active_session_count == 1
     assert usage.primary is None
     assert usage.secondary is None
+
+
+def test_read_local_codex_live_usage_samples_drops_stale_token_count_fingerprints(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    now = datetime.now(timezone.utc)
+    sessions_root = tmp_path / "sessions"
+    monkeypatch.setenv("CODEX_SESSIONS_DIR", str(sessions_root))
+    monkeypatch.setenv("CODEX_LB_LOCAL_SESSION_ACTIVE_SECONDS", "120")
+
+    day_dir = _sessions_day_dir(sessions_root, now)
+    stale_usage = day_dir / "rollout-stale-usage.jsonl"
+    _write_rollout(
+        stale_usage,
+        timestamp=now - timedelta(minutes=10),
+        primary_used=97.0,
+        secondary_used=75.0,
+    )
+    # Simulate non-token activity touching the file recently.
+    fresh_mtime = (now - timedelta(seconds=15)).timestamp()
+    os.utime(stale_usage, (fresh_mtime, fresh_mtime))
+
+    samples = read_local_codex_live_usage_samples(now=now)
+    assert len(samples) == 1
+    assert samples[0].active_session_count == 1
+    assert samples[0].primary is None
+    assert samples[0].secondary is None
 
 
 def test_read_local_codex_live_usage_by_snapshot_reads_multiple_runtime_profiles(

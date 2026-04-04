@@ -117,24 +117,32 @@ export function AccountListItem({
   const idSuffix = showAccountId
     ? ` | ID ${formatCompactAccountId(account.accountId)}`
     : "";
-  const secondary = account.usage?.secondaryRemainingPercent ?? null;
+  const secondary = normalizeRemainingPercentForDisplay({
+    windowKey: "secondary",
+    remainingPercent: account.usage?.secondaryRemainingPercent ?? null,
+    resetAt: account.resetAtSecondary ?? null,
+    hasLiveSession,
+    lastRecordedAt: account.lastUsageRecordedAtSecondary ?? null,
+  });
   const primaryRemainingRaw = account.usage?.primaryRemainingPercent ?? null;
   const primaryRemaining = normalizeRemainingPercentForDisplay({
     windowKey: "primary",
     remainingPercent: primaryRemainingRaw,
     resetAt: account.resetAtPrimary ?? null,
+    hasLiveSession,
+    lastRecordedAt: account.lastUsageRecordedAtPrimary ?? null,
   });
   const hasResolvedSnapshot = Boolean(account.codexAuth?.snapshotName?.trim());
   const canUseLocally = canUseLocalAccount({
     status: account.status,
-    primaryRemainingPercent: primaryRemaining,
+    primaryRemainingPercent: primaryRemainingRaw,
     isActiveSnapshot,
     hasLiveSession,
     codexSessionCount: account.codexSessionCount,
   });
   const disabledReason = getUseLocalAccountDisabledReason({
     status: account.status,
-    primaryRemainingPercent: primaryRemaining,
+    primaryRemainingPercent: primaryRemainingRaw,
     isActiveSnapshot,
     hasLiveSession,
     codexSessionCount: account.codexSessionCount,

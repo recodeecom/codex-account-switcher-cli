@@ -29,6 +29,8 @@ function resolvePrimaryRemainingForDisplay(account: AccountSummary): number | nu
     windowKey: "primary",
     remainingPercent: account.usage?.primaryRemainingPercent ?? null,
     resetAt: account.resetAtPrimary ?? null,
+    hasLiveSession: account.codexAuth?.hasLiveSession ?? false,
+    lastRecordedAt: account.lastUsageRecordedAtPrimary ?? null,
   });
 }
 
@@ -37,14 +39,14 @@ function compareAccountsForSidebar(a: AccountSummary, b: AccountSummary): number
   const bPrimaryRemaining = resolvePrimaryRemainingForDisplay(b);
   const aCanUseLocally = canUseLocalAccount({
     status: a.status,
-    primaryRemainingPercent: aPrimaryRemaining,
+    primaryRemainingPercent: a.usage?.primaryRemainingPercent ?? null,
     isActiveSnapshot: a.codexAuth?.isActiveSnapshot,
     hasLiveSession: a.codexAuth?.hasLiveSession,
     codexSessionCount: a.codexSessionCount,
   });
   const bCanUseLocally = canUseLocalAccount({
     status: b.status,
-    primaryRemainingPercent: bPrimaryRemaining,
+    primaryRemainingPercent: b.usage?.primaryRemainingPercent ?? null,
     isActiveSnapshot: b.codexAuth?.isActiveSnapshot,
     hasLiveSession: b.codexAuth?.hasLiveSession,
     codexSessionCount: b.codexSessionCount,
@@ -60,8 +62,24 @@ function compareAccountsForSidebar(a: AccountSummary, b: AccountSummary): number
     return bPrimary - aPrimary;
   }
 
-  const aSecondary = normalizeQuotaPercent(a.usage?.secondaryRemainingPercent);
-  const bSecondary = normalizeQuotaPercent(b.usage?.secondaryRemainingPercent);
+  const aSecondary = normalizeQuotaPercent(
+    normalizeRemainingPercentForDisplay({
+      windowKey: "secondary",
+      remainingPercent: a.usage?.secondaryRemainingPercent ?? null,
+      resetAt: a.resetAtSecondary ?? null,
+      hasLiveSession: a.codexAuth?.hasLiveSession ?? false,
+      lastRecordedAt: a.lastUsageRecordedAtSecondary ?? null,
+    }),
+  );
+  const bSecondary = normalizeQuotaPercent(
+    normalizeRemainingPercentForDisplay({
+      windowKey: "secondary",
+      remainingPercent: b.usage?.secondaryRemainingPercent ?? null,
+      resetAt: b.resetAtSecondary ?? null,
+      hasLiveSession: b.codexAuth?.hasLiveSession ?? false,
+      lastRecordedAt: b.lastUsageRecordedAtSecondary ?? null,
+    }),
+  );
   if (aSecondary !== bSecondary) {
     return bSecondary - aSecondary;
   }

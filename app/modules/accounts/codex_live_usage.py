@@ -145,6 +145,7 @@ def _read_local_codex_live_usage_samples_for_sessions_dir(
         return []
 
     samples: list[LocalCodexLiveUsage] = []
+    sample_cutoff = now - timedelta(seconds=active_window_seconds)
     for path in _prefer_newest_sessions(active_files):
         snapshot = _extract_latest_rate_limit_from_file(path)
         if snapshot is None:
@@ -161,6 +162,22 @@ def _read_local_codex_live_usage_samples_for_sessions_dir(
             continue
 
         recorded_at, primary, secondary = snapshot
+        if recorded_at < sample_cutoff:
+            # A session file can still be "active" by mtime while its latest
+            # token_count payload is stale (for example, non-token events update
+            # mtime). Keep presence-only telemetry for session counting, but do
+            # not expose stale quota fingerprints that would be mis-attributed
+            # across multiple accounts in mixed default-session matching.
+            samples.append(
+                LocalCodexLiveUsage(
+                    recorded_at=recorded_at,
+                    active_session_count=1,
+                    primary=None,
+                    secondary=None,
+                )
+            )
+            continue
+
         samples.append(
             LocalCodexLiveUsage(
                 recorded_at=recorded_at,

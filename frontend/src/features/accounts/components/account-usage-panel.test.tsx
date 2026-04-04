@@ -101,7 +101,7 @@ describe("AccountUsagePanel", () => {
     expect(screen.getByText("last seen 2h ago")).toBeInTheDocument();
   });
 
-  it("shows 100% for 5h when reset already passed, even for deactivated accounts", () => {
+  it("keeps the reported 5h value when reset already passed, even for deactivated accounts", () => {
     const account = createAccountSummary({
       status: "deactivated",
       usage: {
@@ -114,6 +114,6 @@ describe("AccountUsagePanel", () => {
 
     render(<AccountUsagePanel account={account} trends={null} />);
 
-    expect(screen.getByText("100%")).toBeInTheDocument();
+    expect(screen.getByText("2%")).toBeInTheDocument();
   });
 });

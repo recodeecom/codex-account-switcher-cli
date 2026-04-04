@@ -29,6 +29,7 @@ function buildWindow(
 
 describe("AccountCards", () => {
   it("renders working accounts in a dedicated top section before other accounts", () => {
+    const nowIso = new Date().toISOString();
     const idle = createAccountSummary({
       accountId: "acc_idle",
       email: "idle@example.com",
@@ -54,6 +55,8 @@ describe("AccountCards", () => {
         isActiveSnapshot: true,
         hasLiveSession: true,
       },
+      lastUsageRecordedAtPrimary: nowIso,
+      lastUsageRecordedAtSecondary: nowIso,
     });
 
     const { container } = render(
@@ -108,6 +111,7 @@ describe("AccountCards", () => {
   });
 
   it("uses the primary window duration label in working summary chips", () => {
+    const nowIso = new Date().toISOString();
     const working = createAccountSummary({
       accountId: "acc_working",
       email: "working@example.com",
@@ -120,6 +124,8 @@ describe("AccountCards", () => {
         isActiveSnapshot: true,
         hasLiveSession: true,
       },
+      lastUsageRecordedAtPrimary: nowIso,
+      lastUsageRecordedAtSecondary: nowIso,
     });
 
     render(
@@ -134,7 +140,8 @@ describe("AccountCards", () => {
     expect(screen.queryByText(/5h avg \d+%/i)).not.toBeInTheDocument();
   });
 
-  it("normalizes working primary avg to 100% when primary window is already reset", () => {
+  it("keeps working primary avg from reported values when primary reset is already past", () => {
+    const nowIso = new Date().toISOString();
     const working = createAccountSummary({
       accountId: "acc_reset",
       email: "reset@example.com",
@@ -152,6 +159,8 @@ describe("AccountCards", () => {
         isActiveSnapshot: true,
         hasLiveSession: true,
       },
+      lastUsageRecordedAtPrimary: nowIso,
+      lastUsageRecordedAtSecondary: nowIso,
     });
 
     render(
@@ -162,7 +171,7 @@ describe("AccountCards", () => {
       />,
     );
 
-    expect(screen.getByText("5h avg 100%")).toBeInTheDocument();
+    expect(screen.getByText("5h avg 0%")).toBeInTheDocument();
     expect(screen.getByText("Weekly avg 88%")).toBeInTheDocument();
   });
 
@@ -191,7 +200,7 @@ describe("AccountCards", () => {
 
     const card = screen.getByText("weekly@example.com").closest(".card-hover");
     expect(card).not.toBeNull();
-    expect(within(card as HTMLElement).getByText("1,500k")).toBeInTheDocument();
+    expect(within(card as HTMLElement).getByText("1.5m")).toBeInTheDocument();
   });
 
   it("renders deactivated accounts after active accounts", () => {

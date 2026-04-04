@@ -19,6 +19,7 @@ from app.modules.usage.repository import UsageRepository
 pytestmark = pytest.mark.integration
 
 
+
 def _encode_jwt(payload: dict) -> str:
     raw = json.dumps(payload, separators=(",", ":")).encode("utf-8")
     body = base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
@@ -321,7 +322,7 @@ async def test_accounts_list_sets_has_live_session_from_runtime_telemetry(
 
 
 @pytest.mark.asyncio
-async def test_accounts_list_limits_default_mixed_sessions_to_active_snapshot_presence(
+async def test_accounts_list_preserves_matched_live_sessions_for_non_active_snapshot_accounts(
     async_client, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
     now = datetime.now(timezone.utc).replace(microsecond=0)
@@ -409,10 +410,70 @@ async def test_accounts_list_limits_default_mixed_sessions_to_active_snapshot_pr
     assert accounts[work_account_id]["usage"]["primaryRemainingPercent"] == pytest.approx(80.0)
     assert accounts[work_account_id]["usage"]["secondaryRemainingPercent"] == pytest.approx(70.0)
 
-    assert accounts[personal_account_id]["codexAuth"]["hasLiveSession"] is False
-    assert accounts[personal_account_id]["codexSessionCount"] == 0
+    assert accounts[personal_account_id]["codexAuth"]["hasLiveSession"] is True
+    assert accounts[personal_account_id]["codexSessionCount"] == 1
     assert accounts[personal_account_id]["usage"]["primaryRemainingPercent"] == pytest.approx(60.0)
     assert accounts[personal_account_id]["usage"]["secondaryRemainingPercent"] == pytest.approx(50.0)
+
+
+@pytest.mark.asyncio
+async def test_accounts_list_prefers_newer_current_snapshot_over_stale_auth_pointer_for_default_sessions(
+    async_client,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    admin_raw_id = "acc_admin"
+    bia_raw_id = "acc_bia"
+    admin_email = "admin@example.com"
+    bia_email = "bia@example.com"
+    admin_account_id = generate_unique_account_id(admin_raw_id, admin_email)
+    bia_account_id = generate_unique_account_id(bia_raw_id, bia_email)
+
+    accounts_dir = tmp_path / "accounts"
+    accounts_dir.mkdir(parents=True, exist_ok=True)
+    _write_auth_snapshot(accounts_dir / "admin.json", email=admin_email, account_id=admin_raw_id)
+    _write_auth_snapshot(accounts_dir / "bia.json", email=bia_email, account_id=bia_raw_id)
+
+    auth_path = tmp_path / "auth.json"
+    auth_path.symlink_to(accounts_dir / "bia.json")
+    current_path = tmp_path / "current"
+    current_path.write_text("admin")
+
+    monkeypatch.setenv("CODEX_LB_CODEX_AUTH_AUTO_IMPORT_ON_ACCOUNTS_LIST", "true")
+    monkeypatch.setenv("CODEX_AUTH_ACCOUNTS_DIR", str(accounts_dir))
+    monkeypatch.setenv("CODEX_AUTH_CURRENT_PATH", str(current_path))
+    monkeypatch.setenv("CODEX_AUTH_JSON_PATH", str(auth_path))
+
+    sessions_root = tmp_path / "sessions"
+    day_dir = sessions_root / f"{now.year:04d}" / f"{now.month:02d}" / f"{now.day:02d}"
+    day_dir.mkdir(parents=True, exist_ok=True)
+    _write_rollout_snapshot(
+        day_dir / "rollout-admin.jsonl",
+        timestamp=now - timedelta(minutes=1),
+        primary_used=23.0,
+        secondary_used=53.0,
+    )
+    monkeypatch.setenv("CODEX_SESSIONS_DIR", str(sessions_root))
+    monkeypatch.setenv("CODEX_LB_LOCAL_SESSION_ACTIVE_SECONDS", "300")
+
+    from app.core.config.settings import get_settings
+
+    get_settings.cache_clear()
+
+    response = await async_client.get("/api/accounts")
+    assert response.status_code == 200
+    accounts = {item["accountId"]: item for item in response.json()["accounts"]}
+
+    assert accounts[admin_account_id]["codexAuth"]["activeSnapshotName"] == "admin"
+    assert accounts[admin_account_id]["codexAuth"]["isActiveSnapshot"] is True
+    assert accounts[admin_account_id]["codexAuth"]["hasLiveSession"] is True
+    assert accounts[admin_account_id]["codexSessionCount"] == 1
+    assert accounts[admin_account_id]["usage"]["primaryRemainingPercent"] == pytest.approx(77.0)
+    assert accounts[admin_account_id]["usage"]["secondaryRemainingPercent"] == pytest.approx(47.0)
+
+    assert accounts[bia_account_id]["codexAuth"]["isActiveSnapshot"] is False
+    assert accounts[bia_account_id]["codexAuth"]["hasLiveSession"] is False
 
 
 @pytest.mark.asyncio

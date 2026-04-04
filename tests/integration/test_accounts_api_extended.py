@@ -493,6 +493,23 @@ async def test_accounts_list_maps_weekly_only_primary_to_secondary(async_client,
 
 
 @pytest.mark.asyncio
+async def test_accounts_list_keeps_primary_remaining_unknown_when_no_primary_sample(async_client, db_setup):
+    async with SessionLocal() as session:
+        accounts_repo = AccountsRepository(session)
+        await accounts_repo.upsert(_make_account("acc_missing_primary", "missing-primary@example.com", plan_type="plus"))
+
+    response = await async_client.get("/api/accounts")
+    assert response.status_code == 200
+    payload = response.json()
+    accounts = {item["accountId"]: item for item in payload["accounts"]}
+
+    account = accounts["acc_missing_primary"]
+    assert account["usage"]["primaryRemainingPercent"] is None
+    assert account["windowMinutesPrimary"] is None
+    assert account["resetAtPrimary"] is None
+
+
+@pytest.mark.asyncio
 async def test_accounts_list_prefers_newer_weekly_primary_over_stale_secondary(async_client, db_setup):
     now = utcnow()
     stale_reset = 1735689600

@@ -128,12 +128,21 @@ function AdditionalQuotaRow({
 }
 
 export function AccountUsagePanel({ account, trends }: AccountUsagePanelProps) {
+  const hasLiveSession = account.codexAuth?.hasLiveSession ?? false;
   const primary = normalizeRemainingPercentForDisplay({
     windowKey: "primary",
     remainingPercent: account.usage?.primaryRemainingPercent ?? null,
     resetAt: account.resetAtPrimary ?? null,
+    hasLiveSession,
+    lastRecordedAt: account.lastUsageRecordedAtPrimary ?? null,
   });
-  const secondary = account.usage?.secondaryRemainingPercent ?? null;
+  const secondary = normalizeRemainingPercentForDisplay({
+    windowKey: "secondary",
+    remainingPercent: account.usage?.secondaryRemainingPercent ?? null,
+    resetAt: account.resetAtSecondary ?? null,
+    hasLiveSession,
+    lastRecordedAt: account.lastUsageRecordedAtSecondary ?? null,
+  });
   const requestUsage = account.requestUsage ?? null;
   const hasRequestUsage = (requestUsage?.requestCount ?? 0) > 0;
   const weeklyOnly = account.windowMinutesPrimary == null && account.windowMinutesSecondary != null;

@@ -86,6 +86,36 @@ export function formatTokenCredits(value: unknown): string {
   return `${numberFormatter.format(numeric)}k`;
 }
 
+export function formatTokenUsageCompact(value: unknown): string {
+  const numeric = toNumber(value);
+  if (numeric === null) {
+    return "--";
+  }
+  if (numeric <= 0) {
+    return "0";
+  }
+
+  if (numeric < 1_000) {
+    return `${numberFormatter.format(numeric)}k`;
+  }
+
+  const tokenCount = numeric * 1_000;
+  return compactFormatter
+    .format(tokenCount)
+    .replace(/[KMBT]$/u, (suffix) => suffix.toLowerCase());
+}
+
+export function formatTokenUsagePrecise(value: unknown): string {
+  const numeric = toNumber(value);
+  if (numeric === null) {
+    return "--";
+  }
+  if (numeric <= 0) {
+    return "0";
+  }
+  return `${numberFormatter.format(numeric)}k`;
+}
+
 export function formatCurrency(value: unknown): string {
   const numeric = toNumber(value);
   return numeric === null ? "--" : currencyFormatter.format(numeric);
