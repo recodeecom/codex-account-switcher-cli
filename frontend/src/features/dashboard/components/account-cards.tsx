@@ -145,6 +145,14 @@ function sortAccountsByAvailableQuota(
       return left.accountId.localeCompare(right.accountId);
     }
 
+    const leftWeeklyDepleted =
+      leftMetrics.secondaryRemaining != null && leftMetrics.secondaryRemaining <= 0;
+    const rightWeeklyDepleted =
+      rightMetrics.secondaryRemaining != null && rightMetrics.secondaryRemaining <= 0;
+    if (leftWeeklyDepleted !== rightWeeklyDepleted) {
+      return leftWeeklyDepleted ? 1 : -1;
+    }
+
     const primaryDiff = compareNullableNumberDesc(
       leftMetrics.primaryRemaining,
       rightMetrics.primaryRemaining,

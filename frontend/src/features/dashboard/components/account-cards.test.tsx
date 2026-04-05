@@ -422,6 +422,44 @@ describe("AccountCards", () => {
     ]);
   });
 
+  it("places weekly-depleted accounts at the end even when 5h remaining is higher", () => {
+    const healthyWeekly = createAccountSummary({
+      accountId: "acc_weekly_ok",
+      email: "weekly-ok@example.com",
+      displayName: "weekly-ok@example.com",
+      usage: {
+        primaryRemainingPercent: 41,
+        secondaryRemainingPercent: 44,
+      },
+    });
+    const weeklyDepletedHigh5h = createAccountSummary({
+      accountId: "acc_weekly_zero",
+      email: "weekly-zero@example.com",
+      displayName: "weekly-zero@example.com",
+      usage: {
+        primaryRemainingPercent: 92,
+        secondaryRemainingPercent: 0,
+      },
+    });
+
+    const { container } = render(
+      <AccountCards
+        accounts={[weeklyDepletedHigh5h, healthyWeekly]}
+        primaryWindow={null}
+        secondaryWindow={null}
+      />,
+    );
+
+    const cards = Array.from(container.querySelectorAll(".card-hover"));
+    const titles = cards.map((card) =>
+      card.querySelector("p.truncate.text-sm.font-semibold.leading-tight")?.textContent,
+    );
+    expect(titles).toEqual([
+      "weekly-ok@example.com",
+      "weekly-zero@example.com",
+    ]);
+  });
+
   it("keeps stale last-seen accounts after recently seen accounts even when stale usage is higher", () => {
     const now = Date.now();
     const recentHighest = createAccountSummary({

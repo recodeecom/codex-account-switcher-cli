@@ -131,8 +131,11 @@ def apply_local_live_usage_overrides(
             snapshot_names = [selected_snapshot_name]
         else:
             snapshot_names = snapshot_names_from_index
-        session_presence_snapshot_names = (
-            snapshot_names_from_index if snapshot_names_from_index else snapshot_names
+        session_presence_snapshot_names = _resolve_session_presence_snapshot_names_for_account(
+            account_email=account.email,
+            selected_snapshot_name=selected_snapshot_name,
+            snapshot_names_from_index=snapshot_names_from_index,
+            fallback_snapshot_names=snapshot_names,
         )
         snapshots_considered = _resolve_snapshot_candidates(
             snapshot_names=snapshot_names,
@@ -880,6 +883,86 @@ def _source_session_start_key(source: str) -> str:
 def _normalize_snapshot_name(value: str | None) -> str | None:
     normalized = (value or "").strip().lower()
     return normalized or None
+
+
+def _normalize_snapshot_local_part(value: str | None) -> str | None:
+    normalized = _normalize_snapshot_name(value)
+    if normalized is None:
+        return None
+    local_part = normalized.split("@", 1)[0].strip()
+    if not local_part:
+        return None
+    sanitized = "".join(
+        character
+        for character in local_part
+        if character.isalnum() or character in {".", "_", "-"}
+    ).strip("._-")
+    return sanitized or None
+
+
+def _resolve_session_presence_snapshot_names_for_account(
+    *,
+    account_email: str,
+    selected_snapshot_name: str | None,
+    snapshot_names_from_index: list[str],
+    fallback_snapshot_names: list[str],
+) -> list[str]:
+    """Resolve session-presence snapshot candidates without cross-account leakage.
+
+    Session visibility should primarily follow the selected snapshot. We still
+    allow same-account local-part aliases (e.g. ``codexina`` <->
+    ``codexinaedix``) so existing active-session hints keep working, but avoid
+    inheriting unrelated snapshots from stale index buckets.
+    """
+
+    if not snapshot_names_from_index:
+        return fallback_snapshot_names
+
+    if not selected_snapshot_name:
+        return snapshot_names_from_index
+
+    selected = _normalize_snapshot_name(selected_snapshot_name)
+    account_local_part = _normalize_snapshot_local_part(account_email)
+    selected_local_part = _normalize_snapshot_local_part(selected_snapshot_name)
+
+    if selected is None:
+        return fallback_snapshot_names
+
+    scoped_names: list[str] = []
+    seen: set[str] = set()
+    for snapshot_name in snapshot_names_from_index:
+        normalized_snapshot = _normalize_snapshot_name(snapshot_name)
+        if normalized_snapshot is None or normalized_snapshot in seen:
+            continue
+        snapshot_local_part = _normalize_snapshot_local_part(snapshot_name)
+
+        if normalized_snapshot == selected:
+            scoped_names.append(snapshot_name)
+            seen.add(normalized_snapshot)
+            continue
+
+        if account_local_part is None or snapshot_local_part is None:
+            continue
+
+        if snapshot_local_part == account_local_part:
+            scoped_names.append(snapshot_name)
+            seen.add(normalized_snapshot)
+            continue
+
+        if selected_local_part is None:
+            continue
+
+        if (
+            snapshot_local_part.startswith(account_local_part)
+            and selected_local_part.startswith(account_local_part)
+        ):
+            scoped_names.append(snapshot_name)
+            seen.add(normalized_snapshot)
+
+    if scoped_names:
+        return scoped_names
+
+    return fallback_snapshot_names
 
 
 def _account_matches_active_snapshot(

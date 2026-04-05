@@ -1757,6 +1757,8 @@ def test_apply_local_live_usage_overrides_uses_selected_snapshot_only(
     debug = debug_by_account[account.id]
     assert debug.snapshots_considered == ["amodeus"]
     assert [sample.snapshot_name for sample in debug.raw_samples] == ["amodeus"]
+    assert codex_auth_by_account[account.id].has_live_session is True
+    assert codex_session_counts_by_account[account.id] == 1
     assert primary_usage[account.id].used_percent == pytest.approx(11.0)
     assert secondary_usage[account.id].used_percent == pytest.approx(22.0)
 

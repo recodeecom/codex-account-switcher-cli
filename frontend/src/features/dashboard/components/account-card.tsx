@@ -560,7 +560,15 @@ export function AccountCard({
   const hasRemainingTokensExhausted =
     showTokensRemaining &&
     remainingTokensValue <= 0;
-  const showUsageLimitHitBadge = usageLimitHit || hasRemainingTokensExhausted;
+  const useLocalBlockedByWeeklyQuota =
+    typeof secondaryRemaining === "number" &&
+    normalizeNearZeroQuotaPercent(secondaryRemaining) < 1;
+  const showUsageLimitHitBadge =
+    usageLimitHit || hasRemainingTokensExhausted || useLocalBlockedByWeeklyQuota;
+  const usageLimitHitBadgeLabel =
+    useLocalBlockedByWeeklyQuota && !usageLimitHit && !hasRemainingTokensExhausted
+      ? "Weekly usage limit hit"
+      : "Usage limit hit";
   const showUsageLimitGraceOverlay = Boolean(
     usageLimitHit && usageLimitHitCountdownMs != null && usageLimitHitCountdownMs > 0,
   );
@@ -588,9 +596,6 @@ export function AccountCard({
     hasRecentUsageSignal: recentUsageSignal,
     codexSessionCount: account.codexSessionCount,
   });
-  const useLocalBlockedByWeeklyQuota =
-    typeof secondaryRemaining === "number" &&
-    normalizeNearZeroQuotaPercent(secondaryRemaining) < 1;
   const useLocalButtonDisabled =
     !canUseLocally || useLocalBusy || useLocalBlockedByWeeklyQuota;
   const useLocalButtonDisabledReason = useLocalBlockedByWeeklyQuota
@@ -793,7 +798,7 @@ export function AccountCard({
                 className="h-1.5 w-1.5 rounded-full bg-current"
                 aria-hidden
               />
-              Usage limit hit
+              {usageLimitHitBadgeLabel}
               {usageLimitHit && usageLimitHitCountdownLabel ? (
                 <span className="font-medium text-red-700 dark:text-red-300">
                   · leaves in {usageLimitHitCountdownLabel}
