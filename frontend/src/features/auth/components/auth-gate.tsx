@@ -18,7 +18,10 @@ export function AuthGate({ children }: PropsWithChildren) {
   );
 
   useEffect(() => {
-    void refreshSessionStable();
+    void refreshSessionStable().catch(() => {
+      // Initial auth refresh errors are already reflected in auth store state.
+      // Swallow here to avoid unhandled promise rejections in React effects.
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

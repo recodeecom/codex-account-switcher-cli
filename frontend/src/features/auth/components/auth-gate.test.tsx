@@ -83,4 +83,24 @@ describe("AuthGate", () => {
     expect(screen.queryByText("Dashboard Login")).not.toBeInTheDocument();
     await waitFor(() => expect(refreshSession).toHaveBeenCalledTimes(1));
   });
+
+  it("does not crash when initial refresh session request fails", async () => {
+    const refreshSession = vi.fn().mockRejectedValue(new Error("Request failed"));
+    setAuthState({
+      refreshSession,
+      passwordRequired: true,
+      authenticated: false,
+      totpRequiredOnLogin: false,
+    });
+
+    render(
+      <AuthGate>
+        <div>Protected content</div>
+      </AuthGate>,
+    );
+
+    expect(screen.getByText("Sign in")).toBeInTheDocument();
+    expect(screen.queryByText("Protected content")).not.toBeInTheDocument();
+    await waitFor(() => expect(refreshSession).toHaveBeenCalledTimes(1));
+  });
 });
