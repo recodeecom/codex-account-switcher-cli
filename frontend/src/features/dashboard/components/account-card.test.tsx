@@ -586,6 +586,34 @@ describe("AccountCard", () => {
     expect(screen.queryByText("Working now")).not.toBeInTheDocument();
   });
 
+  it("treats sub-5% 5h quota as depleted for live usage-limit state", () => {
+    const nowIso = new Date().toISOString();
+    const account = createAccountSummary({
+      status: "active",
+      usage: {
+        primaryRemainingPercent: 2,
+        secondaryRemainingPercent: 66,
+      },
+      codexLiveSessionCount: 1,
+      codexSessionCount: 1,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+      lastUsageRecordedAtPrimary: nowIso,
+      lastUsageRecordedAtSecondary: nowIso,
+    });
+
+    render(<AccountCard account={account} />);
+
+    expect(screen.getByText("Rate limited")).toBeInTheDocument();
+    expect(screen.getAllByText("Usage limit hit").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("0%").length).toBeGreaterThanOrEqual(1);
+  });
+
   it("shows usage-limit countdown and red card tint while grace window is active", () => {
     vi.useFakeTimers();
     try {
@@ -1233,7 +1261,7 @@ describe("AccountCard", () => {
     expect(sessionsValue).toHaveTextContent(/^1$/);
   });
 
-  it("keeps reported 5h value when reset time already passed, including deactivated accounts", () => {
+  it("renders sub-5% quotas as 0% when reset time already passed", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-01T00:10:00.000Z"));
 
@@ -1249,7 +1277,7 @@ describe("AccountCard", () => {
 
     render(<AccountCard account={account} />);
 
-    expect(screen.getByText("2%")).toBeInTheDocument();
+    expect(screen.getByText("0%")).toBeInTheDocument();
     vi.useRealTimers();
   });
 

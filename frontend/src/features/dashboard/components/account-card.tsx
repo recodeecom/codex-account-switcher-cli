@@ -81,6 +81,16 @@ function formatPlanWithSnapshot(
   return `${planLabel} · ${normalizedSnapshotName}`;
 }
 
+const NEAR_ZERO_QUOTA_PERCENT = 5;
+
+function normalizeNearZeroQuotaPercent(value: number): number {
+  const clamped = Math.max(0, Math.min(100, value));
+  if (clamped > 0 && clamped < NEAR_ZERO_QUOTA_PERCENT) {
+    return 0;
+  }
+  return clamped;
+}
+
 function QuotaBar({
   label,
   percent,
@@ -102,7 +112,8 @@ function QuotaBar({
   telemetryPending?: boolean;
   usageLimitHit?: boolean;
 }) {
-  const clamped = percent === null ? 0 : Math.max(0, Math.min(100, percent));
+  const clamped =
+    percent === null ? 0 : normalizeNearZeroQuotaPercent(percent);
   const hasPercent = percent !== null;
   const liveTelemetryUnavailable = isLive && !deactivated && percent === null;
   const tone = deactivated
@@ -217,7 +228,7 @@ function formatQuotaPercent(value: number | null): string {
     return "--";
   }
 
-  const clamped = Math.max(0, Math.min(100, value));
+  const clamped = normalizeNearZeroQuotaPercent(value);
   const rounded = Math.round(clamped);
   if (Math.abs(clamped - rounded) < 0.05) {
     return `${rounded}%`;
@@ -386,7 +397,9 @@ function isLiveUsageLimitHit(input: {
   if (!input.hasLiveSession || input.primaryRemainingPercent == null) {
     return false;
   }
-  return Math.round(Math.max(0, input.primaryRemainingPercent)) <= 0;
+  return (
+    normalizeNearZeroQuotaPercent(input.primaryRemainingPercent) <= 0
+  );
 }
 
 function formatLimitHitCountdown(remainingMs: number): string {
