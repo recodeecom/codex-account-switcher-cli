@@ -30,6 +30,9 @@ function isWorkingNow(input: UseLocalAccountInput): boolean {
 }
 
 export function canUseLocalAccount(input: UseLocalAccountInput): boolean {
+  if (!hasWeeklyQuota(input.secondaryRemainingPercent)) {
+    return false;
+  }
   if (isWorkingNow(input)) {
     return true;
   }
@@ -47,6 +50,9 @@ export function canUseLocalAccount(input: UseLocalAccountInput): boolean {
 }
 
 export function getUseLocalAccountDisabledReason(input: UseLocalAccountInput): string | null {
+  if (!hasWeeklyQuota(input.secondaryRemainingPercent)) {
+    return "Need at least 1% weekly quota remaining.";
+  }
   if (isWorkingNow(input)) {
     return null;
   }
@@ -63,9 +69,6 @@ export function getUseLocalAccountDisabledReason(input: UseLocalAccountInput): s
   }
   if (!hasFiveHourQuota(input.primaryRemainingPercent)) {
     return "Need at least 1% 5h quota remaining.";
-  }
-  if (!hasWeeklyQuota(input.secondaryRemainingPercent)) {
-    return "Need at least 1% weekly quota remaining.";
   }
   return null;
 }

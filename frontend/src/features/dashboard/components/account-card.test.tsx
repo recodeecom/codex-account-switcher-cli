@@ -315,6 +315,31 @@ describe("AccountCard", () => {
     expect(screen.getByRole("button", { name: "Use this account" })).toBeEnabled();
   });
 
+  it("disables use this account button for working-now accounts when weekly quota is depleted", () => {
+    const nowIso = new Date().toISOString();
+    const account = createAccountSummary({
+      status: "paused",
+      usage: {
+        primaryRemainingPercent: 40,
+        secondaryRemainingPercent: 0,
+      },
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "different",
+        isActiveSnapshot: false,
+        hasLiveSession: true,
+      },
+      codexSessionCount: 0,
+      lastUsageRecordedAtPrimary: nowIso,
+      lastUsageRecordedAtSecondary: nowIso,
+    });
+
+    render(<AccountCard account={account} />);
+
+    expect(screen.getByRole("button", { name: "Use this account" })).toBeDisabled();
+  });
+
   it("treats deactivated accounts with active snapshot as active in dashboard cards", () => {
     const account = createAccountSummary({
       status: "deactivated",

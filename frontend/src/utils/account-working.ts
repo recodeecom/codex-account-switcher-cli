@@ -459,11 +459,6 @@ export function hasActiveCliSessionSignal(
     return false;
   }
 
-  const usageLimitHitCountdownMs = getWorkingNowUsageLimitHitCountdownMs(account, nowMs);
-  if (usageLimitHitCountdownMs != null && usageLimitHitCountdownMs <= 0) {
-    return false;
-  }
-
   return true;
 }
 
@@ -700,18 +695,12 @@ export function isAccountWorkingNow(
   const hasDepletedPrimaryQuota =
     isDepletedPrimaryQuota(quotaState.mergedPrimaryRemaining) ||
     isDepletedPrimaryQuota(quotaState.primaryRemaining);
-  const usageLimitHitCountdownMs = getWorkingNowUsageLimitHitCountdownMs(account, nowMs);
 
   // Keep the grouping logic aligned with the UI percent label (rounded).
   // When the 5h budget renders as 0%, the account should not stay in
-  // "Working now" unless it still has an active CLI session signal. Even with
-  // active session signals, keep exhausted accounts in "Working now" only for
-  // a short grace period, then age them out automatically.
+  // "Working now" unless it still has an active CLI session signal.
   if (hasDepletedPrimaryQuota) {
     if (!hasActiveCliSessionSignal) {
-      return false;
-    }
-    if (usageLimitHitCountdownMs != null && usageLimitHitCountdownMs <= 0) {
       return false;
     }
   }
