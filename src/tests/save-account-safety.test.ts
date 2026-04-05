@@ -172,10 +172,10 @@ test("saveAccount blocks overwrite when emails match but account identity differ
   });
 });
 
-test("inferAccountNameFromCurrentAuth returns unique suffix for same-email different account identities", async (t) => {
+test("inferAccountNameFromCurrentAuth returns email-shaped duplicate suffix for same-email different account identities", async (t) => {
   await withIsolatedCodexDir(t, async ({ accountsDir, authPath }) => {
     const service = new AccountService();
-    const firstSnapshotPath = path.join(accountsDir, "codexina.json");
+    const firstSnapshotPath = path.join(accountsDir, "codexina@edixai.com.json");
 
     await fsp.writeFile(
       firstSnapshotPath,
@@ -196,7 +196,7 @@ test("inferAccountNameFromCurrentAuth returns unique suffix for same-email diffe
     );
 
     const inferred = await service.inferAccountNameFromCurrentAuth();
-    assert.equal(inferred, "codexina-edixai-com");
+    assert.equal(inferred, "codexina@edixai.com--dup-2");
   });
 });
 
@@ -233,7 +233,7 @@ test("resolveDefaultAccountNameFromCurrentAuth reuses active snapshot name when 
   });
 });
 
-test("resolveDefaultAccountNameFromCurrentAuth falls back to inferred name when active snapshot mismatches identity", async (t) => {
+test("resolveDefaultAccountNameFromCurrentAuth falls back to inferred email-shaped name when active snapshot mismatches identity", async (t) => {
   await withIsolatedCodexDir(t, async ({ codexDir, accountsDir, authPath }) => {
     const service = new AccountService();
     const activeName = "itrexsale";
@@ -260,7 +260,7 @@ test("resolveDefaultAccountNameFromCurrentAuth falls back to inferred name when 
 
     const resolved = await service.resolveDefaultAccountNameFromCurrentAuth();
     assert.deepEqual(resolved, {
-      name: "codexina",
+      name: "codexina@edixai.com",
       source: "inferred",
     });
   });
