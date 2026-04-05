@@ -7,6 +7,9 @@
 - [x] 2.1 Add auth.json email-identity fallback for live process snapshot attribution.
 - [x] 2.2 Materialize missing email-derived snapshot files when fallback attribution succeeds.
 - [x] 2.3 Keep existing explicit snapshot/env/current-path attribution precedence unchanged.
+- [x] 2.4 Sort `/live_usage` snapshot rows by activity so live snapshots are listed first.
+- [x] 2.5 In `/live_usage`, avoid fallback session task backfill from stale account previews; use mapped live session tasks for active snapshots.
+- [x] 2.6 Map multi-process pre-switch unlabeled sessions to `previousActiveAccountName` when registry metadata is present (instead of marking all as unattributed).
 
 ## 3. Validation
 

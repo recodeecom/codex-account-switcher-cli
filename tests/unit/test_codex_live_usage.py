@@ -1036,11 +1036,8 @@ def test_read_live_codex_process_session_counts_by_snapshot_maps_multiple_unlabe
         lambda _pid: default_current.stat().st_mtime + 1,
     )
 
-    attribution = read_live_codex_process_session_attribution()
     counts = read_live_codex_process_session_counts_by_snapshot()
-    assert attribution.counts_by_snapshot == {}
-    assert attribution.unattributed_session_pids == [404, 405]
-    assert counts == {}
+    assert counts == {"work": 2}
 
 
 def test_read_live_codex_process_session_counts_by_snapshot_maps_multiple_unlabeled_default_scope_processes_without_start_time_gate(
@@ -1073,6 +1070,57 @@ def test_read_live_codex_process_session_counts_by_snapshot_maps_multiple_unlabe
     assert attribution.counts_by_snapshot == {}
     assert attribution.unattributed_session_pids == [404, 405]
     assert counts == {}
+
+
+def test_read_live_codex_process_session_counts_by_snapshot_maps_multiple_pre_switch_unlabeled_processes_to_previous_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    current_path = tmp_path / "default" / "current"
+    current_path.parent.mkdir(parents=True, exist_ok=True)
+    current_path.write_text("unique", encoding="utf-8")
+    os.utime(current_path, (1_500.0, 1_500.0))
+    monkeypatch.setenv("CODEX_AUTH_CURRENT_PATH", str(current_path))
+    monkeypatch.setenv("CODEX_LB_UNLABELED_PROCESS_START_TOLERANCE_SECONDS", "0")
+
+    registry_path = tmp_path / "accounts" / "registry.json"
+    registry_path.parent.mkdir(parents=True, exist_ok=True)
+    registry_path.write_text(
+        json.dumps(
+            {
+                "activeAccountName": "unique",
+                "previousActiveAccountName": "tokio",
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CODEX_AUTH_REGISTRY_PATH", str(registry_path))
+
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._iter_running_codex_commands",
+        lambda _proc_root: [
+            (404, ["/usr/bin/codex", "model_instructions_file=agents"]),
+            (405, ["/usr/bin/codex", "model_instructions_file=agents"]),
+        ],
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._read_process_env",
+        lambda _pid: {},
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._process_belongs_to_current_user",
+        lambda _pid: True,
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._read_process_started_at",
+        lambda _pid: 1_000.0,
+    )
+
+    attribution = read_live_codex_process_session_attribution()
+    counts = read_live_codex_process_session_counts_by_snapshot()
+    assert attribution.counts_by_snapshot == {"tokio": 2}
+    assert attribution.unattributed_session_pids == []
+    assert counts == {"tokio": 2}
 
 
 def test_read_live_codex_process_session_counts_by_snapshot_ignores_unlabeled_foreign_processes(

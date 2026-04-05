@@ -102,12 +102,6 @@ async def live_usage() -> Response:
     session_task_previews_by_snapshot: dict[str, dict[int, list[str]]] = {}
     mapped_session_task_preview_count = 0
     for snapshot_name, session_pids in mapped_session_pids_by_snapshot.items():
-        snapshot_task_previews = task_previews_by_snapshot.get(snapshot_name, [])
-        fallback_preview = (
-            _normalize_task_preview(snapshot_task_previews[0].preview)
-            if snapshot_task_previews
-            else ""
-        )
         previews_for_snapshot: dict[int, list[str]] = {}
         for pid in session_pids:
             session_preview_list = [
@@ -118,8 +112,6 @@ async def live_usage() -> Response:
                 )
                 if normalized
             ]
-            if not session_preview_list and fallback_preview:
-                session_preview_list = [fallback_preview]
             previews_for_snapshot[pid] = session_preview_list
             mapped_session_task_preview_count += len(session_preview_list)
         session_task_previews_by_snapshot[snapshot_name] = previews_for_snapshot
@@ -143,8 +135,58 @@ async def live_usage() -> Response:
     total_mapped_sessions = sum(max(0, count) for count in counts_by_snapshot.values())
     total_unattributed_sessions = len(unattributed_session_pids)
     total_sessions = total_mapped_sessions + total_unattributed_sessions
+
+    effective_task_previews_by_snapshot: dict[str, list[_LiveUsageTaskPreview]] = {}
+    for snapshot_name in (
+        set(task_previews_by_snapshot.keys()) | set(session_task_previews_by_snapshot.keys())
+    ):
+        session_pids = mapped_session_pids_by_snapshot.get(snapshot_name, [])
+        session_task_previews = session_task_previews_by_snapshot.get(snapshot_name, {})
+        existing_task_previews = list(task_previews_by_snapshot.get(snapshot_name, []))
+
+        if not session_pids:
+            effective_task_previews_by_snapshot[snapshot_name] = existing_task_previews
+            continue
+
+        derived_preview_texts: list[str] = []
+        seen_preview_texts: set[str] = set()
+        for pid in session_pids:
+            for preview in session_task_previews.get(pid, []):
+                if preview in seen_preview_texts:
+                    continue
+                seen_preview_texts.add(preview)
+                derived_preview_texts.append(preview)
+
+        # For snapshots that currently own live sessions, only emit previews
+        # observed from those live sessions so stale persisted account previews
+        # cannot be misattributed in the XML feed.
+        if not derived_preview_texts:
+            effective_task_previews_by_snapshot[snapshot_name] = []
+            continue
+
+        task_previews_for_snapshot = [
+            task_preview
+            for task_preview in existing_task_previews
+            if task_preview.preview in seen_preview_texts
+        ]
+        existing_preview_texts = {
+            task_preview.preview for task_preview in task_previews_for_snapshot
+        }
+        for preview in derived_preview_texts:
+            if preview in existing_preview_texts:
+                continue
+            task_previews_for_snapshot.append(
+                _LiveUsageTaskPreview(
+                    account_id="session",
+                    preview=preview,
+                )
+            )
+
+        task_previews_for_snapshot.sort(key=lambda task_preview: task_preview.account_id)
+        effective_task_previews_by_snapshot[snapshot_name] = task_previews_for_snapshot
+
     total_account_task_previews = sum(
-        len(task_previews) for task_previews in task_previews_by_snapshot.values()
+        len(task_previews) for task_previews in effective_task_previews_by_snapshot.values()
     )
     total_session_task_previews = (
         mapped_session_task_preview_count + unattributed_session_task_preview_count
@@ -165,8 +207,13 @@ async def live_usage() -> Response:
     ]
     snapshot_names = sorted(
         set(counts_by_snapshot.keys())
-        | set(task_previews_by_snapshot.keys())
-        | set(account_emails_by_snapshot.keys())
+        | set(effective_task_previews_by_snapshot.keys())
+        | set(account_emails_by_snapshot.keys()),
+        key=lambda snapshot_name: (
+            -max(0, counts_by_snapshot.get(snapshot_name, 0)),
+            -len(effective_task_previews_by_snapshot.get(snapshot_name, [])),
+            snapshot_name,
+        ),
     )
     for snapshot_name in snapshot_names:
         session_count = max(0, counts_by_snapshot.get(snapshot_name, 0))
@@ -175,7 +222,7 @@ async def live_usage() -> Response:
         session_task_preview_count = sum(
             len(session_task_previews.get(pid, [])) for pid in session_pids
         )
-        task_previews = task_previews_by_snapshot.get(snapshot_name, [])
+        task_previews = effective_task_previews_by_snapshot.get(snapshot_name, [])
         account_emails = account_emails_by_snapshot.get(snapshot_name, [])
         sanitized_snapshot_name = escape(snapshot_name, quote=True)
         account_emails_attribute = (

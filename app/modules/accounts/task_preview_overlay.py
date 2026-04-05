@@ -6,6 +6,7 @@ import re
 from app.db.models import Account
 from app.modules.accounts.codex_live_usage import (
     LocalCodexTaskPreview,
+    read_live_codex_process_session_attribution,
     read_local_codex_task_previews_by_session_id,
     read_local_codex_task_previews_by_snapshot,
 )
@@ -14,6 +15,7 @@ from app.modules.accounts.schemas import AccountCodexAuthStatus, AccountLiveQuot
 _ROLLOUT_SESSION_FILE_RE = re.compile(
     r"^rollout-(?P<start>\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2})-(?P<session>[0-9a-fA-F-]{36})\.jsonl$"
 )
+_WAITING_FOR_NEW_TASK_PREVIEW = "Waiting for new task"
 
 
 def overlay_live_codex_task_previews(
@@ -26,11 +28,30 @@ def overlay_live_codex_task_previews(
 ) -> None:
     previews_by_snapshot = read_local_codex_task_previews_by_snapshot(now=now)
     previews_by_session_id = read_local_codex_task_previews_by_session_id(now=now)
+    process_preview_by_snapshot, waiting_process_snapshots = (
+        _read_live_process_task_preview_state_by_snapshot()
+    )
 
-    if not previews_by_snapshot and not previews_by_session_id:
+    if (
+        not previews_by_snapshot
+        and not previews_by_session_id
+        and not process_preview_by_snapshot
+        and not waiting_process_snapshots
+    ):
         return
 
     for account in accounts:
+        codex_auth_status = codex_auth_by_account.get(account.id)
+        snapshot_name = codex_auth_status.snapshot_name if codex_auth_status else None
+        if snapshot_name:
+            process_preview = process_preview_by_snapshot.get(snapshot_name)
+            if process_preview:
+                codex_current_task_preview_by_account[account.id] = process_preview
+                continue
+            if snapshot_name in waiting_process_snapshots:
+                codex_current_task_preview_by_account[account.id] = _WAITING_FOR_NEW_TASK_PREVIEW
+                continue
+
         if codex_current_task_preview_by_account.get(account.id):
             continue
 
@@ -44,14 +65,48 @@ def overlay_live_codex_task_previews(
             codex_current_task_preview_by_account[account.id] = preview_from_source.text
             continue
 
-        codex_auth_status = codex_auth_by_account.get(account.id)
         if codex_auth_status is not None:
-            snapshot_name = codex_auth_status.snapshot_name
             if snapshot_name:
                 preview = previews_by_snapshot.get(snapshot_name)
                 if preview is not None:
                     codex_current_task_preview_by_account[account.id] = preview.text
                     continue
+
+
+def _read_live_process_task_preview_state_by_snapshot() -> tuple[dict[str, str], set[str]]:
+    attribution = read_live_codex_process_session_attribution()
+    task_previews_by_pid = (
+        attribution.task_previews_by_pid
+        if attribution.task_previews_by_pid
+        else {
+            pid: [preview]
+            for pid, preview in attribution.task_preview_by_pid.items()
+            if isinstance(preview, str) and preview.strip()
+        }
+    )
+
+    preview_by_snapshot: dict[str, str] = {}
+    waiting_snapshots: set[str] = set()
+
+    for snapshot_name, session_pids in attribution.mapped_session_pids_by_snapshot.items():
+        first_preview: str | None = None
+        for pid in session_pids:
+            for preview in task_previews_by_pid.get(pid, []):
+                normalized_preview = preview.strip()
+                if not normalized_preview:
+                    continue
+                first_preview = normalized_preview
+                break
+            if first_preview:
+                break
+
+        if first_preview:
+            preview_by_snapshot[snapshot_name] = first_preview
+            continue
+
+        waiting_snapshots.add(snapshot_name)
+
+    return preview_by_snapshot, waiting_snapshots
 
 
 def _resolve_preview_from_debug_sources(
