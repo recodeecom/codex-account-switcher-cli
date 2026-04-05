@@ -13,6 +13,7 @@ from app.modules.accounts.schemas import (
     AccountCodexAuthStatus,
     AccountLiveQuotaDebug,
     AccountLiveQuotaDebugSample,
+    AccountSessionTaskPreview,
 )
 from app.modules.accounts.task_preview_overlay import overlay_live_codex_task_previews
 
@@ -75,6 +76,7 @@ def test_overlay_replaces_stale_preview_with_waiting_for_new_task(
         codex_auth_by_account=codex_auth_by_account,
         codex_current_task_preview_by_account=codex_current_task_preview_by_account,
         codex_last_task_preview_by_account=codex_last_task_preview_by_account,
+        codex_session_task_previews_by_account={},
         live_quota_debug_by_account={},
         now=datetime(2026, 4, 5, tzinfo=timezone.utc),
     )
@@ -121,12 +123,76 @@ def test_overlay_prefers_live_process_preview_for_snapshot(monkeypatch) -> None:
         codex_auth_by_account=codex_auth_by_account,
         codex_current_task_preview_by_account=codex_current_task_preview_by_account,
         codex_last_task_preview_by_account=codex_last_task_preview_by_account,
+        codex_session_task_previews_by_account={},
         live_quota_debug_by_account={},
         now=datetime(2026, 4, 5, tzinfo=timezone.utc),
     )
 
     assert codex_current_task_preview_by_account[account.id] == "Investigate snapshot mapping"
     assert account.id not in codex_last_task_preview_by_account
+
+
+def test_overlay_includes_live_process_session_task_previews(monkeypatch) -> None:
+    account = _make_account("acc-debug", "debug@example.com")
+    codex_auth_by_account = {
+        account.id: AccountCodexAuthStatus(
+            has_snapshot=True,
+            snapshot_name="debug@example.com",
+            active_snapshot_name="debug@example.com",
+            is_active_snapshot=True,
+            has_live_session=True,
+        )
+    }
+    codex_current_task_preview_by_account: dict[str, str] = {}
+    codex_last_task_preview_by_account: dict[str, str] = {}
+    codex_session_task_previews_by_account = {
+        account.id: [
+            AccountSessionTaskPreview(
+                session_key="session-abc",
+                task_preview="Old sticky preview",
+                task_updated_at=None,
+            )
+        ]
+    }
+
+    monkeypatch.setattr(
+        "app.modules.accounts.task_preview_overlay.read_local_codex_task_previews_by_snapshot",
+        lambda *, now: {},
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.task_preview_overlay.read_local_codex_task_previews_by_session_id",
+        lambda *, now: {},
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.task_preview_overlay.read_live_codex_process_session_attribution",
+        lambda: LocalCodexProcessSessionAttribution(
+            counts_by_snapshot={"debug@example.com": 2},
+            unattributed_session_pids=[],
+            mapped_session_pids_by_snapshot={"debug@example.com": [31001, 31002]},
+            task_preview_by_pid={31001: "next js error debug"},
+            task_previews_by_pid={31001: ["next js error debug"]},
+        ),
+    )
+
+    overlay_live_codex_task_previews(
+        accounts=[account],
+        codex_auth_by_account=codex_auth_by_account,
+        codex_current_task_preview_by_account=codex_current_task_preview_by_account,
+        codex_last_task_preview_by_account=codex_last_task_preview_by_account,
+        codex_session_task_previews_by_account=codex_session_task_previews_by_account,
+        live_quota_debug_by_account={},
+        now=datetime(2026, 4, 5, tzinfo=timezone.utc),
+    )
+
+    assert codex_current_task_preview_by_account[account.id] == "next js error debug"
+    session_previews = codex_session_task_previews_by_account[account.id]
+    assert [preview.session_key for preview in session_previews] == [
+        "pid:31001",
+        "pid:31002",
+        "session-abc",
+    ]
+    assert session_previews[0].task_preview == "next js error debug"
+    assert session_previews[1].task_preview is None
 
 
 def test_overlay_keeps_waiting_state_and_adds_last_task_preview(monkeypatch) -> None:
@@ -173,6 +239,7 @@ def test_overlay_keeps_waiting_state_and_adds_last_task_preview(monkeypatch) -> 
         codex_auth_by_account=codex_auth_by_account,
         codex_current_task_preview_by_account=codex_current_task_preview_by_account,
         codex_last_task_preview_by_account=codex_last_task_preview_by_account,
+        codex_session_task_previews_by_account={},
         live_quota_debug_by_account={},
         now=now,
     )
@@ -230,6 +297,7 @@ def test_overlay_waiting_multi_session_does_not_copy_last_task_from_debug_sample
         codex_auth_by_account=codex_auth_by_account,
         codex_current_task_preview_by_account=codex_current_task_preview_by_account,
         codex_last_task_preview_by_account=codex_last_task_preview_by_account,
+        codex_session_task_previews_by_account={},
         live_quota_debug_by_account={
             account.id: AccountLiveQuotaDebug(
                 snapshots_considered=["tokio@edixai.com"],
@@ -294,6 +362,7 @@ def test_overlay_waiting_last_task_uses_matching_snapshot_debug_sample_only(monk
         codex_auth_by_account=codex_auth_by_account,
         codex_current_task_preview_by_account=codex_current_task_preview_by_account,
         codex_last_task_preview_by_account=codex_last_task_preview_by_account,
+        codex_session_task_previews_by_account={},
         live_quota_debug_by_account={
             account.id: AccountLiveQuotaDebug(
                 snapshots_considered=["tokio@edixai.com", "viktor@edixai.com"],
@@ -369,6 +438,7 @@ def test_overlay_suppresses_stale_snapshot_preview_after_recent_termination(monk
         codex_auth_by_account=codex_auth_by_account,
         codex_current_task_preview_by_account=codex_current_task_preview_by_account,
         codex_last_task_preview_by_account=codex_last_task_preview_by_account,
+        codex_session_task_previews_by_account={},
         live_quota_debug_by_account={},
         now=now,
     )

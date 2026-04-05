@@ -7,7 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.usage.types import BucketModelAggregate
 from app.db.models import Account, AdditionalUsageHistory, RequestLog, UsageHistory
-from app.modules.accounts.repository import AccountRequestUsageSummary, AccountsRepository
+from app.modules.accounts.repository import (
+    AccountRequestUsageSummary,
+    AccountsRepository,
+    AccountSessionTaskPreview,
+)
 from app.modules.request_logs.repository import RequestLogsRepository
 from app.modules.usage.repository import AdditionalUsageRepository, UsageRepository
 
@@ -63,6 +67,19 @@ class DashboardRepository:
         return await self._accounts_repo.list_codex_current_task_preview_by_account(
             account_ids,
             active_since=active_since,
+        )
+
+    async def list_codex_session_task_previews_by_account(
+        self,
+        account_ids: list[str] | None = None,
+        *,
+        active_since: datetime | None = None,
+        limit_per_account: int = 4,
+    ) -> dict[str, list[AccountSessionTaskPreview]]:
+        return await self._accounts_repo.list_codex_session_task_previews_by_account(
+            account_ids,
+            active_since=active_since,
+            limit_per_account=limit_per_account,
         )
 
     async def usage_history_since(

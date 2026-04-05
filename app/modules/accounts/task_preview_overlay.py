@@ -11,7 +11,11 @@ from app.modules.accounts.codex_live_usage import (
     read_local_codex_task_previews_by_snapshot,
 )
 from app.modules.accounts.live_usage_overrides import has_recently_terminated_cli_session_snapshot
-from app.modules.accounts.schemas import AccountCodexAuthStatus, AccountLiveQuotaDebug
+from app.modules.accounts.schemas import (
+    AccountCodexAuthStatus,
+    AccountLiveQuotaDebug,
+    AccountSessionTaskPreview,
+)
 
 _ROLLOUT_SESSION_FILE_RE = re.compile(
     r"^rollout-(?P<start>\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2})-(?P<session>[0-9a-fA-F-]{36})\.jsonl$"
@@ -25,6 +29,7 @@ def overlay_live_codex_task_previews(
     codex_auth_by_account: dict[str, AccountCodexAuthStatus],
     codex_current_task_preview_by_account: dict[str, str],
     codex_last_task_preview_by_account: dict[str, str],
+    codex_session_task_previews_by_account: dict[str, list[AccountSessionTaskPreview]],
     live_quota_debug_by_account: dict[str, AccountLiveQuotaDebug] | None,
     now: datetime,
 ) -> None:
@@ -34,6 +39,7 @@ def overlay_live_codex_task_previews(
         process_preview_by_snapshot,
         waiting_process_snapshots,
         waiting_process_session_counts_by_snapshot,
+        process_session_task_previews_by_snapshot,
     ) = (
         _read_live_process_task_preview_state_by_snapshot()
     )
@@ -50,6 +56,19 @@ def overlay_live_codex_task_previews(
         codex_last_task_preview_by_account.pop(account.id, None)
         codex_auth_status = codex_auth_by_account.get(account.id)
         snapshot_name = codex_auth_status.snapshot_name if codex_auth_status else None
+        existing_session_task_previews = codex_session_task_previews_by_account.get(account.id, [])
+        if snapshot_name:
+            live_session_task_previews = process_session_task_previews_by_snapshot.get(snapshot_name, [])
+            if live_session_task_previews:
+                merged_session_task_previews: list[AccountSessionTaskPreview] = []
+                seen_session_keys: set[str] = set()
+                for preview in [*live_session_task_previews, *existing_session_task_previews]:
+                    session_key = preview.session_key.strip()
+                    if not session_key or session_key in seen_session_keys:
+                        continue
+                    seen_session_keys.add(session_key)
+                    merged_session_task_previews.append(preview)
+                codex_session_task_previews_by_account[account.id] = merged_session_task_previews
         if snapshot_name:
             process_preview = process_preview_by_snapshot.get(snapshot_name)
             if process_preview:
@@ -101,7 +120,12 @@ def overlay_live_codex_task_previews(
                     continue
 
 
-def _read_live_process_task_preview_state_by_snapshot() -> tuple[dict[str, str], set[str], dict[str, int]]:
+def _read_live_process_task_preview_state_by_snapshot() -> tuple[
+    dict[str, str],
+    set[str],
+    dict[str, int],
+    dict[str, list[AccountSessionTaskPreview]],
+]:
     attribution = read_live_codex_process_session_attribution()
     task_previews_by_pid = (
         attribution.task_previews_by_pid
@@ -116,18 +140,32 @@ def _read_live_process_task_preview_state_by_snapshot() -> tuple[dict[str, str],
     preview_by_snapshot: dict[str, str] = {}
     waiting_snapshots: set[str] = set()
     waiting_session_counts_by_snapshot: dict[str, int] = {}
+    session_task_previews_by_snapshot: dict[str, list[AccountSessionTaskPreview]] = {}
 
     for snapshot_name, session_pids in attribution.mapped_session_pids_by_snapshot.items():
         first_preview: str | None = None
+        session_task_previews: list[AccountSessionTaskPreview] = []
         for pid in session_pids:
+            pid_previews = task_previews_by_pid.get(pid, [])
+            normalized_task_preview = next(
+                (preview.strip() for preview in pid_previews if preview.strip()),
+                None,
+            )
+            session_task_previews.append(
+                AccountSessionTaskPreview(
+                    session_key=f"pid:{pid}",
+                    task_preview=normalized_task_preview,
+                    task_updated_at=None,
+                )
+            )
             for preview in task_previews_by_pid.get(pid, []):
                 normalized_preview = preview.strip()
                 if not normalized_preview:
                     continue
-                first_preview = normalized_preview
+                if first_preview is None:
+                    first_preview = normalized_preview
                 break
-            if first_preview:
-                break
+        session_task_previews_by_snapshot[snapshot_name] = session_task_previews
 
         if first_preview:
             preview_by_snapshot[snapshot_name] = first_preview
@@ -136,7 +174,12 @@ def _read_live_process_task_preview_state_by_snapshot() -> tuple[dict[str, str],
         waiting_snapshots.add(snapshot_name)
         waiting_session_counts_by_snapshot[snapshot_name] = len(session_pids)
 
-    return preview_by_snapshot, waiting_snapshots, waiting_session_counts_by_snapshot
+    return (
+        preview_by_snapshot,
+        waiting_snapshots,
+        waiting_session_counts_by_snapshot,
+        session_task_previews_by_snapshot,
+    )
 
 
 def _resolve_waiting_snapshot_last_preview(

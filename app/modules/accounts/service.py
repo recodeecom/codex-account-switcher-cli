@@ -203,6 +203,7 @@ class AccountsService:
             codex_auth_by_account=codex_auth_by_account,
             codex_current_task_preview_by_account=codex_current_task_preview_by_account,
             codex_last_task_preview_by_account=codex_last_task_preview_by_account,
+            codex_session_task_previews_by_account=codex_session_task_previews_by_account,
             live_quota_debug_by_account=live_quota_debug_by_account,
             now=utcnow(),
         )

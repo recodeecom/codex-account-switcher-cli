@@ -17,7 +17,12 @@ from app.modules.accounts.codex_auth_switcher import (
 from app.modules.accounts.live_usage_overrides import apply_local_live_usage_overrides
 from app.modules.accounts.live_usage_persistence import persist_live_usage_overrides
 from app.modules.accounts.mappers import build_account_summaries
-from app.modules.accounts.schemas import AccountCodexAuthStatus, AccountLiveQuotaDebug, AccountRequestUsage
+from app.modules.accounts.schemas import (
+    AccountCodexAuthStatus,
+    AccountLiveQuotaDebug,
+    AccountRequestUsage,
+    AccountSessionTaskPreview,
+)
 from app.modules.accounts.task_preview_overlay import overlay_live_codex_task_previews
 from app.modules.dashboard.repository import DashboardRepository
 from app.modules.dashboard.schemas import (
@@ -79,6 +84,22 @@ class DashboardService:
             account_ids,
             active_since=active_codex_window_start,
         )
+        raw_codex_session_task_previews_by_account = await self._repo.list_codex_session_task_previews_by_account(
+            account_ids,
+            active_since=active_codex_window_start,
+            limit_per_account=4,
+        )
+        codex_session_task_previews_by_account: dict[str, list[AccountSessionTaskPreview]] = {
+            account_id: [
+                AccountSessionTaskPreview(
+                    session_key=preview.session_key,
+                    task_preview=preview.task_preview,
+                    task_updated_at=preview.task_updated_at,
+                )
+                for preview in previews
+            ]
+            for account_id, previews in raw_codex_session_task_previews_by_account.items()
+        }
         codex_last_task_preview_by_account: dict[str, str] = {}
         snapshot_index = build_snapshot_index()
         codex_auth_by_account = {
@@ -105,6 +126,7 @@ class DashboardService:
             codex_auth_by_account=codex_auth_by_account,
             codex_current_task_preview_by_account=codex_current_task_preview_by_account,
             codex_last_task_preview_by_account=codex_last_task_preview_by_account,
+            codex_session_task_previews_by_account=codex_session_task_previews_by_account,
             live_quota_debug_by_account=live_quota_debug_by_account,
             now=now,
         )
@@ -118,6 +140,7 @@ class DashboardService:
             codex_tracked_session_counts_by_account=codex_tracked_session_counts_by_account,
             codex_current_task_preview_by_account=codex_current_task_preview_by_account,
             codex_last_task_preview_by_account=codex_last_task_preview_by_account,
+            codex_session_task_previews_by_account=codex_session_task_previews_by_account,
             live_quota_debug_by_account=live_quota_debug_by_account,
             codex_auth_by_account=codex_auth_by_account,
             encryptor=self._encryptor,
