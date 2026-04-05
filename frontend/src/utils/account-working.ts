@@ -100,10 +100,8 @@ function shouldSuppressNoCliSampleSessionSignal(
     return false;
   }
 
-  const isActiveSnapshotLiveSession =
-    (account.codexAuth?.hasLiveSession ?? false) &&
-    (account.codexAuth?.isActiveSnapshot ?? false);
-  if (isActiveSnapshotLiveSession) {
+  const hasSnapshotLiveSession = account.codexAuth?.hasLiveSession ?? false;
+  if (hasSnapshotLiveSession) {
     return false;
   }
 

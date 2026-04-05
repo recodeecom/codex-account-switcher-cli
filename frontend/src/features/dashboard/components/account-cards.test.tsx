@@ -178,7 +178,7 @@ describe("AccountCards", () => {
     expect(screen.getByText("reset@example.com")).toBeInTheDocument();
   });
 
-  it("ages out usage-limit-hit accounts from working-now after 1 minute", () => {
+  it("keeps usage-limit-hit accounts in working-now after 1 minute when sessions are still active", () => {
     vi.useFakeTimers();
     const now = new Date("2026-04-04T21:04:00.000Z");
     vi.setSystemTime(now);
@@ -221,8 +221,8 @@ describe("AccountCards", () => {
       });
 
       expect(
-        screen.queryByRole("heading", { name: "Working now" }),
-      ).not.toBeInTheDocument();
+        screen.getByRole("heading", { name: "Working now" }),
+      ).toBeInTheDocument();
       expect(screen.getByText("limit-hit@example.com")).toBeInTheDocument();
     } finally {
       vi.useRealTimers();

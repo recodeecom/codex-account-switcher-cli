@@ -112,7 +112,7 @@ describe("isAccountWorkingNow", () => {
     expect(isAccountWorkingNow(account, new Date("2026-04-04T11:59:40.000Z").getTime())).toBe(true);
   });
 
-  it("treats sub-5% 5h quota as depleted and ages out after grace", () => {
+  it("keeps sub-5% 5h accounts in working-now while active sessions still exist", () => {
     const account = createAccountSummary({
       usage: {
         primaryRemainingPercent: 4,
@@ -133,10 +133,10 @@ describe("isAccountWorkingNow", () => {
     });
 
     expect(isAccountWorkingNow(account, new Date("2026-04-04T11:59:00.000Z").getTime())).toBe(true);
-    expect(isAccountWorkingNow(account, new Date("2026-04-04T12:00:01.000Z").getTime())).toBe(false);
+    expect(isAccountWorkingNow(account, new Date("2026-04-04T12:00:01.000Z").getTime())).toBe(true);
   });
 
-  it("ages out usage-limit-hit accounts after 60 seconds even with active session signals", () => {
+  it("keeps usage-limit-hit accounts in working-now after 60 seconds when sessions stay active", () => {
     const account = createAccountSummary({
       usage: {
         primaryRemainingPercent: 0,
@@ -157,7 +157,7 @@ describe("isAccountWorkingNow", () => {
     });
 
     expect(isAccountWorkingNow(account, new Date("2026-04-04T11:59:00.000Z").getTime())).toBe(true);
-    expect(isAccountWorkingNow(account, new Date("2026-04-04T12:00:01.000Z").getTime())).toBe(false);
+    expect(isAccountWorkingNow(account, new Date("2026-04-04T12:00:01.000Z").getTime())).toBe(true);
   });
 
   it("returns a 60-second usage-limit countdown while account is still eligible for working-now", () => {
@@ -218,8 +218,8 @@ describe("isAccountWorkingNow", () => {
     const secondNowMs = new Date("2026-04-04T12:00:10.000Z").getTime();
 
     expect(getWorkingNowUsageLimitHitCountdownMs(refreshedButSameSession, secondNowMs)).toBe(0);
-    expect(isAccountWorkingNow(refreshedButSameSession, secondNowMs)).toBe(false);
-    expect(hasActiveCliSessionSignal(refreshedButSameSession, secondNowMs)).toBe(false);
+    expect(isAccountWorkingNow(refreshedButSameSession, secondNowMs)).toBe(true);
+    expect(hasActiveCliSessionSignal(refreshedButSameSession, secondNowMs)).toBe(true);
   });
 
   it("does not restart usage-limit grace when raw rollout source names rotate", () => {
@@ -284,8 +284,8 @@ describe("isAccountWorkingNow", () => {
     const secondNowMs = new Date("2026-04-04T12:00:10.000Z").getTime();
 
     expect(getWorkingNowUsageLimitHitCountdownMs(sameSessionWithRotatedSource, secondNowMs)).toBe(0);
-    expect(isAccountWorkingNow(sameSessionWithRotatedSource, secondNowMs)).toBe(false);
-    expect(hasActiveCliSessionSignal(sameSessionWithRotatedSource, secondNowMs)).toBe(false);
+    expect(isAccountWorkingNow(sameSessionWithRotatedSource, secondNowMs)).toBe(true);
+    expect(hasActiveCliSessionSignal(sameSessionWithRotatedSource, secondNowMs)).toBe(true);
   });
 
   it("does not restart usage-limit grace when live_usage task preview timestamps rotate", () => {
@@ -334,13 +334,13 @@ describe("isAccountWorkingNow", () => {
         sameSessionWithRefreshedLiveUsageTask,
         secondNowMs,
       ),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       hasActiveCliSessionSignal(
         sameSessionWithRefreshedLiveUsageTask,
         secondNowMs,
       ),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("returns false when no-live-telemetry fallback reports 0% even if baseline usage is higher", () => {
@@ -384,7 +384,7 @@ describe("isAccountWorkingNow", () => {
     expect(isAccountWorkingNow(account, nowMs)).toBe(false);
   });
 
-  it("returns false when no-live-telemetry has no scoped cli sessions sampled", () => {
+  it("keeps live-session accounts visible when no-live-telemetry has no scoped cli samples", () => {
     const nowMs = new Date("2026-04-04T12:00:00.000Z").getTime();
     const account = createAccountSummary({
       codexLiveSessionCount: 0,
@@ -418,8 +418,8 @@ describe("isAccountWorkingNow", () => {
       },
     });
 
-    expect(isAccountWorkingNow(account, nowMs)).toBe(false);
-    expect(hasActiveCliSessionSignal(account, nowMs)).toBe(false);
+    expect(isAccountWorkingNow(account, nowMs)).toBe(true);
+    expect(hasActiveCliSessionSignal(account, nowMs)).toBe(true);
   });
 
   it("returns true for active snapshot live sessions even when telemetry samples are missing", () => {
@@ -1020,7 +1020,7 @@ describe("isAccountWorkingNow", () => {
     expect(getRawQuotaWindowFallback(account, "secondary")).toBeNull();
   });
 
-  it("ages out when merged 5h is depleted and live sessions stay present", () => {
+  it("keeps merged-depleted 5h accounts in working-now while live sessions stay present", () => {
     const nowMs = new Date("2026-04-04T12:00:00.000Z").getTime();
     const account = createAccountSummary({
       usage: {
@@ -1054,7 +1054,7 @@ describe("isAccountWorkingNow", () => {
     });
 
     expect(isAccountWorkingNow(account, nowMs)).toBe(true);
-    expect(isAccountWorkingNow(account, nowMs + 61_000)).toBe(false);
+    expect(isAccountWorkingNow(account, nowMs + 61_000)).toBe(true);
   });
 
   it("keeps the lower remaining value when fallback and baseline share reset cycle", () => {
@@ -1255,7 +1255,7 @@ describe("hasActiveCliSessionSignal", () => {
     expect(hasActiveCliSessionSignal(debugOnly, nowMs)).toBe(true);
   });
 
-  it("returns false for no-live-telemetry when account-scoped cli samples are missing", () => {
+  it("returns true for no-live-telemetry when snapshot has live-session signal but scoped samples are missing", () => {
     const nowMs = new Date("2026-04-04T12:00:00.000Z").getTime();
     const account = createAccountSummary({
       codexAuth: {
@@ -1299,7 +1299,7 @@ describe("hasActiveCliSessionSignal", () => {
       },
     });
 
-    expect(hasActiveCliSessionSignal(account, nowMs)).toBe(false);
+    expect(hasActiveCliSessionSignal(account, nowMs)).toBe(true);
   });
 
   it("keeps active snapshot live sessions visible when no-live-telemetry samples are missing", () => {

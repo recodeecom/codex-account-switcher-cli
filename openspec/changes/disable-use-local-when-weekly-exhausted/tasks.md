@@ -2,3 +2,5 @@
 - [x] Pass weekly remaining values into all `canUseLocalAccount` and disabled-reason callsites.
 - [x] Add regression tests for weekly-depleted disable behavior.
 - [x] Validate with lint, typecheck, and targeted/frontend tests.
+- [x] Enforce weekly-depleted disable behavior for working-now account session overrides.
+- [x] Add regression coverage proving working-now accounts with weekly `0%` keep `Use this account` disabled.

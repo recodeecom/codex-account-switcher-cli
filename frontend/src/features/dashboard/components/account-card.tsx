@@ -326,6 +326,7 @@ function buildQuotaDebugLogLines(
   liveQuotaDebug: NonNullable<AccountSummary["liveQuotaDebug"]>,
   accountSnapshotName: string | null | undefined,
   accountId: string,
+  mappedCliSessions: number,
 ): string[] {
   const merged = liveQuotaDebug.merged;
   const scopedSamples = scopeQuotaDebugSamplesToAccount(
@@ -339,7 +340,8 @@ function buildQuotaDebugLogLines(
     `$ merged 5h=${formatDebugPercent(merged?.primary?.remainingPercent)} weekly=${formatDebugPercent(merged?.secondary?.remainingPercent)}`,
     `$ override=${liveQuotaDebug.overrideReason ?? (liveQuotaDebug.overrideApplied ? "applied" : "none")}`,
     `$ attribution=${diagnosticOnly ? "diagnostic sample only (not attributed)" : "account-attributed override applied"}`,
-    `$ flow=collect_cli_sessions -> merge -> ${liveQuotaDebug.overrideApplied ? "apply_override" : "no_override"}`,
+    `$ flow=collect_cli_samples -> merge -> ${liveQuotaDebug.overrideApplied ? "apply_override" : "no_override"}`,
+    `$ mapped_cli_sessions=${mappedCliSessions} sampled_rows=${scopedSamples.length}`,
   ];
 
   if (liveQuotaDebug.snapshotsConsidered.length > 0) {
@@ -358,9 +360,9 @@ function buildQuotaDebugLogLines(
       : "";
     const mappingSuffix = diagnosticOnly
       ? " mapping=diagnostic-only"
-      : ` mapping=account:${accountId}`;
+      : " mapping=snapshot-scoped-sample";
     lines.push(
-      `$ cli-session#${index + 1} src=${formatDebugSource(sample.source)} 5h=${formatDebugPercent(sample.primary?.remainingPercent)} weekly=${formatDebugPercent(sample.secondary?.remainingPercent)}${snapshotSuffix}${mappingSuffix}${staleSuffix}`,
+      `$ cli-sample#${index + 1} src=${formatDebugSource(sample.source)} 5h=${formatDebugPercent(sample.primary?.remainingPercent)} weekly=${formatDebugPercent(sample.secondary?.remainingPercent)}${snapshotSuffix}${mappingSuffix}${staleSuffix}`,
     );
   });
   return lines;
@@ -570,6 +572,13 @@ export function AccountCard({
     hasRecentUsageSignal: recentUsageSignal,
     codexSessionCount: account.codexSessionCount,
   });
+  const useLocalBlockedByWeeklyQuota =
+    typeof secondaryRemaining === "number" && secondaryRemaining < 1;
+  const useLocalButtonDisabled =
+    !canUseLocally || useLocalBusy || useLocalBlockedByWeeklyQuota;
+  const useLocalButtonDisabledReason = useLocalBlockedByWeeklyQuota
+    ? "Need at least 1% weekly quota remaining."
+    : useLocalDisabledReason;
   const autoTerminateSignature = [
     account.accountId,
     account.codexAuth?.snapshotName ?? "",
@@ -684,9 +693,15 @@ export function AccountCard({
             liveQuotaDebug,
             account.codexAuth?.snapshotName ?? null,
             account.accountId,
+            codexLiveSessionCount,
           ).join("\n")
         : "",
-    [account.accountId, account.codexAuth?.snapshotName, liveQuotaDebug],
+    [
+      account.accountId,
+      account.codexAuth?.snapshotName,
+      codexLiveSessionCount,
+      liveQuotaDebug,
+    ],
   );
   const emailSubtitle =
     account.displayName && account.displayName !== account.email
@@ -934,8 +949,8 @@ export function AccountCard({
               ? "text-emerald-700 hover:text-emerald-800 dark:text-emerald-300 dark:hover:text-emerald-200"
               : "text-muted-foreground",
           )}
-          disabled={!canUseLocally || useLocalBusy}
-          title={useLocalDisabledReason ?? undefined}
+          disabled={useLocalButtonDisabled}
+          title={useLocalButtonDisabledReason ?? undefined}
           onClick={() => onAction?.(account, "useLocal")}
         >
           Use this account

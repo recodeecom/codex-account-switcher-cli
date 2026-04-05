@@ -338,6 +338,10 @@ describe("AccountCard", () => {
     render(<AccountCard account={account} />);
 
     expect(screen.getByRole("button", { name: "Use this account" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Use this account" })).toHaveAttribute(
+      "title",
+      "Need at least 1% weekly quota remaining.",
+    );
   });
 
   it("treats deactivated accounts with active snapshot as active in dashboard cards", () => {
@@ -1105,7 +1109,7 @@ describe("AccountCard", () => {
 
       expect(screen.getByText("Current task")).toBeInTheDocument();
       expect(screen.queryByText("Investigate codexina rollout session mapping")).not.toBeInTheDocument();
-      expect(screen.getByText("No active task reported")).toBeInTheDocument();
+      expect(screen.getByText("Waiting for new task")).toBeInTheDocument();
       expect(screen.queryByText(/leaves in/i)).not.toBeInTheDocument();
     } finally {
       vi.useRealTimers();
