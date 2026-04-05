@@ -6,8 +6,12 @@ from pathlib import Path
 
 import pytest
 
+from app.core.crypto import TokenEncryptor
 from app.core.auth import generate_unique_account_id
-from app.modules.accounts.codex_auth_auto_import import _select_snapshot_name_for_account
+from app.modules.accounts.codex_auth_auto_import import (
+    _materialize_active_auth_snapshot,
+    _select_snapshot_name_for_account,
+)
 from app.modules.accounts.codex_auth_switcher import build_email_snapshot_name
 
 pytestmark = pytest.mark.unit
@@ -19,17 +23,26 @@ def _encode_jwt(payload: dict[str, object]) -> str:
     return f"header.{body}.sig"
 
 
-def _write_auth_snapshot(path: Path, *, email: str, account_id: str) -> None:
+def _write_auth_snapshot(
+    path: Path,
+    *,
+    email: str,
+    account_id: str,
+    access_token: str = "access",
+    refresh_token: str = "refresh",
+    id_token: str | None = None,
+) -> None:
     payload = {
         "email": email,
         "chatgpt_account_id": account_id,
         "https://api.openai.com/auth": {"chatgpt_plan_type": "plus"},
     }
+    encoded_id_token = id_token or _encode_jwt(payload)
     auth_json = {
         "tokens": {
-            "idToken": _encode_jwt(payload),
-            "accessToken": "access",
-            "refreshToken": "refresh",
+            "idToken": encoded_id_token,
+            "accessToken": access_token,
+            "refreshToken": refresh_token,
             "accountId": account_id,
         },
     }
@@ -44,11 +57,7 @@ def test_select_snapshot_name_for_account_prefers_existing_email_alias(monkeypat
     accounts_dir.mkdir()
 
     _write_auth_snapshot(accounts_dir / "unique.json", email=email, account_id=raw_account_id)
-    _write_auth_snapshot(
-        accounts_dir / "nagy.viktordp-gmail-com.json",
-        email=email,
-        account_id=raw_account_id,
-    )
+    _write_auth_snapshot(accounts_dir / "nagy.viktordp@gmail.com.json", email=email, account_id=raw_account_id)
 
     selected = _select_snapshot_name_for_account(
         account_id=canonical_account_id,
@@ -56,10 +65,10 @@ def test_select_snapshot_name_for_account_prefers_existing_email_alias(monkeypat
         accounts_dir=accounts_dir,
     )
 
-    assert selected == "nagy.viktordp-gmail-com"
+    assert selected == "nagy.viktordp@gmail.com"
 
 
-def test_select_snapshot_name_for_account_refreshes_existing_generic_snapshot_for_same_account(
+def test_select_snapshot_name_for_account_converges_existing_generic_snapshot_for_same_account(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     email = "nagy.viktordp@gmail.com"
@@ -76,10 +85,10 @@ def test_select_snapshot_name_for_account_refreshes_existing_generic_snapshot_fo
         accounts_dir=accounts_dir,
     )
 
-    assert selected == "unique"
+    assert selected == "nagy.viktordp@gmail.com"
 
 
-def test_select_snapshot_name_for_account_appends_numeric_suffix_when_email_alias_taken_by_other_account(
+def test_select_snapshot_name_for_account_appends_dup_suffix_when_email_alias_taken_by_other_account(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     email = "nagy.viktordp+biz@gmail.com"
@@ -102,10 +111,10 @@ def test_select_snapshot_name_for_account_appends_numeric_suffix_when_email_alia
         accounts_dir=accounts_dir,
     )
 
-    assert selected == f"{taken_name}-2"
+    assert selected == f"{taken_name}--dup-2"
 
 
-def test_select_snapshot_name_for_account_prefers_existing_snapshot_matched_by_email_when_account_id_drifted(
+def test_select_snapshot_name_for_account_converges_existing_email_matched_snapshot_when_account_id_drifted(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     email = "nagy.viktordp@gmail.com"
@@ -122,4 +131,41 @@ def test_select_snapshot_name_for_account_prefers_existing_snapshot_matched_by_e
         accounts_dir=accounts_dir,
     )
 
-    assert selected == "work"
+    assert selected == "nagy.viktordp@gmail.com"
+
+
+def test_materialize_active_auth_snapshot_writes_canonical_email_snapshot_on_new_login(
+    tmp_path: Path,
+) -> None:
+    accounts_dir = tmp_path / "accounts"
+    accounts_dir.mkdir()
+    active_auth_path = tmp_path / "auth.json"
+    email = "nagy.viktordp@gmail.com"
+    raw_account_id = "acc-main"
+
+    legacy_snapshot_path = accounts_dir / "unique.json"
+    _write_auth_snapshot(
+        legacy_snapshot_path,
+        email=email,
+        account_id=raw_account_id,
+        access_token="old-access",
+        refresh_token="old-refresh",
+    )
+    _write_auth_snapshot(
+        active_auth_path,
+        email=email,
+        account_id=raw_account_id,
+        access_token="new-access",
+        refresh_token="new-refresh",
+    )
+
+    _materialize_active_auth_snapshot(
+        accounts_dir=accounts_dir,
+        active_auth_path=active_auth_path,
+        encryptor=TokenEncryptor(),
+    )
+
+    canonical_snapshot_path = accounts_dir / "nagy.viktordp@gmail.com.json"
+    assert legacy_snapshot_path.exists()
+    assert canonical_snapshot_path.exists()
+    assert canonical_snapshot_path.read_bytes() == active_auth_path.read_bytes()

@@ -1,0 +1,5 @@
+- [x] Update canonical snapshot-name generation to prefer normalized email-shaped names.
+- [x] Update auto-import snapshot selection to converge legacy aliases to canonical email names.
+- [x] Update codex-account-switcher inferred naming to produce email-shaped names.
+- [x] Adjust tests for canonical email naming and duplicate suffix semantics.
+- [x] Validate specs with `openspec validate --specs`.

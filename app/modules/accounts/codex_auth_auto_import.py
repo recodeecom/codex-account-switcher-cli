@@ -266,8 +266,8 @@ def _select_snapshot_name_for_account(
     snapshot_names_by_email = _snapshot_names_by_email(accounts_dir)
     existing_email_names = snapshot_names_by_email.get(normalized_email, [])
     if existing_email_names:
-        # Force converging to the canonical email-shaped snapshot name even
-        # when legacy aliases exist for this email/account.
+        # Force converging to canonical email-shaped snapshot names so
+        # codex login auto-import always standardizes legacy aliases.
         return canonical_name
 
     if existing_names:
@@ -305,7 +305,7 @@ def _snapshot_email(snapshot_path: Path) -> str | None:
 def _is_email_snapshot_alias(snapshot_name: str, *, base_name: str) -> bool:
     if snapshot_name == base_name:
         return True
-    prefix = f"{base_name}-"
+    prefix = f"{base_name}--dup-"
     if not snapshot_name.startswith(prefix):
         return False
     suffix = snapshot_name[len(prefix) :]

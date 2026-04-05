@@ -229,11 +229,11 @@ def test_select_snapshot_name_prefers_active() -> None:
 
 def test_select_snapshot_name_prefers_email_snapshot_over_active() -> None:
     selected = select_snapshot_name(
-        ["viktoredix", "admin-edixai-com"],
+        ["viktoredix", "admin@edixai.com"],
         "viktoredix",
         email="admin@edixai.com",
     )
-    assert selected == "admin-edixai-com"
+    assert selected == "admin@edixai.com"
 
 
 def test_select_snapshot_name_prefers_email_prefix_snapshot_over_active() -> None:
@@ -370,7 +370,7 @@ def test_resolve_snapshot_names_for_account_does_not_steal_email_named_snapshot_
     index = CodexAuthSnapshotIndex(
         snapshots_by_account_id={
             canonical_admin_id: ["viktoredix"],
-            canonical_other_id: ["admin-edixai-com"],
+            canonical_other_id: ["admin@edixai.com"],
         },
         active_snapshot_name=None,
     )
@@ -577,7 +577,7 @@ def test_switch_snapshot_normalizes_absolute_pointer_after_cli_success(
 
 
 def test_build_email_snapshot_name_normalizes_email() -> None:
-    assert build_email_snapshot_name("Viktor+Biz@EdiXAI.com") == "viktor-biz-edixai-com"
+    assert build_email_snapshot_name("Viktor+Biz@EdiXAI.com") == "viktor+biz@edixai.com"
 
 
 def test_repair_snapshot_for_account_readd_copies_snapshot_to_email_name(
@@ -601,7 +601,7 @@ def test_repair_snapshot_for_account_readd_copies_snapshot_to_email_name(
         mode="readd",
     )
 
-    expected_snapshot_name = "nagy.viktordp-gmail-com"
+    expected_snapshot_name = "nagy.viktordp@gmail.com"
     expected_snapshot_path = accounts_dir / f"{expected_snapshot_name}.json"
     assert result.mode == "readd"
     assert result.changed is True
@@ -635,7 +635,7 @@ def test_repair_snapshot_for_account_rename_moves_snapshot_to_email_name(
         mode="rename",
     )
 
-    expected_snapshot_name = "nagyviktordp-edixai-com"
+    expected_snapshot_name = "nagyviktordp@edixai.com"
     expected_snapshot_path = accounts_dir / f"{expected_snapshot_name}.json"
     assert result.mode == "rename"
     assert result.changed is True
@@ -656,7 +656,7 @@ def test_repair_snapshot_for_account_raises_on_target_conflict(
     accounts_dir = tmp_path / "accounts"
     accounts_dir.mkdir()
     _write_auth_snapshot(accounts_dir / "work.json", email=email, account_id=account_id)
-    _write_auth_snapshot(accounts_dir / "nagyviktordp-edixai-com.json", email="other@example.com", account_id="acc-other")
+    _write_auth_snapshot(accounts_dir / "nagyviktordp@edixai.com.json", email="other@example.com", account_id="acc-other")
     monkeypatch.setenv("CODEX_AUTH_ACCOUNTS_DIR", str(accounts_dir))
     monkeypatch.setenv("CODEX_AUTH_CURRENT_PATH", str(tmp_path / "current"))
     monkeypatch.setenv("CODEX_AUTH_JSON_PATH", str(tmp_path / "auth.json"))
