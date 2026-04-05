@@ -7,7 +7,7 @@ import re
 import signal
 import time
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Literal
@@ -36,6 +36,10 @@ _TASK_PREVIEW_SECRET_ASSIGNMENT_RE = re.compile(
 )
 _TASK_PREVIEW_IMAGE_TAG_RE = re.compile(r"(?is)</?image[^>]*>")
 _TASK_PREVIEW_IMAGE_LABEL_RE = re.compile(r"\[Image\s*#\d+\]", re.IGNORECASE)
+_TASK_PREVIEW_STATUS_ONLY_RE = re.compile(
+    r"(?i)^(?:task\s+)?(?:is\s+)?(?:already\s+)?(?:done|complete(?:d)?|finished)(?:\s+already)?[.!]?$"
+)
+_TASK_PREVIEW_WARNING_PREFIX_RE = re.compile(r"(?i)^warning\b")
 _DEFAULT_PROC_ROOT = Path("/proc")
 
 
@@ -80,8 +84,9 @@ class _UnlabeledDefaultScopeProcessOwner:
 class LocalCodexProcessSessionAttribution:
     counts_by_snapshot: dict[str, int]
     unattributed_session_pids: list[int]
-    mapped_session_pids_by_snapshot: dict[str, list[int]]
-    task_preview_by_pid: dict[int, str]
+    mapped_session_pids_by_snapshot: dict[str, list[int]] = field(default_factory=dict)
+    task_preview_by_pid: dict[int, str] = field(default_factory=dict)
+    task_previews_by_pid: dict[int, list[str]] = field(default_factory=dict)
 
 
 _UNLABELED_DEFAULT_SCOPE_PROCESS_OWNER_CACHE_TTL_SECONDS = 6 * 60 * 60
@@ -194,6 +199,7 @@ def read_live_codex_process_session_attribution() -> LocalCodexProcessSessionAtt
             unattributed_session_pids=[],
             mapped_session_pids_by_snapshot={},
             task_preview_by_pid={},
+            task_previews_by_pid={},
         )
 
     default_current_path = _resolve_current_path()
@@ -207,6 +213,7 @@ def read_live_codex_process_session_attribution() -> LocalCodexProcessSessionAtt
     unattributed_session_pids: list[int] = []
     mapped_session_pids_by_snapshot: dict[str, list[int]] = {}
     task_preview_by_pid: dict[int, str] = {}
+    task_previews_by_pid: dict[int, list[str]] = {}
     for pid, env in processes:
         snapshot_name = _resolve_process_snapshot_name_for_accounting(
             pid,
@@ -214,9 +221,10 @@ def read_live_codex_process_session_attribution() -> LocalCodexProcessSessionAtt
             default_current_path=default_current_path,
             default_auth_path=default_auth_path,
         )
-        task_preview = _resolve_process_task_preview(pid, env=env)
-        if task_preview:
-            task_preview_by_pid[pid] = task_preview
+        task_previews = _resolve_process_task_previews(pid, env=env, limit=2)
+        if task_previews:
+            task_previews_by_pid[pid] = task_previews
+            task_preview_by_pid[pid] = task_previews[0]
         if not snapshot_name:
             unattributed_session_pids.append(pid)
             continue
@@ -231,6 +239,7 @@ def read_live_codex_process_session_attribution() -> LocalCodexProcessSessionAtt
         unattributed_session_pids=sorted(unattributed_session_pids),
         mapped_session_pids_by_snapshot=mapped_session_pids_by_snapshot,
         task_preview_by_pid=task_preview_by_pid,
+        task_previews_by_pid=task_previews_by_pid,
     )
 
 
@@ -276,11 +285,16 @@ def _resolve_process_snapshot_name_for_accounting(
     default_current_path: Path,
     default_auth_path: Path,
 ) -> str | None:
+    process_default_current_path, process_default_auth_path = _resolve_process_default_auth_scope_paths(
+        env=env or {},
+        default_current_path=default_current_path,
+        default_auth_path=default_auth_path,
+    )
     snapshot_name = _resolve_process_snapshot_name(
         pid,
         env=env,
-        default_current_path=default_current_path,
-        default_auth_path=default_auth_path,
+        default_current_path=process_default_current_path,
+        default_auth_path=process_default_auth_path,
         allow_unlabeled_default_scope_mapping=False,
     )
     if snapshot_name:
@@ -293,21 +307,40 @@ def _resolve_process_snapshot_name_for_accounting(
     if not _is_eligible_unlabeled_default_scope_process(
         pid=pid,
         env=env or {},
-        default_current_path=default_current_path,
-        default_auth_path=default_auth_path,
+        default_current_path=process_default_current_path,
+        default_auth_path=process_default_auth_path,
     ):
         return None
 
     fallback_snapshot = _resolve_process_snapshot_name(
         pid,
         env=env,
-        default_current_path=default_current_path,
-        default_auth_path=default_auth_path,
+        default_current_path=process_default_current_path,
+        default_auth_path=process_default_auth_path,
         allow_unlabeled_default_scope_mapping=True,
     )
     if fallback_snapshot:
         _remember_unlabeled_default_scope_snapshot_name(pid, fallback_snapshot)
     return fallback_snapshot
+
+
+def _resolve_process_default_auth_scope_paths(
+    *,
+    env: dict[str, str],
+    default_current_path: Path,
+    default_auth_path: Path,
+) -> tuple[Path, Path]:
+    process_home = (env.get("HOME") or "").strip()
+    if not process_home:
+        return default_current_path, default_auth_path
+
+    process_codex_dir = Path(process_home).expanduser().resolve() / ".codex"
+    process_current_path = process_codex_dir / "current"
+    process_auth_path = process_codex_dir / "auth.json"
+    if process_current_path.exists() or process_auth_path.exists():
+        return process_current_path, process_auth_path
+
+    return default_current_path, default_auth_path
 
 
 def _resolve_cached_unlabeled_default_scope_snapshot_name(pid: int) -> str | None:
@@ -775,6 +808,17 @@ def _resolve_accounts_dir() -> Path:
     raw = os.environ.get("CODEX_AUTH_ACCOUNTS_DIR")
     if raw:
         return _resolve_path(raw)
+
+    current_raw = os.environ.get("CODEX_AUTH_CURRENT_PATH")
+    if current_raw:
+        current_path = _resolve_path(current_raw)
+        return (current_path.parent / "accounts").resolve()
+
+    auth_raw = os.environ.get("CODEX_AUTH_JSON_PATH")
+    if auth_raw:
+        auth_path = _resolve_path(auth_raw)
+        return (auth_path.parent / "accounts").resolve()
+
     return (_resolve_default_home_path() / ".codex" / "accounts").resolve()
 
 
@@ -946,6 +990,7 @@ def _resolve_process_snapshot_name(
     return _resolve_unlabeled_default_scope_snapshot_name(
         pid=pid,
         default_current_path=default_current_path,
+        default_auth_path=default_auth_path,
     )
 
 
@@ -953,6 +998,7 @@ def _resolve_unlabeled_default_scope_snapshot_name(
     *,
     pid: int,
     default_current_path: Path,
+    default_auth_path: Path,
 ) -> str | None:
     if not _process_belongs_to_current_user(pid):
         return None
@@ -970,6 +1016,10 @@ def _resolve_unlabeled_default_scope_snapshot_name(
                 previous_snapshot_name = _read_previous_active_snapshot_name_from_registry()
                 if previous_snapshot_name and previous_snapshot_name != snapshot_name:
                     return previous_snapshot_name
+                if default_auth_path.parent == default_current_path.parent:
+                    auth_snapshot_name = _infer_snapshot_name_from_auth_path(default_auth_path)
+                    if auth_snapshot_name and auth_snapshot_name != snapshot_name:
+                        return auth_snapshot_name
                 return None
 
     return snapshot_name
@@ -1328,16 +1378,45 @@ def _read_process_cwd(pid: int) -> Path | None:
 
 
 def _resolve_process_task_preview(pid: int, *, env: dict[str, str] | None = None) -> str | None:
+    previews = _resolve_process_task_previews(pid, env=env, limit=1)
+    return previews[0] if previews else None
+
+
+def _resolve_process_task_previews(
+    pid: int,
+    *,
+    env: dict[str, str] | None = None,
+    limit: int = 2,
+) -> list[str]:
+    if limit <= 0:
+        return []
+
     env = env or {}
+    previews: list[str] = []
+
     direct_preview = _sanitize_codex_task_preview(env.get("CODEX_CURRENT_TASK_PREVIEW", ""))
     if direct_preview:
-        return direct_preview
+        previews.append(direct_preview)
+        if len(previews) >= limit:
+            return previews
 
     rollout_path = _resolve_process_rollout_path(pid)
     if rollout_path is None:
-        return None
-    preview = _extract_latest_task_preview_from_file(rollout_path)
-    return preview.text if preview is not None else None
+        return previews
+
+    remaining = max(limit - len(previews), 0)
+    if remaining <= 0:
+        return previews
+
+    recent_from_file = _extract_recent_task_previews_from_file(rollout_path, limit=remaining)
+    for preview in recent_from_file:
+        if preview.text in previews:
+            continue
+        previews.append(preview.text)
+        if len(previews) >= limit:
+            break
+
+    return previews
 
 
 def _resolve_process_rollout_path(pid: int) -> Path | None:
@@ -1413,64 +1492,105 @@ def _rollout_session_id_from_path(path: Path) -> str | None:
 
 
 def _extract_latest_task_preview_from_file(path: Path) -> LocalCodexTaskPreview | None:
+    previews = _extract_recent_task_previews_from_file(path, limit=1)
+    return previews[0] if previews else None
+
+
+def _extract_recent_task_previews_from_file(path: Path, *, limit: int) -> list[LocalCodexTaskPreview]:
+    if limit <= 0:
+        return []
+
+    collected: list[LocalCodexTaskPreview] = []
+    seen_texts: set[str] = set()
+
+    def _consume_lines(lines: list[str]) -> bool:
+        for raw_line in lines:
+            event, preview = _task_preview_event_from_line(raw_line)
+            if event == "clear":
+                return False
+            if event != "task" or preview is None:
+                continue
+            if preview.text in seen_texts:
+                continue
+            seen_texts.add(preview.text)
+            collected.append(preview)
+            if len(collected) >= limit:
+                return False
+        return True
+
     tail: deque[str] = deque(maxlen=_TAIL_LINE_LIMIT)
     try:
         with path.open("r", encoding="utf-8", errors="ignore") as handle:
             for line in handle:
                 tail.append(line)
     except OSError:
-        return None
+        return []
 
-    for raw_line in reversed(tail):
-        preview = _task_preview_from_line(raw_line)
-        if preview is not None:
-            return preview
+    should_continue = _consume_lines(list(reversed(tail)))
+    if not should_continue:
+        return collected
 
     try:
         with path.open("r", encoding="utf-8", errors="ignore") as handle:
-            for raw_line in reversed(handle.readlines()):
-                preview = _task_preview_from_line(raw_line)
-                if preview is not None:
-                    return preview
+            all_lines = handle.readlines()
     except OSError:
-        return None
+        return collected
 
-    return None
+    _consume_lines(list(reversed(all_lines)))
+    return collected
 
 
 def _task_preview_from_line(raw_line: str) -> LocalCodexTaskPreview | None:
+    event, preview = _task_preview_event_from_line(raw_line)
+    if event == "task":
+        return preview
+    return None
+
+
+def _task_preview_event_from_line(raw_line: str) -> tuple[str, LocalCodexTaskPreview | None]:
     line = raw_line.strip()
     if not line:
-        return None
+        return ("skip", None)
     try:
         payload = json.loads(line)
     except json.JSONDecodeError:
-        return None
+        return ("skip", None)
     if not isinstance(payload, dict):
-        return None
+        return ("skip", None)
 
     if payload.get("type") != "response_item":
-        return None
+        return ("skip", None)
 
     message_payload = payload.get("payload")
     if not isinstance(message_payload, dict):
-        return None
+        return ("skip", None)
     if message_payload.get("type") != "message" or message_payload.get("role") != "user":
-        return None
+        return ("skip", None)
 
     raw_text = _extract_user_message_text(message_payload.get("content"))
     if raw_text is None or _is_bootstrap_user_message(raw_text):
-        return None
+        return ("skip", None)
 
-    text = _sanitize_codex_task_preview(raw_text)
+    normalized_source_text = " ".join(raw_text.split())
+    normalized_source_text = _TASK_PREVIEW_IMAGE_TAG_RE.sub(" ", normalized_source_text)
+    normalized_source_text = _TASK_PREVIEW_IMAGE_LABEL_RE.sub(" ", normalized_source_text)
+    normalized_source_text = " ".join(normalized_source_text.split())
+    if not normalized_source_text:
+        return ("skip", None)
+    if _TASK_PREVIEW_WARNING_PREFIX_RE.match(normalized_source_text):
+        return ("clear", None)
+    if _TASK_PREVIEW_STATUS_ONLY_RE.match(normalized_source_text):
+        return ("clear", None)
+
+    text = _sanitize_codex_task_preview(normalized_source_text)
     if text is None:
-        return None
+        return ("skip", None)
 
     timestamp = _parse_timestamp(payload.get("timestamp")) or _parse_timestamp(message_payload.get("timestamp"))
     if timestamp is None:
-        return None
+        return ("skip", None)
 
-    return LocalCodexTaskPreview(text=text, recorded_at=timestamp)
+    return ("task", LocalCodexTaskPreview(text=text, recorded_at=timestamp))
 
 
 def _extract_user_message_text(content: Any) -> str | None:
@@ -1519,6 +1639,10 @@ def _sanitize_codex_task_preview(text: str) -> str | None:
     redacted = _TASK_PREVIEW_SECRET_ASSIGNMENT_RE.sub(r"\1=[redacted]", redacted)
     trimmed = redacted.strip()
     if not trimmed:
+        return None
+    if _TASK_PREVIEW_WARNING_PREFIX_RE.match(trimmed):
+        return None
+    if _TASK_PREVIEW_STATUS_ONLY_RE.match(trimmed):
         return None
     if len(trimmed) <= _TASK_PREVIEW_MAX_LENGTH:
         return trimmed

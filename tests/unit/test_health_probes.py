@@ -41,10 +41,18 @@ async def test_live_usage_returns_xml_payload():
             return_value=LocalCodexProcessSessionAttribution(
                 counts_by_snapshot={"viktoredixaicom": 8},
                 unattributed_session_pids=[],
+                mapped_session_pids_by_snapshot={
+                    "viktoredixaicom": [100, 101, 102, 103, 104, 105, 106, 107]
+                },
+                task_preview_by_pid={},
             ),
         ),
         patch(
             "app.modules.health.api._read_live_usage_task_previews_by_snapshot",
+            new=AsyncMock(return_value={}),
+        ),
+        patch(
+            "app.modules.health.api._read_live_usage_account_emails_by_snapshot",
             new=AsyncMock(return_value={}),
         ),
         patch(
@@ -58,10 +66,15 @@ async def test_live_usage_returns_xml_payload():
     assert response.headers.get("cache-control") == "no-store"
     body = response.body.decode("utf-8")
     assert (
-        '<live_usage generated_at="2026-04-05T00:00:00Z" total_sessions="8" mapped_sessions="8" unattributed_sessions="0" total_task_previews="0">'
+        '<live_usage generated_at="2026-04-05T00:00:00Z" total_sessions="8" mapped_sessions="8" unattributed_sessions="0" total_task_previews="0" account_task_previews="0" session_task_previews="0">'
         in body
     )
-    assert '<snapshot name="viktoredixaicom" session_count="8" />' in body
+    assert (
+        '<snapshot name="viktoredixaicom" session_count="8" session_row_count="8" session_task_preview_count="0">'
+        in body
+    )
+    assert '<session pid="100" state="waiting_for_new_task" />' in body
+    assert '<session pid="107" state="waiting_for_new_task" />' in body
 
 
 @pytest.mark.asyncio
@@ -75,6 +88,8 @@ async def test_live_usage_includes_task_previews_mapped_to_snapshot():
             return_value=LocalCodexProcessSessionAttribution(
                 counts_by_snapshot={"unique": 4},
                 unattributed_session_pids=[],
+                mapped_session_pids_by_snapshot={"unique": [401, 402, 403, 404]},
+                task_preview_by_pid={},
             ),
         ),
         patch(
@@ -91,6 +106,10 @@ async def test_live_usage_includes_task_previews_mapped_to_snapshot():
             ),
         ),
         patch(
+            "app.modules.health.api._read_live_usage_account_emails_by_snapshot",
+            new=AsyncMock(return_value={}),
+        ),
+        patch(
             "app.modules.health.api.utcnow",
             return_value=datetime(2026, 4, 5, 0, 0, 0),
         ),
@@ -99,14 +118,19 @@ async def test_live_usage_includes_task_previews_mapped_to_snapshot():
 
     body = response.body.decode("utf-8")
     assert (
-        '<live_usage generated_at="2026-04-05T00:00:00Z" total_sessions="4" mapped_sessions="4" unattributed_sessions="0" total_task_previews="1">'
+        '<live_usage generated_at="2026-04-05T00:00:00Z" total_sessions="4" mapped_sessions="4" unattributed_sessions="0" total_task_previews="4" account_task_previews="1" session_task_previews="4">'
         in body
     )
-    assert '<snapshot name="unique" session_count="4" task_preview_count="1">' in body
+    assert (
+        '<snapshot name="unique" session_count="4" task_preview_count="1" session_row_count="4" session_task_preview_count="4">'
+        in body
+    )
     assert (
         '<task_preview account_id="acc-1" preview="Investigate merged telemetry" />'
         in body
     )
+    assert '<session pid="401" task_preview="Investigate merged telemetry" />' in body
+    assert '<session pid="404" task_preview="Investigate merged telemetry" />' in body
 
 
 @pytest.mark.asyncio
@@ -120,10 +144,19 @@ async def test_live_usage_surfaces_unattributed_cli_sessions():
             return_value=LocalCodexProcessSessionAttribution(
                 counts_by_snapshot={"thedailyscooby": 2},
                 unattributed_session_pids=[701, 702],
+                mapped_session_pids_by_snapshot={"thedailyscooby": [601, 602]},
+                task_preview_by_pid={
+                    602: "Mapped session preview",
+                    701: "Unattributed session preview",
+                },
             ),
         ),
         patch(
             "app.modules.health.api._read_live_usage_task_previews_by_snapshot",
+            new=AsyncMock(return_value={}),
+        ),
+        patch(
+            "app.modules.health.api._read_live_usage_account_emails_by_snapshot",
             new=AsyncMock(return_value={}),
         ),
         patch(
@@ -135,13 +168,104 @@ async def test_live_usage_surfaces_unattributed_cli_sessions():
 
     body = response.body.decode("utf-8")
     assert (
-        '<live_usage generated_at="2026-04-05T00:00:00Z" total_sessions="4" mapped_sessions="2" unattributed_sessions="2" total_task_previews="0">'
+        '<live_usage generated_at="2026-04-05T00:00:00Z" total_sessions="4" mapped_sessions="2" unattributed_sessions="2" total_task_previews="2" account_task_previews="0" session_task_previews="2">'
         in body
     )
-    assert '<snapshot name="thedailyscooby" session_count="2" />' in body
-    assert '<unattributed_sessions count="2">' in body
-    assert '<session pid="701" />' in body
-    assert '<session pid="702" />' in body
+    assert (
+        '<snapshot name="thedailyscooby" session_count="2" session_row_count="2" session_task_preview_count="1">'
+        in body
+    )
+    assert '<session pid="601" state="waiting_for_new_task" />' in body
+    assert '<session pid="602" task_preview="Mapped session preview" />' in body
+    assert '<unattributed_sessions count="2" task_preview_count="1">' in body
+    assert '<session pid="701" task_preview="Unattributed session preview" />' in body
+    assert '<session pid="702" state="waiting_for_new_task" />' in body
+
+
+@pytest.mark.asyncio
+async def test_live_usage_lists_multiple_tasks_per_session_and_waiting_state():
+    from app.modules.accounts.codex_live_usage import LocalCodexProcessSessionAttribution
+    from app.modules.health.api import live_usage
+
+    with (
+        patch(
+            "app.modules.health.api.read_live_codex_process_session_attribution",
+            return_value=LocalCodexProcessSessionAttribution(
+                counts_by_snapshot={"koronanagyviktorcom": 2},
+                unattributed_session_pids=[],
+                mapped_session_pids_by_snapshot={"koronanagyviktorcom": [1325536, 1329526]},
+                task_preview_by_pid={1325536: "latest task"},
+                task_previews_by_pid={
+                    1325536: [
+                        "latest task",
+                        "previous task still active",
+                    ]
+                },
+            ),
+        ),
+        patch(
+            "app.modules.health.api._read_live_usage_task_previews_by_snapshot",
+            new=AsyncMock(return_value={}),
+        ),
+        patch(
+            "app.modules.health.api._read_live_usage_account_emails_by_snapshot",
+            new=AsyncMock(return_value={}),
+        ),
+        patch(
+            "app.modules.health.api.utcnow",
+            return_value=datetime(2026, 4, 5, 0, 0, 0),
+        ),
+    ):
+        response = await live_usage()
+
+    body = response.body.decode("utf-8")
+    assert (
+        '<snapshot name="koronanagyviktorcom" session_count="2" session_row_count="2" session_task_preview_count="2">'
+        in body
+    )
+    assert '<session pid="1325536" task_preview="latest task" task_count="2">' in body
+    assert '<task preview="latest task" />' in body
+    assert '<task preview="previous task still active" />' in body
+    assert '<session pid="1329526" state="waiting_for_new_task" />' in body
+
+
+@pytest.mark.asyncio
+async def test_live_usage_includes_account_emails_mapped_to_snapshot():
+    from app.modules.accounts.codex_live_usage import LocalCodexProcessSessionAttribution
+    from app.modules.health.api import live_usage
+
+    with (
+        patch(
+            "app.modules.health.api.read_live_codex_process_session_attribution",
+            return_value=LocalCodexProcessSessionAttribution(
+                counts_by_snapshot={"unique": 1},
+                unattributed_session_pids=[],
+                mapped_session_pids_by_snapshot={},
+                task_preview_by_pid={},
+            ),
+        ),
+        patch(
+            "app.modules.health.api._read_live_usage_task_previews_by_snapshot",
+            new=AsyncMock(return_value={}),
+        ),
+        patch(
+            "app.modules.health.api._read_live_usage_account_emails_by_snapshot",
+            new=AsyncMock(
+                return_value={"unique": ["nagy.viktordp@gmail.com", "tokio@edixai.com"]}
+            ),
+        ),
+        patch(
+            "app.modules.health.api.utcnow",
+            return_value=datetime(2026, 4, 5, 0, 0, 0),
+        ),
+    ):
+        response = await live_usage()
+
+    body = response.body.decode("utf-8")
+    assert (
+        '<snapshot name="unique" session_count="1" account_emails="nagy.viktordp@gmail.com,tokio@edixai.com" />'
+        in body
+    )
 
 
 @pytest.mark.asyncio
@@ -373,6 +497,62 @@ async def test_live_usage_mapping_minimal_returns_compact_account_rows():
     ) in body
     assert 'snapshot_candidates=' not in body
     assert 'expected_snapshot=' not in body
+
+
+@pytest.mark.asyncio
+async def test_live_usage_mapping_ignores_warning_and_done_task_preview_for_cli_signal():
+    from app.db.models import AccountStatus
+    from app.modules.accounts.codex_auth_switcher import CodexAuthSnapshotIndex
+    from app.modules.health.api import live_usage_mapping
+
+    now = datetime(2026, 4, 5, 0, 0, 0)
+    account = SimpleNamespace(
+        id="acc-1",
+        email="owner@example.com",
+        chatgpt_account_id="chatgpt-1",
+        status=AccountStatus.ACTIVE,
+    )
+    repo = AsyncMock()
+    repo.list_accounts = AsyncMock(return_value=[account])
+    repo.list_codex_session_counts_by_account = AsyncMock(return_value={"acc-1": 0})
+    repo.list_codex_current_task_preview_by_account = AsyncMock(
+        return_value={"acc-1": "Warning: apply_patch was requested via exec_command."},
+    )
+
+    with (
+        patch("app.modules.health.api.AccountsRepository", return_value=repo),
+        patch(
+            "app.modules.health.api.build_snapshot_index",
+            return_value=CodexAuthSnapshotIndex(
+                snapshots_by_account_id={"acc-1": ["owner-example-com"]},
+                active_snapshot_name="owner-example-com",
+            ),
+        ),
+        patch(
+            "app.modules.health.api.resolve_snapshot_names_for_account",
+            return_value=["owner-example-com"],
+        ),
+        patch(
+            "app.modules.health.api.select_snapshot_name",
+            return_value="owner-example-com",
+        ),
+        patch(
+            "app.modules.health.api.read_live_codex_process_session_counts_by_snapshot",
+            return_value={"owner-example-com": 0},
+        ),
+        patch(
+            "app.modules.health.api.read_runtime_live_session_counts_by_snapshot",
+            return_value={"owner-example-com": 0},
+        ),
+        patch("app.modules.health.api.utcnow", return_value=now),
+    ):
+        response = await live_usage_mapping(session=AsyncMock())
+
+    body = response.body.decode("utf-8")
+    assert 'working_now_count="0"' in body
+    assert 'has_task_preview="false"' in body
+    assert 'has_cli_signal="false"' in body
+    assert 'working_now="false"' in body
 
 
 @pytest.mark.asyncio

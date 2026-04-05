@@ -3251,6 +3251,28 @@ def test_derive_codex_session_task_preview_redacts_and_truncates():
     assert len(preview) <= 120
 
 
+def test_derive_codex_session_task_preview_ignores_warning_and_status_only_done():
+    warning_payload = ResponsesRequest.model_validate(
+        {
+            "model": "gpt-5.1",
+            "instructions": "ignored",
+            "input": "Warning: apply_patch was requested via exec_command. Use the apply_patch tool instead of exec_command.",
+            "stream": True,
+        }
+    )
+    done_payload = ResponsesRequest.model_validate(
+        {
+            "model": "gpt-5.1",
+            "instructions": "ignored",
+            "input": "Task is done already.",
+            "stream": True,
+        }
+    )
+
+    assert proxy_service._derive_codex_session_task_preview(warning_payload) is None
+    assert proxy_service._derive_codex_session_task_preview(done_payload) is None
+
+
 def test_derive_codex_session_task_preview_falls_back_to_instructions():
     payload = ResponsesRequest.model_validate(
         {

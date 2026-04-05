@@ -5,6 +5,8 @@ const LIVE_TELEMETRY_WORKING_GRACE_AFTER_MS = 20 * 60 * 1000;
 const WORKING_NOW_LIMIT_HIT_GRACE_MS = 60 * 1000;
 const RECENT_USAGE_SIGNAL_STALE_AFTER_MS = 36 * 60 * 60 * 1000;
 const RESET_ALIGNMENT_TOLERANCE_MS = 30 * 1000;
+const STATUS_ONLY_TASK_PREVIEW_RE =
+  /^(?:task\s+)?(?:is\s+)?(?:already\s+)?(?:done|complete(?:d)?|finished)(?:\s+already)?[.!]?$/i;
 
 type UsageLimitHitEntry = {
   fingerprint: string;
@@ -405,7 +407,17 @@ export function hasFreshLiveTelemetry(
 function hasFreshTaskPreviewSignal(
   account: Pick<AccountSummary, "codexCurrentTaskPreview">,
 ): boolean {
-  return (account.codexCurrentTaskPreview?.trim().length ?? 0) > 0;
+  const normalized = account.codexCurrentTaskPreview?.trim().replace(/\s+/g, " ") ?? "";
+  if (!normalized) {
+    return false;
+  }
+  if (/^warning\b/i.test(normalized)) {
+    return false;
+  }
+  if (STATUS_ONLY_TASK_PREVIEW_RE.test(normalized)) {
+    return false;
+  }
+  return true;
 }
 
 export function hasActiveCliSessionSignal(

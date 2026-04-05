@@ -130,6 +130,9 @@ def apply_local_live_usage_overrides(
             snapshot_names = [selected_snapshot_name]
         else:
             snapshot_names = snapshot_names_from_index
+        session_presence_snapshot_names = (
+            snapshot_names_from_index if snapshot_names_from_index else snapshot_names
+        )
         snapshots_considered = _resolve_snapshot_candidates(
             snapshot_names=snapshot_names,
             selected_snapshot_name=effective_selected_snapshot_name,
@@ -140,12 +143,12 @@ def apply_local_live_usage_overrides(
             live_usage_by_snapshot=live_usage_by_snapshot,
         )
         live_process_session_count = _resolve_live_process_session_count_for_account(
-            snapshot_names=snapshot_names,
+            snapshot_names=session_presence_snapshot_names,
             selected_snapshot_name=effective_selected_snapshot_name,
             live_process_session_counts_by_snapshot=live_process_session_counts_by_snapshot,
         )
         live_runtime_session_count = _resolve_live_runtime_session_count_for_account(
-            snapshot_names=snapshot_names,
+            snapshot_names=session_presence_snapshot_names,
             selected_snapshot_name=effective_selected_snapshot_name,
             runtime_live_session_counts_by_snapshot=runtime_live_session_counts_by_snapshot,
         )
@@ -898,6 +901,24 @@ def _resolve_snapshot_candidates(
     return [candidate_names[0]]
 
 
+def _resolve_session_presence_snapshot_candidates(
+    *,
+    snapshot_names: list[str],
+    selected_snapshot_name: str | None,
+) -> list[str]:
+    candidate_names = _resolve_snapshot_candidates(
+        snapshot_names=snapshot_names,
+        selected_snapshot_name=selected_snapshot_name,
+    )
+    seen = {name for name in candidate_names if name}
+    for snapshot_name in snapshot_names:
+        if not snapshot_name or snapshot_name in seen:
+            continue
+        candidate_names.append(snapshot_name)
+        seen.add(snapshot_name)
+    return candidate_names
+
+
 def _set_live_quota_debug(
     *,
     account_id: str,
@@ -1299,7 +1320,7 @@ def _resolve_live_process_session_count_for_account(
     selected_snapshot_name: str | None,
     live_process_session_counts_by_snapshot: dict[str, int],
 ) -> int:
-    candidate_names = _resolve_snapshot_candidates(
+    candidate_names = _resolve_session_presence_snapshot_candidates(
         snapshot_names=snapshot_names,
         selected_snapshot_name=selected_snapshot_name,
     )
@@ -1315,7 +1336,7 @@ def _resolve_live_runtime_session_count_for_account(
     selected_snapshot_name: str | None,
     runtime_live_session_counts_by_snapshot: dict[str, int],
 ) -> int:
-    candidate_names = _resolve_snapshot_candidates(
+    candidate_names = _resolve_session_presence_snapshot_candidates(
         snapshot_names=snapshot_names,
         selected_snapshot_name=selected_snapshot_name,
     )

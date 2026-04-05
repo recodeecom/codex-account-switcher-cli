@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import timedelta
 from hashlib import sha256
 from html import escape
@@ -32,6 +33,10 @@ from app.modules.proxy.ring_membership import RING_STALE_THRESHOLD_SECONDS
 
 router = APIRouter(tags=["health"])
 _ACTIVE_CLI_SIGNAL_WINDOW = timedelta(minutes=5)
+_TASK_PREVIEW_STATUS_ONLY_RE = re.compile(
+    r"(?i)^(?:task\s+)?(?:is\s+)?(?:already\s+)?(?:done|complete(?:d)?|finished)(?:\s+already)?[.!]?$"
+)
+_TASK_PREVIEW_WARNING_PREFIX_RE = re.compile(r"(?i)^warning\b")
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -49,15 +54,71 @@ async def live_usage() -> Response:
     attribution = read_live_codex_process_session_attribution()
     counts_by_snapshot = attribution.counts_by_snapshot
     unattributed_session_pids = attribution.unattributed_session_pids
+    mapped_session_pids_by_snapshot = attribution.mapped_session_pids_by_snapshot
+    task_preview_by_pid = attribution.task_preview_by_pid
+    task_previews_by_pid = (
+        attribution.task_previews_by_pid
+        if attribution.task_previews_by_pid
+        else {
+            pid: [preview]
+            for pid, preview in task_preview_by_pid.items()
+            if _normalize_task_preview(preview)
+        }
+    )
     task_previews_by_snapshot = await _read_live_usage_task_previews_by_snapshot()
     account_emails_by_snapshot = await _read_live_usage_account_emails_by_snapshot()
+
+    session_task_previews_by_snapshot: dict[str, dict[int, list[str]]] = {}
+    mapped_session_task_preview_count = 0
+    for snapshot_name, session_pids in mapped_session_pids_by_snapshot.items():
+        snapshot_task_previews = task_previews_by_snapshot.get(snapshot_name, [])
+        fallback_preview = (
+            _normalize_task_preview(snapshot_task_previews[0].preview)
+            if snapshot_task_previews
+            else ""
+        )
+        previews_for_snapshot: dict[int, list[str]] = {}
+        for pid in session_pids:
+            session_preview_list = [
+                normalized
+                for normalized in (
+                    _normalize_task_preview(preview)
+                    for preview in task_previews_by_pid.get(pid, [])
+                )
+                if normalized
+            ]
+            if not session_preview_list and fallback_preview:
+                session_preview_list = [fallback_preview]
+            previews_for_snapshot[pid] = session_preview_list
+            mapped_session_task_preview_count += len(session_preview_list)
+        session_task_previews_by_snapshot[snapshot_name] = previews_for_snapshot
+
+    unattributed_session_task_previews_by_pid = {
+        pid: [
+            normalized
+            for normalized in (
+                _normalize_task_preview(preview)
+                for preview in task_previews_by_pid.get(pid, [])
+            )
+            if normalized
+        ]
+        for pid in unattributed_session_pids
+    }
+    unattributed_session_task_preview_count = sum(
+        len(previews) for previews in unattributed_session_task_previews_by_pid.values()
+    )
+
     generated_at = utcnow().isoformat() + "Z"
     total_mapped_sessions = sum(max(0, count) for count in counts_by_snapshot.values())
     total_unattributed_sessions = len(unattributed_session_pids)
     total_sessions = total_mapped_sessions + total_unattributed_sessions
-    total_task_previews = sum(
+    total_account_task_previews = sum(
         len(task_previews) for task_previews in task_previews_by_snapshot.values()
     )
+    total_session_task_previews = (
+        mapped_session_task_preview_count + unattributed_session_task_preview_count
+    )
+    total_task_previews = max(total_account_task_previews, total_session_task_previews)
 
     lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
@@ -67,6 +128,8 @@ async def live_usage() -> Response:
         f' mapped_sessions="{total_mapped_sessions}"'
         f' unattributed_sessions="{total_unattributed_sessions}"'
         f' total_task_previews="{total_task_previews}"'
+        f' account_task_previews="{total_account_task_previews}"'
+        f' session_task_previews="{total_session_task_previews}"'
         ">",
     ]
     snapshot_names = sorted(
@@ -76,6 +139,11 @@ async def live_usage() -> Response:
     )
     for snapshot_name in snapshot_names:
         session_count = max(0, counts_by_snapshot.get(snapshot_name, 0))
+        session_pids = mapped_session_pids_by_snapshot.get(snapshot_name, [])
+        session_task_previews = session_task_previews_by_snapshot.get(snapshot_name, {})
+        session_task_preview_count = sum(
+            len(session_task_previews.get(pid, [])) for pid in session_pids
+        )
         task_previews = task_previews_by_snapshot.get(snapshot_name, [])
         account_emails = account_emails_by_snapshot.get(snapshot_name, [])
         sanitized_snapshot_name = escape(snapshot_name, quote=True)
@@ -84,14 +152,21 @@ async def live_usage() -> Response:
             if account_emails
             else ""
         )
-        if not task_previews:
+        if not task_previews and not session_pids:
             lines.append(
                 f'  <snapshot name="{sanitized_snapshot_name}" session_count="{session_count}"{account_emails_attribute} />'
             )
             continue
 
+        task_preview_count_attribute = (
+            f' task_preview_count="{len(task_previews)}"' if task_previews else ""
+        )
         lines.append(
-            f'  <snapshot name="{sanitized_snapshot_name}" session_count="{session_count}" task_preview_count="{len(task_previews)}"{account_emails_attribute}>'
+            f'  <snapshot name="{sanitized_snapshot_name}" session_count="{session_count}"'
+            f'{task_preview_count_attribute}'
+            f' session_row_count="{len(session_pids)}"'
+            f' session_task_preview_count="{session_task_preview_count}"'
+            f'{account_emails_attribute}>'
         )
         for task_preview in task_previews:
             lines.append(
@@ -100,11 +175,44 @@ async def live_usage() -> Response:
                 f' preview="{escape(task_preview.preview, quote=True)}"'
                 " />"
             )
+        for pid in session_pids:
+            previews = session_task_previews.get(pid, [])
+            if not previews:
+                lines.append(f'    <session pid="{pid}" state="waiting_for_new_task" />')
+                continue
+            if len(previews) == 1:
+                lines.append(
+                    f'    <session pid="{pid}" task_preview="{escape(previews[0], quote=True)}" />'
+                )
+                continue
+            lines.append(
+                f'    <session pid="{pid}" task_preview="{escape(previews[0], quote=True)}" task_count="{len(previews)}">'
+            )
+            for preview in previews:
+                lines.append(f'      <task preview="{escape(preview, quote=True)}" />')
+            lines.append("    </session>")
         lines.append("  </snapshot>")
     if unattributed_session_pids:
-        lines.append(f'  <unattributed_sessions count="{len(unattributed_session_pids)}">')
+        lines.append(
+            f'  <unattributed_sessions count="{len(unattributed_session_pids)}"'
+            f' task_preview_count="{unattributed_session_task_preview_count}">'
+        )
         for pid in unattributed_session_pids:
-            lines.append(f'    <session pid="{pid}" />')
+            previews = unattributed_session_task_previews_by_pid.get(pid, [])
+            if not previews:
+                lines.append(f'    <session pid="{pid}" state="waiting_for_new_task" />')
+                continue
+            if len(previews) == 1:
+                lines.append(
+                    f'    <session pid="{pid}" task_preview="{escape(previews[0], quote=True)}" />'
+                )
+                continue
+            lines.append(
+                f'    <session pid="{pid}" task_preview="{escape(previews[0], quote=True)}" task_count="{len(previews)}">'
+            )
+            for preview in previews:
+                lines.append(f'      <task preview="{escape(preview, quote=True)}" />')
+            lines.append("    </session>")
         lines.append("  </unattributed_sessions>")
     lines.append("</live_usage>")
 
@@ -170,7 +278,8 @@ async def live_usage_mapping(
         # to avoid double-counting during fresh telemetry transitions.
         total_session_count = max(process_session_count, runtime_session_count)
         tracked_session_count = max(0, tracked_session_counts.get(account.id, 0))
-        has_task_preview = bool((task_previews.get(account.id) or "").strip())
+        normalized_task_preview = _normalize_task_preview(task_previews.get(account.id))
+        has_task_preview = bool(normalized_task_preview)
         has_cli_signal = (
             process_session_count > 0
             or runtime_session_count > 0
@@ -279,6 +388,10 @@ class _LiveUsageTaskPreview:
 def _normalize_task_preview(value: str | None) -> str:
     normalized = " ".join((value or "").split()).strip()
     if not normalized:
+        return ""
+    if _TASK_PREVIEW_WARNING_PREFIX_RE.match(normalized):
+        return ""
+    if _TASK_PREVIEW_STATUS_ONLY_RE.match(normalized):
         return ""
     # Keep the XML feed compact for MCP consumers while retaining enough
     # context to identify the active CLI task.

@@ -8,6 +8,7 @@
 - [x] 2.2 Add per-snapshot nested `task_preview` XML rows when preview data exists.
 - [x] 2.3 Preserve snapshot-only rows for snapshots without task previews.
 - [x] 2.4 Surface unmapped active CLI processes as unattributed sessions in `/live_usage`.
+- [x] 2.5 Include per-process `<session .../>` rows for mapped and unattributed sessions with task-preview attribution when available.
 
 ## 3. Validation
 

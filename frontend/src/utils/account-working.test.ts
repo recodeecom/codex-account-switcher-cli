@@ -1082,6 +1082,55 @@ describe("hasActiveCliSessionSignal", () => {
     });
     expect(hasActiveCliSessionSignal(taskPreviewOnly, nowMs)).toBe(true);
 
+    const warningPreviewOnly = createAccountSummary({
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
+        hasLiveSession: false,
+      },
+      codexLiveSessionCount: 0,
+      codexTrackedSessionCount: 0,
+      codexSessionCount: 0,
+      codexCurrentTaskPreview:
+        "Warning: apply_patch was requested via exec_command. Use the apply_patch tool instead of exec_command.",
+      lastUsageRecordedAtPrimary: null,
+      lastUsageRecordedAtSecondary: null,
+      liveQuotaDebug: {
+        snapshotsConsidered: ["main"],
+        overrideApplied: false,
+        overrideReason: "none",
+        merged: null,
+        rawSamples: [],
+      },
+    });
+    expect(hasActiveCliSessionSignal(warningPreviewOnly, nowMs)).toBe(false);
+
+    const donePreviewOnly = createAccountSummary({
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
+        hasLiveSession: false,
+      },
+      codexLiveSessionCount: 0,
+      codexTrackedSessionCount: 0,
+      codexSessionCount: 0,
+      codexCurrentTaskPreview: "Task is done already.",
+      lastUsageRecordedAtPrimary: null,
+      lastUsageRecordedAtSecondary: null,
+      liveQuotaDebug: {
+        snapshotsConsidered: ["main"],
+        overrideApplied: false,
+        overrideReason: "none",
+        merged: null,
+        rawSamples: [],
+      },
+    });
+    expect(hasActiveCliSessionSignal(donePreviewOnly, nowMs)).toBe(false);
+
     const debugOnly = createAccountSummary({
       codexAuth: {
         hasSnapshot: true,

@@ -1224,6 +1224,127 @@ def test_read_live_codex_process_session_counts_by_snapshot_uses_previous_active
     assert counts == {"tokio": 1}
 
 
+def test_read_live_codex_process_session_counts_by_snapshot_uses_process_home_default_scope_paths(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    service_current = tmp_path / "service" / "current"
+    service_current.parent.mkdir(parents=True, exist_ok=True)
+    service_current.write_text("amodeus@nagyviktor.com", encoding="utf-8")
+    monkeypatch.setenv("CODEX_AUTH_CURRENT_PATH", str(service_current))
+
+    process_home = tmp_path / "process-home"
+    process_current = process_home / ".codex" / "current"
+    process_current.parent.mkdir(parents=True, exist_ok=True)
+    process_current.write_text("korona@nagyviktor.com", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._iter_running_codex_commands",
+        lambda _proc_root: [(861, ["/usr/bin/codex", "model_instructions_file=agents"])],
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._read_process_env",
+        lambda _pid: {"HOME": str(process_home)},
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._process_belongs_to_current_user",
+        lambda _pid: True,
+    )
+
+    counts = read_live_codex_process_session_counts_by_snapshot()
+    assert counts == {"korona@nagyviktor.com": 1}
+
+
+def test_read_live_codex_process_session_counts_by_snapshot_falls_back_to_auth_pointer_when_registry_previous_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    current_path = tmp_path / "default" / "current"
+    current_path.parent.mkdir(parents=True, exist_ok=True)
+    current_path.write_text("amodeus@nagyviktor.com", encoding="utf-8")
+    os.utime(current_path, (1_500.0, 1_500.0))
+    monkeypatch.setenv("CODEX_AUTH_CURRENT_PATH", str(current_path))
+    monkeypatch.setenv("CODEX_LB_UNLABELED_PROCESS_START_TOLERANCE_SECONDS", "0")
+
+    auth_path = tmp_path / "default" / "auth.json"
+    auth_path.parent.mkdir(parents=True, exist_ok=True)
+    auth_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("CODEX_AUTH_JSON_PATH", str(auth_path))
+
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._iter_running_codex_commands",
+        lambda _proc_root: [(862, ["/usr/bin/codex", "model_instructions_file=agents"])],
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._read_process_env",
+        lambda _pid: {},
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._process_belongs_to_current_user",
+        lambda _pid: True,
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._read_process_started_at",
+        lambda _pid: 1_000.0,
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._infer_snapshot_name_from_auth_path",
+        lambda _path: "cica",
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._read_previous_active_snapshot_name_from_registry",
+        lambda: None,
+    )
+
+    counts = read_live_codex_process_session_counts_by_snapshot()
+    assert counts == {"cica": 1}
+
+
+def test_read_live_codex_process_session_counts_by_snapshot_uses_registry_near_custom_current_path(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    current_path = tmp_path / "runtime" / "auth" / "current"
+    current_path.parent.mkdir(parents=True, exist_ok=True)
+    current_path.write_text("unique", encoding="utf-8")
+    os.utime(current_path, (1_500.0, 1_500.0))
+    monkeypatch.setenv("CODEX_AUTH_CURRENT_PATH", str(current_path))
+    monkeypatch.delenv("CODEX_AUTH_REGISTRY_PATH", raising=False)
+    monkeypatch.setenv("CODEX_LB_UNLABELED_PROCESS_START_TOLERANCE_SECONDS", "0")
+
+    registry_path = current_path.parent / "accounts" / "registry.json"
+    registry_path.parent.mkdir(parents=True, exist_ok=True)
+    registry_path.write_text(
+        json.dumps(
+            {
+                "activeAccountName": "unique",
+                "previousActiveAccountName": "tokio",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._iter_running_codex_commands",
+        lambda _proc_root: [(852, ["/usr/bin/codex", "model_instructions_file=agents"])],
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._read_process_env",
+        lambda _pid: {},
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._process_belongs_to_current_user",
+        lambda _pid: True,
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._read_process_started_at",
+        lambda _pid: 1_000.0,
+    )
+
+    counts = read_live_codex_process_session_counts_by_snapshot()
+    assert counts == {"tokio": 1}
+
+
 def test_read_live_codex_process_session_counts_by_snapshot_preserves_previous_unlabeled_process_owners(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -1433,3 +1554,101 @@ def test_read_local_codex_task_previews_by_session_id_ignores_bootstrap_and_sani
 
     previews = read_local_codex_task_previews_by_session_id(now=now)
     assert previews[session_id].text == "Build bridge for [redacted-email] token=[redacted]"
+
+
+def test_read_local_codex_task_previews_by_session_id_ignores_warning_and_status_only_done(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    sessions_root = tmp_path / "sessions"
+    monkeypatch.setenv("CODEX_SESSIONS_DIR", str(sessions_root))
+    monkeypatch.setenv("CODEX_AUTH_RUNTIME_ROOT", str(tmp_path / "runtimes"))
+
+    day_dir = _sessions_day_dir(sessions_root, now)
+    warning_session_id = "019d5a6a-4665-7873-9714-9efb95b24268"
+    done_session_id = "019d5a6a-4665-7873-9714-9efb95b24269"
+
+    warning_path = day_dir / f"rollout-2026-04-04T21-33-27-{warning_session_id}.jsonl"
+    done_path = day_dir / f"rollout-2026-04-04T21-33-28-{done_session_id}.jsonl"
+
+    warning_payload = {
+        "timestamp": (now - timedelta(seconds=5)).isoformat().replace("+00:00", "Z"),
+        "type": "response_item",
+        "payload": {
+            "type": "message",
+            "role": "user",
+            "content": [
+                {
+                    "type": "input_text",
+                    "text": "Warning: apply_patch was requested via exec_command. Use the apply_patch tool instead of exec_command.",
+                }
+            ],
+        },
+    }
+    done_payload = {
+        "timestamp": (now - timedelta(seconds=4)).isoformat().replace("+00:00", "Z"),
+        "type": "response_item",
+        "payload": {
+            "type": "message",
+            "role": "user",
+            "content": [
+                {
+                    "type": "input_text",
+                    "text": "Task is done already.",
+                }
+            ],
+        },
+    }
+
+    warning_path.write_text(json.dumps(warning_payload) + "\n", encoding="utf-8")
+    done_path.write_text(json.dumps(done_payload) + "\n", encoding="utf-8")
+    ts = now.timestamp()
+    os.utime(warning_path, (ts, ts))
+    os.utime(done_path, (ts, ts))
+
+    previews = read_local_codex_task_previews_by_session_id(now=now)
+    assert warning_session_id not in previews
+    assert done_session_id not in previews
+
+
+def test_read_local_codex_task_previews_by_session_id_does_not_fallback_to_old_task_after_done_message(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    sessions_root = tmp_path / "sessions"
+    monkeypatch.setenv("CODEX_SESSIONS_DIR", str(sessions_root))
+    monkeypatch.setenv("CODEX_AUTH_RUNTIME_ROOT", str(tmp_path / "runtimes"))
+
+    day_dir = _sessions_day_dir(sessions_root, now)
+    session_id = "019d5a6a-4665-7873-9714-9efb95b24270"
+    rollout_path = day_dir / f"rollout-2026-04-04T21-33-29-{session_id}.jsonl"
+
+    task_payload = {
+        "timestamp": (now - timedelta(seconds=10)).isoformat().replace("+00:00", "Z"),
+        "type": "response_item",
+        "payload": {
+            "type": "message",
+            "role": "user",
+            "content": [{"type": "input_text", "text": "Investigate stale snapshot mapping"}],
+        },
+    }
+    done_payload = {
+        "timestamp": (now - timedelta(seconds=2)).isoformat().replace("+00:00", "Z"),
+        "type": "response_item",
+        "payload": {
+            "type": "message",
+            "role": "user",
+            "content": [{"type": "input_text", "text": "Task is done already."}],
+        },
+    }
+    rollout_path.write_text(
+        "\n".join([json.dumps(task_payload), json.dumps(done_payload)]) + "\n",
+        encoding="utf-8",
+    )
+    ts = now.timestamp()
+    os.utime(rollout_path, (ts, ts))
+
+    previews = read_local_codex_task_previews_by_session_id(now=now)
+    assert session_id not in previews

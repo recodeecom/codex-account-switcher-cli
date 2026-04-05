@@ -1796,7 +1796,7 @@ def test_apply_local_live_usage_overrides_prefers_selected_snapshot_even_if_inde
     assert secondary_usage[account.id].used_percent == pytest.approx(23.0)
 
 
-def test_apply_local_live_usage_overrides_does_not_fallback_to_alias_snapshots_when_selected_has_no_live_data(
+def test_apply_local_live_usage_overrides_preserves_live_session_signal_for_alias_snapshot_process_counts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     account = _make_account("acc-a", "codexina@edixai.com")
@@ -1864,9 +1864,9 @@ def test_apply_local_live_usage_overrides_does_not_fallback_to_alias_snapshots_w
     assert debug.raw_samples == []
     assert debug.merged is None
     assert debug.override_applied is False
-    assert debug.override_reason == "no_live_telemetry"
-    assert codex_auth_by_account[account.id].has_live_session is False
-    assert codex_session_counts_by_account[account.id] == 0
+    assert debug.override_reason == "missing_live_usage_payload"
+    assert codex_auth_by_account[account.id].has_live_session is True
+    assert codex_session_counts_by_account[account.id] == 1
     assert account.id not in primary_usage
     assert account.id not in secondary_usage
 

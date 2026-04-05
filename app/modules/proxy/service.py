@@ -4968,6 +4968,10 @@ _TASK_PREVIEW_BEARER_RE = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._-]+")
 _TASK_PREVIEW_SECRET_ASSIGNMENT_RE = re.compile(
     r"(?i)\b(api[_-]?key|token|password|secret)\b\s*[:=]\s*([^\s,;]+)"
 )
+_TASK_PREVIEW_STATUS_ONLY_RE = re.compile(
+    r"(?i)^(?:task\s+)?(?:is\s+)?(?:already\s+)?(?:done|complete(?:d)?|finished)(?:\s+already)?[.!]?$"
+)
+_TASK_PREVIEW_WARNING_PREFIX_RE = re.compile(r"(?i)^warning\b")
 
 
 def _derive_codex_session_task_preview(payload: ResponsesRequest | ResponsesCompactRequest) -> str | None:
@@ -5016,6 +5020,10 @@ def _sanitize_codex_task_preview(text: str) -> str | None:
     redacted = _TASK_PREVIEW_SECRET_ASSIGNMENT_RE.sub(r"\1=[redacted]", redacted)
     trimmed = redacted.strip()
     if not trimmed:
+        return None
+    if _TASK_PREVIEW_WARNING_PREFIX_RE.match(trimmed):
+        return None
+    if _TASK_PREVIEW_STATUS_ONLY_RE.match(trimmed):
         return None
     if len(trimmed) <= _TASK_PREVIEW_MAX_LENGTH:
         return trimmed
