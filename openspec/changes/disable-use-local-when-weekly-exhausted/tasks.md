@@ -4,3 +4,4 @@
 - [x] Validate with lint, typecheck, and targeted/frontend tests.
 - [x] Enforce weekly-depleted disable behavior for working-now account session overrides.
 - [x] Add regression coverage proving working-now accounts with weekly `0%` keep `Use this account` disabled.
+- [x] Align dashboard-card disable behavior with displayed weekly `0%` badge for near-zero percentages (e.g. `<5%`).

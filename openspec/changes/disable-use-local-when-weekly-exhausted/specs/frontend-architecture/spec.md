@@ -11,3 +11,8 @@ The Dashboard account card `Use this account` action SHALL remain disabled when 
 - **AND** the account has an active/working-now session signal
 - **THEN** `Use this account` is disabled
 - **AND** the disabled reason indicates weekly quota depletion.
+
+#### Scenario: Weekly badge shown as 0% blocks local switch
+- **WHEN** the dashboard card renders weekly remaining as `0%` due near-zero display normalization
+- **THEN** `Use this account` is disabled
+- **AND** the disabled reason indicates weekly quota is shown as exhausted.

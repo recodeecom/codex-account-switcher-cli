@@ -718,6 +718,18 @@ export function isAccountWorkingNow(
     return true;
   }
 
+  if (account.codexAuth?.hasLiveSession ?? false) {
+    if (hasTaskPreviewSignal) {
+      return true;
+    }
+    if (
+      account.lastUsageRecordedAtPrimary == null &&
+      account.lastUsageRecordedAtSecondary == null
+    ) {
+      return true;
+    }
+  }
+
   const freshDebugRawSampleCount = getFreshDebugRawSampleCount(account, nowMs);
   if (freshDebugRawSampleCount > 0) {
     const overrideReason = (account.liveQuotaDebug?.overrideReason ?? "").trim().toLowerCase();

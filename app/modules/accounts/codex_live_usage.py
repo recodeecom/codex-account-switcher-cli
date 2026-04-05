@@ -1118,12 +1118,30 @@ def _resolve_unlabeled_default_scope_snapshot_name(
                     auth_snapshot_name = _infer_snapshot_name_from_auth_path(default_auth_path)
                     if auth_snapshot_name and auth_snapshot_name != snapshot_name:
                         return auth_snapshot_name
+                inferred_previous_snapshot_name = _infer_recent_previous_snapshot_name_from_registry(
+                    current_snapshot_name=snapshot_name,
+                    selection_changed_at=selection_changed_at,
+                )
+                if inferred_previous_snapshot_name:
+                    return inferred_previous_snapshot_name
                 return None
 
     return snapshot_name
 
 
 def _read_previous_active_snapshot_name_from_registry() -> str | None:
+    payload = _read_registry_payload()
+    if payload is None:
+        return None
+
+    previous_snapshot_name = payload.get("previousActiveAccountName")
+    if not isinstance(previous_snapshot_name, str):
+        return None
+    normalized = previous_snapshot_name.strip()
+    return normalized or None
+
+
+def _read_registry_payload() -> dict[str, Any] | None:
     registry_path = _resolve_registry_path()
     if not registry_path.exists() or not registry_path.is_file():
         return None
@@ -1135,12 +1153,65 @@ def _read_previous_active_snapshot_name_from_registry() -> str | None:
 
     if not isinstance(payload, dict):
         return None
+    return payload
 
-    previous_snapshot_name = payload.get("previousActiveAccountName")
-    if not isinstance(previous_snapshot_name, str):
+
+def _infer_recent_previous_snapshot_name_from_registry(
+    *,
+    current_snapshot_name: str,
+    selection_changed_at: float,
+) -> str | None:
+    payload = _read_registry_payload()
+    if payload is None:
         return None
-    normalized = previous_snapshot_name.strip()
-    return normalized or None
+
+    raw_accounts = payload.get("accounts")
+    if not isinstance(raw_accounts, dict):
+        return None
+
+    candidate_snapshot_name: str | None = None
+    candidate_last_usage_ts: float | None = None
+    fallback_window_seconds = float(
+        max(_active_window_seconds(), _switch_process_fallback_seconds())
+    )
+    timestamp_tie_tolerance_seconds = 1.0
+
+    for snapshot_key, raw_account in raw_accounts.items():
+        if not isinstance(raw_account, dict):
+            continue
+
+        raw_snapshot_name = raw_account.get("name", snapshot_key)
+        if not isinstance(raw_snapshot_name, str):
+            continue
+
+        snapshot_name = raw_snapshot_name.strip()
+        if not snapshot_name or snapshot_name == current_snapshot_name:
+            continue
+
+        parsed_last_usage = _parse_timestamp(raw_account.get("lastUsageAt"))
+        if parsed_last_usage is None:
+            continue
+        last_usage_ts = parsed_last_usage.timestamp()
+        if last_usage_ts > (selection_changed_at + timestamp_tie_tolerance_seconds):
+            continue
+        if (selection_changed_at - last_usage_ts) > fallback_window_seconds:
+            continue
+
+        if candidate_last_usage_ts is None:
+            candidate_snapshot_name = snapshot_name
+            candidate_last_usage_ts = last_usage_ts
+            continue
+
+        if last_usage_ts > (candidate_last_usage_ts + timestamp_tie_tolerance_seconds):
+            candidate_snapshot_name = snapshot_name
+            candidate_last_usage_ts = last_usage_ts
+            continue
+
+        if abs(last_usage_ts - candidate_last_usage_ts) <= timestamp_tie_tolerance_seconds:
+            if snapshot_name != candidate_snapshot_name:
+                return None
+
+    return candidate_snapshot_name
 
 
 def _is_eligible_unlabeled_default_scope_process(

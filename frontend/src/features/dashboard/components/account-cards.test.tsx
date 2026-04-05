@@ -265,7 +265,7 @@ describe("AccountCards", () => {
     expect(screen.getByText("depleted-idle@example.com")).toBeInTheDocument();
   });
 
-  it("keeps no-live-telemetry accounts out of working-now when no scoped cli sessions were sampled", () => {
+  it("keeps no-live-telemetry accounts in working-now when snapshot still reports a live session", () => {
     const account = createAccountSummary({
       accountId: "acc_itrexsale",
       email: "itrexsale@example.com",
@@ -309,7 +309,7 @@ describe("AccountCards", () => {
       />,
     );
 
-    expect(screen.queryByRole("heading", { name: "Working now" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Working now" })).toBeInTheDocument();
     expect(screen.getByText("itrexsale@example.com")).toBeInTheDocument();
   });
 

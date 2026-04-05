@@ -573,11 +573,12 @@ export function AccountCard({
     codexSessionCount: account.codexSessionCount,
   });
   const useLocalBlockedByWeeklyQuota =
-    typeof secondaryRemaining === "number" && secondaryRemaining < 1;
+    typeof secondaryRemaining === "number" &&
+    normalizeNearZeroQuotaPercent(secondaryRemaining) < 1;
   const useLocalButtonDisabled =
     !canUseLocally || useLocalBusy || useLocalBlockedByWeeklyQuota;
   const useLocalButtonDisabledReason = useLocalBlockedByWeeklyQuota
-    ? "Need at least 1% weekly quota remaining."
+    ? "Weekly quota shown as 0%."
     : useLocalDisabledReason;
   const autoTerminateSignature = [
     account.accountId,

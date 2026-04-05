@@ -237,6 +237,27 @@ describe("AccountCard", () => {
     expect(screen.getByRole("button", { name: "Use this account" })).toBeDisabled();
   });
 
+  it("disables use this account button when weekly quota rounds down to 0% for display", () => {
+    const account = createAccountSummary({
+      usage: {
+        primaryRemainingPercent: 44,
+        secondaryRemainingPercent: 4,
+      },
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
+      },
+    });
+
+    render(<AccountCard account={account} />);
+
+    const useButton = screen.getByRole("button", { name: "Use this account" });
+    expect(useButton).toBeDisabled();
+    expect(useButton).toHaveAttribute("title", "Weekly quota shown as 0%.");
+  });
+
   it("keeps use-local gating aligned with the displayed 5h value after floor-cache carryover", () => {
     const sharedAccountId = "acc_floor_cache_alignment";
     const sharedResetAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
@@ -340,7 +361,7 @@ describe("AccountCard", () => {
     expect(screen.getByRole("button", { name: "Use this account" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Use this account" })).toHaveAttribute(
       "title",
-      "Need at least 1% weekly quota remaining.",
+      "Weekly quota shown as 0%.",
     );
   });
 

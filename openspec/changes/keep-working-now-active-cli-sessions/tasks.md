@@ -6,6 +6,7 @@
 
 - [x] 2.1 Update `isAccountWorkingNow` to keep active CLI-session accounts in `Working now` even when primary 5h rounds to 0.
 - [x] 2.2 Keep non-session accounts excluded from `Working now` when primary 5h rounds to 0.
+- [x] 2.3 Keep `codexAuth.hasLiveSession` snapshots eligible for `Working now` even when `no_live_telemetry` has no scoped raw sample.
 
 ## 3. Validation
 
