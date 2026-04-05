@@ -1,5 +1,6 @@
-- [x] Clamp Request Logs fallback density to baseline floor (3 USD / 1M tokens) while preserving density-source priority.
+- [x] Clamp Request Logs fallback density to baseline floor (2.5 USD / 1M tokens, gpt-5.4 standard input baseline) while preserving density-source priority.
 - [x] Keep fallback replacement window-scoped so only empty request-log windows are replaced with live fallback projections.
+- [x] Convert live fallback usage units to actual token counts before projecting EUR/USD fallback costs.
 - [x] Update Request Logs fallback EUR hint copy to mention the minimum-rate guardrail.
 - [x] Extend fallback estimator/unit tests and Request Logs donuts tests for floor-clamp behavior and fallback messaging.
 - [x] Validate specs with `openspec validate --specs`.

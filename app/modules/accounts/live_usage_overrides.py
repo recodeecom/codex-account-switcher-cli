@@ -89,12 +89,13 @@ def apply_local_live_usage_overrides(
     live_usage_samples_by_snapshot = read_local_codex_live_usage_samples_by_snapshot()
     live_process_session_counts_by_snapshot = read_live_codex_process_session_counts_by_snapshot()
     runtime_live_session_counts_by_snapshot = read_runtime_live_session_counts_by_snapshot()
+    has_process_session_visibility = bool(live_process_session_counts_by_snapshot)
     should_defer_active_snapshot_usage = _should_defer_active_snapshot_usage_override(
         accounts=accounts,
         snapshot_index=snapshot_index,
         codex_auth_by_account=codex_auth_by_account,
         live_usage_by_snapshot=live_usage_by_snapshot,
-    )
+    ) and not has_process_session_visibility
     (
         debug_raw_samples_by_account,
         confident_raw_samples_by_account,
@@ -446,10 +447,11 @@ def apply_local_live_usage_overrides(
         live_usage_by_snapshot=live_usage_by_snapshot,
         live_usage_samples_by_snapshot=live_usage_samples_by_snapshot,
     )
-    should_apply_default_scope_fingerprint_fallback = has_mixed_default_scope_sessions or (
+    should_apply_default_scope_fingerprint_fallback = (
         not live_process_session_counts_by_snapshot
         and (
-            _default_session_fingerprint_fallback_enabled()
+            has_mixed_default_scope_sessions
+            or _default_session_fingerprint_fallback_enabled()
             or has_recent_active_snapshot_process_fallback()
         )
     )

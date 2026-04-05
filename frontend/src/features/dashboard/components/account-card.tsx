@@ -82,6 +82,7 @@ function formatPlanWithSnapshot(
 }
 
 const NEAR_ZERO_QUOTA_PERCENT = 5;
+const WAITING_FOR_NEW_TASK_LABEL = "Waiting for new task";
 
 function normalizeNearZeroQuotaPercent(value: number): number {
   const clamped = Math.max(0, Math.min(100, value));
@@ -552,6 +553,7 @@ export function AccountCard({
   const canUseLocally = canUseLocalAccount({
     status: account.status,
     primaryRemainingPercent: primaryRemaining,
+    secondaryRemainingPercent: secondaryRemaining,
     hasSnapshot: account.codexAuth?.hasSnapshot,
     isActiveSnapshot,
     hasLiveSession: hasActiveCliSession,
@@ -561,6 +563,7 @@ export function AccountCard({
   const useLocalDisabledReason = getUseLocalAccountDisabledReason({
     status: account.status,
     primaryRemainingPercent: primaryRemaining,
+    secondaryRemainingPercent: secondaryRemaining,
     hasSnapshot: account.codexAuth?.hasSnapshot,
     isActiveSnapshot,
     hasLiveSession: hasActiveCliSession,
@@ -669,6 +672,11 @@ export function AccountCard({
   const codexCurrentTaskPreview = usageLimitHitGraceExpired
     ? null
     : account.codexCurrentTaskPreview?.trim() || null;
+  const effectiveCurrentTaskPreview =
+    codexCurrentTaskPreview ??
+    (hasActiveCliSession && codexLiveSessionCount > 0
+      ? WAITING_FOR_NEW_TASK_LABEL
+      : null);
   const quotaDebugLogText = useMemo(
     () =>
       liveQuotaDebug
@@ -817,9 +825,9 @@ export function AccountCard({
           </p>
           <p
             className="mt-0.5 break-words whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground"
-            title={codexCurrentTaskPreview ?? undefined}
+            title={effectiveCurrentTaskPreview ?? undefined}
           >
-            {codexCurrentTaskPreview ?? "No active task reported"}
+            {effectiveCurrentTaskPreview ?? "No active task reported"}
           </p>
         </div>
       </div>

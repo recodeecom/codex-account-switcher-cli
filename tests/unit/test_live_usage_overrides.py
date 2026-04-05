@@ -569,7 +569,7 @@ def test_apply_local_live_usage_overrides_uses_mixed_default_session_fallback_wi
     assert codex_auth_by_account[account_b.id].has_live_session is True
 
 
-def test_apply_local_live_usage_overrides_uses_mixed_default_session_fallback_with_process_visibility(
+def test_apply_local_live_usage_overrides_skips_mixed_default_session_fallback_with_process_visibility(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     account_a = _make_account("acc-a", "a@example.com")
@@ -671,12 +671,12 @@ def test_apply_local_live_usage_overrides_uses_mixed_default_session_fallback_wi
         codex_live_session_counts_by_account=codex_session_counts_by_account,
     )
 
-    # Process-level visibility is primary; inferred fallback remains for
-    # accounts with attributed live-session ownership.
+    # Process-level visibility is primary; mixed default-scope fingerprint
+    # fallback must not create inferred sessions for other accounts.
     assert codex_session_counts_by_account[account_a.id] == 2
-    assert codex_session_counts_by_account[account_b.id] == 1
+    assert codex_session_counts_by_account[account_b.id] == 0
     assert codex_auth_by_account[account_a.id].has_live_session is True
-    assert codex_auth_by_account[account_b.id].has_live_session is True
+    assert codex_auth_by_account[account_b.id].has_live_session is False
 
 
 def test_match_sample_prefers_unique_reset_fingerprint_over_percent_similarity() -> None:

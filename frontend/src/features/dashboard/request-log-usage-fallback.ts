@@ -24,7 +24,9 @@ type CostDensity = {
   eurPerToken: number;
 };
 
-const FALLBACK_USD_PER_MILLION_TOKENS = 3;
+// Dashboard live usage windows expose token usage in 1K-token units.
+const LIVE_USAGE_TOKEN_SCALE = 1_000;
+const FALLBACK_USD_PER_MILLION_TOKENS = 2.5;
 
 function hasPositiveDensity(density: CostDensity | null | undefined): density is CostDensity {
   if (!density) return false;
@@ -169,12 +171,16 @@ function toConsumedTokens(
   }
 
   const accounts = window.accounts
-    .map((row) => ({
-      accountId: row.accountId,
-      tokens: Math.max(0, row.capacityCredits - row.remainingCredits),
-      costUsd: Math.max(0, (row.capacityCredits - row.remainingCredits) * density.usdPerToken),
-      costEur: Math.max(0, (row.capacityCredits - row.remainingCredits) * density.eurPerToken),
-    }))
+    .map((row) => {
+      const consumedUnits = Math.max(0, row.capacityCredits - row.remainingCredits);
+      const consumedTokens = consumedUnits * LIVE_USAGE_TOKEN_SCALE;
+      return {
+        accountId: row.accountId,
+        tokens: consumedUnits,
+        costUsd: Math.max(0, consumedTokens * density.usdPerToken),
+        costEur: Math.max(0, consumedTokens * density.eurPerToken),
+      };
+    })
     .sort((left, right) => right.tokens - left.tokens);
 
   return {

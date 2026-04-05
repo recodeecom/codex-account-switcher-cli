@@ -218,6 +218,25 @@ describe("AccountCard", () => {
     expect(screen.getByRole("button", { name: "Use this account" })).toBeDisabled();
   });
 
+  it("disables use this account button when weekly quota is unavailable", () => {
+    const account = createAccountSummary({
+      usage: {
+        primaryRemainingPercent: 44,
+        secondaryRemainingPercent: 0,
+      },
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
+      },
+    });
+
+    render(<AccountCard account={account} />);
+
+    expect(screen.getByRole("button", { name: "Use this account" })).toBeDisabled();
+  });
+
   it("keeps use-local gating aligned with the displayed 5h value after floor-cache carryover", () => {
     const sharedAccountId = "acc_floor_cache_alignment";
     const sharedResetAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
@@ -998,6 +1017,30 @@ describe("AccountCard", () => {
 
     expect(screen.getByText("Current task")).toBeInTheDocument();
     expect(screen.getByText("No active task reported")).toBeInTheDocument();
+  });
+
+  it("shows waiting for new task when a live session has no task preview", () => {
+    const nowIso = new Date().toISOString();
+    const account = createAccountSummary({
+      codexCurrentTaskPreview: null,
+      codexLiveSessionCount: 2,
+      codexSessionCount: 2,
+      codexTrackedSessionCount: 2,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+      lastUsageRecordedAtPrimary: nowIso,
+      lastUsageRecordedAtSecondary: nowIso,
+    });
+
+    render(<AccountCard account={account} />);
+
+    expect(screen.getByText("Current task")).toBeInTheDocument();
+    expect(screen.getByText("Waiting for new task")).toBeInTheDocument();
   });
 
   it("hides stale current task preview after usage-limit grace expires", () => {

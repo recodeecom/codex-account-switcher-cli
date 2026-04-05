@@ -4,6 +4,7 @@ import { ApiError } from "@/lib/api-client";
 type UseLocalAccountInput = {
   status: string;
   primaryRemainingPercent: number | null | undefined;
+  secondaryRemainingPercent?: number | null | undefined;
   hasSnapshot?: boolean;
   isActiveSnapshot?: boolean;
   hasLiveSession?: boolean;
@@ -13,6 +14,13 @@ type UseLocalAccountInput = {
 
 function hasFiveHourQuota(primaryRemainingPercent: number | null | undefined): boolean {
   return typeof primaryRemainingPercent === "number" && primaryRemainingPercent >= 1;
+}
+
+function hasWeeklyQuota(secondaryRemainingPercent: number | null | undefined): boolean {
+  if (typeof secondaryRemainingPercent !== "number" || Number.isNaN(secondaryRemainingPercent)) {
+    return true;
+  }
+  return secondaryRemainingPercent >= 1;
 }
 
 function isWorkingNow(input: UseLocalAccountInput): boolean {
@@ -32,7 +40,9 @@ export function canUseLocalAccount(input: UseLocalAccountInput): boolean {
       isActiveSnapshot: input.isActiveSnapshot,
       hasLiveSession: input.hasLiveSession,
       hasRecentUsageSignal: input.hasRecentUsageSignal,
-    }) === "active" && hasFiveHourQuota(input.primaryRemainingPercent)
+    }) === "active" &&
+    hasFiveHourQuota(input.primaryRemainingPercent) &&
+    hasWeeklyQuota(input.secondaryRemainingPercent)
   );
 }
 
@@ -53,6 +63,9 @@ export function getUseLocalAccountDisabledReason(input: UseLocalAccountInput): s
   }
   if (!hasFiveHourQuota(input.primaryRemainingPercent)) {
     return "Need at least 1% 5h quota remaining.";
+  }
+  if (!hasWeeklyQuota(input.secondaryRemainingPercent)) {
+    return "Need at least 1% weekly quota remaining.";
   }
   return null;
 }

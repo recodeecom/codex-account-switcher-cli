@@ -50,6 +50,8 @@ function compareAccountsForSidebar(a: AccountSummary, b: AccountSummary): number
     status: a.status,
     primaryRemainingPercent:
       getMergedQuotaRemainingPercent(a, "primary") ?? a.usage?.primaryRemainingPercent ?? null,
+    secondaryRemainingPercent:
+      getMergedQuotaRemainingPercent(a, "secondary") ?? a.usage?.secondaryRemainingPercent ?? null,
     hasSnapshot: a.codexAuth?.hasSnapshot,
     isActiveSnapshot: a.codexAuth?.isActiveSnapshot,
     hasLiveSession: hasActiveCliSessionSignal(a),
@@ -61,6 +63,8 @@ function compareAccountsForSidebar(a: AccountSummary, b: AccountSummary): number
     status: b.status,
     primaryRemainingPercent:
       getMergedQuotaRemainingPercent(b, "primary") ?? b.usage?.primaryRemainingPercent ?? null,
+    secondaryRemainingPercent:
+      getMergedQuotaRemainingPercent(b, "secondary") ?? b.usage?.secondaryRemainingPercent ?? null,
     hasSnapshot: b.codexAuth?.hasSnapshot,
     isActiveSnapshot: b.codexAuth?.isActiveSnapshot,
     hasLiveSession: hasActiveCliSessionSignal(b),

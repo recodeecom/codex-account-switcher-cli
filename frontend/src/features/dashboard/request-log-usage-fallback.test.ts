@@ -111,7 +111,7 @@ describe("mergeRequestLogUsageSummaryWithLiveFallback", () => {
 
     expect(merged.usageSummary.last5h.totalTokens).toBe(420);
     expect(merged.usageSummary.last7d.totalTokens).toBe(9000);
-    expect(merged.usageSummary.last7d.totalCostEur).toBeCloseTo(19.7142857143, 6);
+    expect(merged.usageSummary.last7d.totalCostEur).toBeCloseTo(19_714.2857142857, 6);
     expect(merged.usageSummary.fxRateUsdToEur).toBe(0.92);
     expect(merged.fallback).toEqual({
       last5h: false,
@@ -137,10 +137,10 @@ describe("mergeRequestLogUsageSummaryWithLiveFallback", () => {
       ],
     );
 
-    expect(merged.usageSummary.last5h.totalCostUsd).toBeCloseTo(0.32, 6);
-    expect(merged.usageSummary.last5h.totalCostEur).toBeCloseTo(0.2944, 6);
-    expect(merged.usageSummary.last7d.totalCostUsd).toBeCloseTo(1.6, 6);
-    expect(merged.usageSummary.last7d.totalCostEur).toBeCloseTo(1.472, 6);
+    expect(merged.usageSummary.last5h.totalCostUsd).toBeCloseTo(320, 6);
+    expect(merged.usageSummary.last5h.totalCostEur).toBeCloseTo(294.4, 6);
+    expect(merged.usageSummary.last7d.totalCostUsd).toBeCloseTo(1600, 6);
+    expect(merged.usageSummary.last7d.totalCostEur).toBeCloseTo(1472, 6);
     expect(merged.fallback).toEqual({
       last5h: true,
       last7d: true,
@@ -167,8 +167,8 @@ describe("mergeRequestLogUsageSummaryWithLiveFallback", () => {
       last7d: false,
       active: true,
     });
-    expect(merged.usageSummary.last5h.totalCostUsd).toBeCloseTo(0.00192, 8);
-    expect(merged.usageSummary.last5h.totalCostEur).toBeCloseTo(0.0017664, 8);
+    expect(merged.usageSummary.last5h.totalCostUsd).toBeCloseTo(1.6, 8);
+    expect(merged.usageSummary.last5h.totalCostEur).toBeCloseTo(1.472, 8);
     expect(merged.usageSummary.last7d.totalCostUsd).toBe(1);
     expect(merged.usageSummary.last7d.totalCostEur).toBe(0.92);
   });
@@ -192,8 +192,8 @@ describe("mergeRequestLogUsageSummaryWithLiveFallback", () => {
       last7d: false,
       active: true,
     });
-    expect(merged.usageSummary.last5h.totalCostUsd).toBeCloseTo(0.00384, 8);
-    expect(merged.usageSummary.last5h.totalCostEur).toBeCloseTo(0.0035328, 8);
+    expect(merged.usageSummary.last5h.totalCostUsd).toBeCloseTo(3.84, 8);
+    expect(merged.usageSummary.last5h.totalCostEur).toBeCloseTo(3.5328, 8);
   });
 
   it("keeps fallback replacement window-scoped for last5h and last7d", () => {
@@ -210,7 +210,7 @@ describe("mergeRequestLogUsageSummaryWithLiveFallback", () => {
       last7d: true,
       active: true,
     });
-    expect(merged.usageSummary.last5h.totalCostUsd).toBeCloseTo(0.00192, 8);
-    expect(merged.usageSummary.last7d.totalCostUsd).toBeCloseTo(0.0096, 8);
+    expect(merged.usageSummary.last5h.totalCostUsd).toBeCloseTo(1.6, 8);
+    expect(merged.usageSummary.last7d.totalCostUsd).toBeCloseTo(8, 8);
   });
 });

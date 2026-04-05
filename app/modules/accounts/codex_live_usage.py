@@ -45,6 +45,8 @@ _TASK_PREVIEW_STATUS_ONLY_RE = re.compile(
     r"(?i)^(?:task\s+)?(?:is\s+)?(?:already\s+)?(?:done|complete(?:d)?|finished)(?:\s+already)?[.!]?$"
 )
 _TASK_PREVIEW_WARNING_PREFIX_RE = re.compile(r"(?i)^warning\b")
+_TASK_PREVIEW_LIVE_USAGE_XML_RE = re.compile(r"(?is)^<live_usage(?:\s|>)")
+_TASK_PREVIEW_LIVE_USAGE_MAPPING_XML_RE = re.compile(r"(?is)^<live_usage_mapping(?:\s|>)")
 _DEFAULT_PROC_ROOT = Path("/proc")
 
 
@@ -1782,7 +1784,10 @@ def _task_preview_event_from_line(raw_line: str) -> tuple[str, LocalCodexTaskPre
     if not normalized_source_text:
         return ("skip", None)
     if _TASK_PREVIEW_WARNING_PREFIX_RE.match(normalized_source_text):
-        return ("clear", None)
+        # Tool/runtime warning echoes can be emitted as user-role messages in
+        # rollout logs. Ignore them so they do not wipe the previously active
+        # task preview for that session.
+        return ("skip", None)
     if _TASK_PREVIEW_STATUS_ONLY_RE.match(normalized_source_text):
         return ("clear", None)
 
@@ -1847,6 +1852,10 @@ def _sanitize_codex_task_preview(text: str) -> str | None:
     if _TASK_PREVIEW_WARNING_PREFIX_RE.match(trimmed):
         return None
     if _TASK_PREVIEW_STATUS_ONLY_RE.match(trimmed):
+        return None
+    if _TASK_PREVIEW_LIVE_USAGE_XML_RE.match(trimmed):
+        return None
+    if _TASK_PREVIEW_LIVE_USAGE_MAPPING_XML_RE.match(trimmed):
         return None
     if len(trimmed) <= _TASK_PREVIEW_MAX_LENGTH:
         return trimmed

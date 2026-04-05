@@ -186,7 +186,7 @@ describe("RequestLogUsageDonuts", () => {
             {
               accountId: "acc-1",
               remainingPercentAvg: 50,
-              capacityCredits: 5_000_100,
+              capacityCredits: 5_100,
               remainingCredits: 100,
             },
           ],
@@ -216,8 +216,8 @@ describe("RequestLogUsageDonuts", () => {
     );
 
     expect(merged.fallback).toEqual({ last5h: true, last7d: false, active: true });
-    expect(merged.usageSummary.last5h.totalCostEur).toBeCloseTo(13.8, 6);
-    expect(screen.getAllByText("€13.80").length).toBeGreaterThanOrEqual(1);
+    expect(merged.usageSummary.last5h.totalCostEur).toBeCloseTo(11.5, 6);
+    expect(screen.getAllByText("€11.50").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText("Unavailable in live fallback")).not.toBeInTheDocument();
   });
 

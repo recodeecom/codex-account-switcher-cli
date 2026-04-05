@@ -176,6 +176,7 @@ export function AccountListItem({
   const canUseLocally = canUseLocalAccount({
     status: account.status,
     primaryRemainingPercent: primaryRemaining,
+    secondaryRemainingPercent: secondary,
     hasSnapshot: account.codexAuth?.hasSnapshot,
     isActiveSnapshot,
     hasLiveSession: hasActiveCliSession,
@@ -185,6 +186,7 @@ export function AccountListItem({
   const disabledReason = getUseLocalAccountDisabledReason({
     status: account.status,
     primaryRemainingPercent: primaryRemaining,
+    secondaryRemainingPercent: secondary,
     hasSnapshot: account.codexAuth?.hasSnapshot,
     isActiveSnapshot,
     hasLiveSession: hasActiveCliSession,

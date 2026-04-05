@@ -1726,6 +1726,90 @@ def test_read_local_codex_task_previews_by_session_id_ignores_warning_and_status
     assert done_session_id not in previews
 
 
+def test_read_local_codex_task_previews_by_session_id_ignores_live_usage_xml_payload(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    sessions_root = tmp_path / "sessions"
+    monkeypatch.setenv("CODEX_SESSIONS_DIR", str(sessions_root))
+    monkeypatch.setenv("CODEX_AUTH_RUNTIME_ROOT", str(tmp_path / "runtimes"))
+
+    day_dir = _sessions_day_dir(sessions_root, now)
+    session_id = "019d5a6a-4665-7873-9714-9efb95b24280"
+    rollout_path = day_dir / f"rollout-2026-04-04T21-33-31-{session_id}.jsonl"
+
+    live_usage_payload = {
+        "timestamp": (now - timedelta(seconds=3)).isoformat().replace("+00:00", "Z"),
+        "type": "response_item",
+        "payload": {
+            "type": "message",
+            "role": "user",
+            "content": [
+                {
+                    "type": "input_text",
+                    "text": '<live_usage generated_at="2026-04-05T08:05:39.199074Z" total_sessions="2" mapped_sessions="2" unattributed_sessions="0">',
+                }
+            ],
+        },
+    }
+
+    rollout_path.write_text(json.dumps(live_usage_payload) + "\n", encoding="utf-8")
+    ts = now.timestamp()
+    os.utime(rollout_path, (ts, ts))
+
+    previews = read_local_codex_task_previews_by_session_id(now=now)
+    assert session_id not in previews
+
+
+def test_read_local_codex_task_previews_by_session_id_keeps_latest_task_when_warning_follows(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    sessions_root = tmp_path / "sessions"
+    monkeypatch.setenv("CODEX_SESSIONS_DIR", str(sessions_root))
+    monkeypatch.setenv("CODEX_AUTH_RUNTIME_ROOT", str(tmp_path / "runtimes"))
+
+    day_dir = _sessions_day_dir(sessions_root, now)
+    session_id = "019d5a6a-4665-7873-9714-9efb95b24271"
+    rollout_path = day_dir / f"rollout-2026-04-04T21-33-30-{session_id}.jsonl"
+
+    task_payload = {
+        "timestamp": (now - timedelta(seconds=10)).isoformat().replace("+00:00", "Z"),
+        "type": "response_item",
+        "payload": {
+            "type": "message",
+            "role": "user",
+            "content": [{"type": "input_text", "text": "Investigate stale snapshot mapping"}],
+        },
+    }
+    warning_payload = {
+        "timestamp": (now - timedelta(seconds=2)).isoformat().replace("+00:00", "Z"),
+        "type": "response_item",
+        "payload": {
+            "type": "message",
+            "role": "user",
+            "content": [
+                {
+                    "type": "input_text",
+                    "text": "Warning: apply_patch was requested via exec_command. Use the apply_patch tool instead of exec_command.",
+                }
+            ],
+        },
+    }
+    rollout_path.write_text(
+        "\n".join([json.dumps(task_payload), json.dumps(warning_payload)]) + "\n",
+        encoding="utf-8",
+    )
+    ts = now.timestamp()
+    os.utime(rollout_path, (ts, ts))
+
+    previews = read_local_codex_task_previews_by_session_id(now=now)
+    assert session_id in previews
+    assert previews[session_id].text == "Investigate stale snapshot mapping"
+
+
 def test_read_local_codex_task_previews_by_session_id_does_not_fallback_to_old_task_after_done_message(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

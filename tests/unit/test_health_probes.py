@@ -404,6 +404,93 @@ async def test_live_usage_remaps_alias_snapshot_counts_to_selected_snapshot():
 
 
 @pytest.mark.asyncio
+async def test_live_usage_remaps_alias_snapshot_account_emails_to_selected_snapshot():
+    from app.modules.accounts.codex_live_usage import LocalCodexProcessSessionAttribution
+    from app.modules.health.api import live_usage
+
+    with (
+        patch(
+            "app.modules.health.api.read_live_codex_process_session_attribution",
+            return_value=LocalCodexProcessSessionAttribution(
+                counts_by_snapshot={"legacy-alias": 2},
+                unattributed_session_pids=[],
+                mapped_session_pids_by_snapshot={"legacy-alias": [3201, 3202]},
+                task_preview_by_pid={},
+            ),
+        ),
+        patch(
+            "app.modules.health.api._read_live_usage_task_previews_by_snapshot",
+            new=AsyncMock(return_value={}),
+        ),
+        patch(
+            "app.modules.health.api._read_live_usage_account_emails_by_snapshot",
+            new=AsyncMock(return_value={"legacy-alias": ["itrexsale@gmail.com"]}),
+        ),
+        patch(
+            "app.modules.health.api._read_live_usage_snapshot_alias_map",
+            new=AsyncMock(return_value={"legacy-alias": "itrexsale@gmail.com"}),
+        ),
+        patch(
+            "app.modules.health.api.utcnow",
+            return_value=datetime(2026, 4, 5, 0, 0, 0),
+        ),
+    ):
+        response = await live_usage()
+
+    body = response.body.decode("utf-8")
+    assert (
+        '<snapshot name="itrexsale@gmail.com" session_count="2" session_row_count="2" session_task_preview_count="0" account_emails="itrexsale@gmail.com">'
+        in body
+    )
+    assert '<snapshot name="legacy-alias"' not in body
+
+
+@pytest.mark.asyncio
+async def test_live_usage_ignores_live_usage_xml_payload_as_session_task_preview():
+    from app.modules.accounts.codex_live_usage import LocalCodexProcessSessionAttribution
+    from app.modules.health.api import live_usage
+
+    with (
+        patch(
+            "app.modules.health.api.read_live_codex_process_session_attribution",
+            return_value=LocalCodexProcessSessionAttribution(
+                counts_by_snapshot={"itrexsale@gmail.com": 1},
+                unattributed_session_pids=[],
+                mapped_session_pids_by_snapshot={"itrexsale@gmail.com": [901]},
+                task_preview_by_pid={
+                    901: '<live_usage generated_at="2026-04-05T08:05:39.199074Z" total_sessions="2" mapped_sessions="2" unattributed_sessions="0">'
+                },
+            ),
+        ),
+        patch(
+            "app.modules.health.api._read_live_usage_task_previews_by_snapshot",
+            new=AsyncMock(return_value={}),
+        ),
+        patch(
+            "app.modules.health.api._read_live_usage_account_emails_by_snapshot",
+            new=AsyncMock(return_value={"itrexsale@gmail.com": ["itrexsale@gmail.com"]}),
+        ),
+        patch(
+            "app.modules.health.api._read_live_usage_snapshot_alias_map",
+            new=AsyncMock(return_value={}),
+        ),
+        patch(
+            "app.modules.health.api.utcnow",
+            return_value=datetime(2026, 4, 5, 0, 0, 0),
+        ),
+    ):
+        response = await live_usage()
+
+    body = response.body.decode("utf-8")
+    assert (
+        '<snapshot name="itrexsale@gmail.com" session_count="1" session_row_count="1" session_task_preview_count="0" account_emails="itrexsale@gmail.com">'
+        in body
+    )
+    assert '<session pid="901" state="waiting_for_new_task" />' in body
+    assert 'task_preview="&lt;live_usage generated_at=' not in body
+
+
+@pytest.mark.asyncio
 async def test_live_usage_includes_account_emails_mapped_to_snapshot():
     from app.modules.accounts.codex_live_usage import LocalCodexProcessSessionAttribution
     from app.modules.health.api import live_usage

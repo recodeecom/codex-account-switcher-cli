@@ -35,11 +35,36 @@ describe("use-local account gating", () => {
     expect(canUseLocalAccount({ status: "active", primaryRemainingPercent: null })).toBe(false);
   });
 
+  it("blocks local switch when weekly quota is depleted", () => {
+    expect(
+      canUseLocalAccount({
+        status: "active",
+        primaryRemainingPercent: 44,
+        secondaryRemainingPercent: 0,
+      }),
+    ).toBe(false);
+    expect(
+      canUseLocalAccount({
+        status: "active",
+        primaryRemainingPercent: 44,
+        secondaryRemainingPercent: 0.99,
+      }),
+    ).toBe(false);
+    expect(
+      canUseLocalAccount({
+        status: "active",
+        primaryRemainingPercent: 44,
+        secondaryRemainingPercent: 1,
+      }),
+    ).toBe(true);
+  });
+
   it("always allows working-now accounts regardless of status or 5h quota", () => {
     expect(
       canUseLocalAccount({
         status: "paused",
         primaryRemainingPercent: 0,
+        secondaryRemainingPercent: 0,
         codexSessionCount: 1,
       }),
     ).toBe(true);
@@ -47,6 +72,7 @@ describe("use-local account gating", () => {
       canUseLocalAccount({
         status: "quota_exceeded",
         primaryRemainingPercent: 0,
+        secondaryRemainingPercent: 0,
         hasLiveSession: true,
       }),
     ).toBe(true);
@@ -87,6 +113,13 @@ describe("use-local account gating", () => {
     expect(
       getUseLocalAccountDisabledReason({ status: "active", primaryRemainingPercent: 0 }),
     ).toBe("Need at least 1% 5h quota remaining.");
+    expect(
+      getUseLocalAccountDisabledReason({
+        status: "active",
+        primaryRemainingPercent: 44,
+        secondaryRemainingPercent: 0,
+      }),
+    ).toBe("Need at least 1% weekly quota remaining.");
     expect(
       getUseLocalAccountDisabledReason({ status: "active", primaryRemainingPercent: 44 }),
     ).toBeNull();

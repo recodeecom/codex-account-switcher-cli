@@ -1,0 +1,4 @@
+- [x] Update `use-local` gating utility to block selection when weekly remaining quota is below 1%.
+- [x] Pass weekly remaining values into all `canUseLocalAccount` and disabled-reason callsites.
+- [x] Add regression tests for weekly-depleted disable behavior.
+- [x] Validate with lint, typecheck, and targeted/frontend tests.

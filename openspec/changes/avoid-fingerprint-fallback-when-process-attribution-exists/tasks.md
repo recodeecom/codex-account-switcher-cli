@@ -1,0 +1,4 @@
+- [x] Gate deferred default-scope sample hinting behind absence of process-level session attribution.
+- [x] Gate mixed default-scope fingerprint fallback behind absence of process-level session attribution.
+- [x] Update unit test expectations for mixed default-session fallback with process visibility.
+- [x] Validate via `tests/unit/test_live_usage_overrides.py`.

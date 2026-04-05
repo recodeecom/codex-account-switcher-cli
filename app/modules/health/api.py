@@ -37,6 +37,8 @@ _TASK_PREVIEW_STATUS_ONLY_RE = re.compile(
     r"(?i)^(?:task\s+)?(?:is\s+)?(?:already\s+)?(?:done|complete(?:d)?|finished)(?:\s+already)?[.!]?$"
 )
 _TASK_PREVIEW_WARNING_PREFIX_RE = re.compile(r"(?i)^warning\b")
+_TASK_PREVIEW_LIVE_USAGE_XML_RE = re.compile(r"(?is)^<live_usage(?:\s|>)")
+_TASK_PREVIEW_LIVE_USAGE_MAPPING_XML_RE = re.compile(r"(?is)^<live_usage_mapping(?:\s|>)")
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -97,7 +99,21 @@ async def live_usage() -> Response:
             existing_pairs.add(key)
     for previews in task_previews_by_snapshot.values():
         previews.sort(key=lambda preview: preview.account_id)
-    account_emails_by_snapshot = await _read_live_usage_account_emails_by_snapshot()
+    raw_account_emails_by_snapshot = await _read_live_usage_account_emails_by_snapshot()
+    account_emails_by_snapshot_sets: dict[str, set[str]] = {}
+    for snapshot_name, account_emails in raw_account_emails_by_snapshot.items():
+        target_snapshot_name = snapshot_alias_map.get(snapshot_name, snapshot_name)
+        emails_for_snapshot = account_emails_by_snapshot_sets.setdefault(
+            target_snapshot_name, set()
+        )
+        for account_email in account_emails:
+            normalized_email = account_email.strip().lower()
+            if normalized_email:
+                emails_for_snapshot.add(normalized_email)
+    account_emails_by_snapshot: dict[str, list[str]] = {
+        snapshot_name: sorted(snapshot_emails)
+        for snapshot_name, snapshot_emails in account_emails_by_snapshot_sets.items()
+    }
 
     session_task_previews_by_snapshot: dict[str, dict[int, list[str]]] = {}
     mapped_session_task_preview_count = 0
@@ -470,6 +486,10 @@ def _normalize_task_preview(value: str | None) -> str:
     if _TASK_PREVIEW_WARNING_PREFIX_RE.match(normalized):
         return ""
     if _TASK_PREVIEW_STATUS_ONLY_RE.match(normalized):
+        return ""
+    if _TASK_PREVIEW_LIVE_USAGE_XML_RE.match(normalized):
+        return ""
+    if _TASK_PREVIEW_LIVE_USAGE_MAPPING_XML_RE.match(normalized):
         return ""
     # Keep the XML feed compact for MCP consumers while retaining enough
     # context to identify the active CLI task.

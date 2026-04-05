@@ -4,7 +4,8 @@ The Dashboard page SHALL display: summary metric cards (requests 7d, tokens, cos
 #### Scenario: Fallback windows use a minimum density floor for EUR estimates
 - **WHEN** a request-log usage window is replaced by live fallback because request-log totals are empty
 - **THEN** fallback EUR values are estimated from prioritized request-log density sources
-- **AND** the effective fallback density is clamped to a minimum baseline of **3 USD per 1,000,000 tokens**
+- **AND** live usage fallback units are converted to actual token counts for cost projection
+- **AND** the effective fallback density is clamped to a minimum baseline of **2.5 USD per 1,000,000 tokens** (gpt-5.4 standard input baseline)
 - **AND** non-fallback request-log windows keep their original EUR values without floor adjustment.
 
 #### Scenario: Fallback hint messaging states guardrail context
