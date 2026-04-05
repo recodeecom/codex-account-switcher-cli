@@ -1036,8 +1036,11 @@ def test_read_live_codex_process_session_counts_by_snapshot_maps_multiple_unlabe
         lambda _pid: default_current.stat().st_mtime + 1,
     )
 
+    attribution = read_live_codex_process_session_attribution()
     counts = read_live_codex_process_session_counts_by_snapshot()
-    assert counts == {"work": 2}
+    assert attribution.counts_by_snapshot == {}
+    assert attribution.unattributed_session_pids == [404, 405]
+    assert counts == {}
 
 
 def test_read_live_codex_process_session_counts_by_snapshot_maps_multiple_unlabeled_default_scope_processes_without_start_time_gate(
@@ -1065,8 +1068,11 @@ def test_read_live_codex_process_session_counts_by_snapshot_maps_multiple_unlabe
         lambda _pid: True,
     )
 
+    attribution = read_live_codex_process_session_attribution()
     counts = read_live_codex_process_session_counts_by_snapshot()
-    assert counts == {"work": 2}
+    assert attribution.counts_by_snapshot == {}
+    assert attribution.unattributed_session_pids == [404, 405]
+    assert counts == {}
 
 
 def test_read_live_codex_process_session_counts_by_snapshot_ignores_unlabeled_foreign_processes(

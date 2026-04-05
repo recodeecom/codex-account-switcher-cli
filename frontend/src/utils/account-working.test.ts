@@ -112,6 +112,30 @@ describe("isAccountWorkingNow", () => {
     expect(isAccountWorkingNow(account, new Date("2026-04-04T11:59:40.000Z").getTime())).toBe(true);
   });
 
+  it("treats sub-5% 5h quota as depleted and ages out after grace", () => {
+    const account = createAccountSummary({
+      usage: {
+        primaryRemainingPercent: 4,
+        secondaryRemainingPercent: 88,
+      },
+      codexLiveSessionCount: 1,
+      codexTrackedSessionCount: 1,
+      codexSessionCount: 1,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+      lastUsageRecordedAtPrimary: "2026-04-04T11:58:30.000Z",
+      lastUsageRecordedAtSecondary: "2026-04-04T11:58:30.000Z",
+    });
+
+    expect(isAccountWorkingNow(account, new Date("2026-04-04T11:59:00.000Z").getTime())).toBe(true);
+    expect(isAccountWorkingNow(account, new Date("2026-04-04T12:00:01.000Z").getTime())).toBe(false);
+  });
+
   it("ages out usage-limit-hit accounts after 60 seconds even with active session signals", () => {
     const account = createAccountSummary({
       usage: {

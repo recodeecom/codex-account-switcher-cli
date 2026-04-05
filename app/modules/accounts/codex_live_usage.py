@@ -213,6 +213,13 @@ def read_live_codex_process_session_attribution() -> LocalCodexProcessSessionAtt
     for pid, _command in _iter_running_codex_commands(proc_root):
         processes.append((pid, _read_process_env(pid) or {}))
     _prune_unlabeled_default_scope_process_owner_cache(active_pids={pid for pid, _env in processes})
+    suppress_unlabeled_default_scope_fallback = (
+        _has_ambiguous_uncached_unlabeled_default_scope_processes(
+            processes=processes,
+            default_current_path=default_current_path,
+            default_auth_path=default_auth_path,
+        )
+    )
 
     counts: dict[str, int] = {}
     unattributed_session_pids: list[int] = []
@@ -225,6 +232,7 @@ def read_live_codex_process_session_attribution() -> LocalCodexProcessSessionAtt
             env=env,
             default_current_path=default_current_path,
             default_auth_path=default_auth_path,
+            suppress_unlabeled_default_scope_fallback=suppress_unlabeled_default_scope_fallback,
         )
         task_previews = _resolve_process_task_previews(pid, env=env, limit=2)
         if task_previews:
@@ -263,6 +271,13 @@ def terminate_live_codex_processes_for_snapshot(snapshot_name: str) -> int:
     for pid, _command in _iter_running_codex_commands(proc_root):
         processes.append((pid, _read_process_env(pid) or {}))
     _prune_unlabeled_default_scope_process_owner_cache(active_pids={pid for pid, _env in processes})
+    suppress_unlabeled_default_scope_fallback = (
+        _has_ambiguous_uncached_unlabeled_default_scope_processes(
+            processes=processes,
+            default_current_path=default_current_path,
+            default_auth_path=default_auth_path,
+        )
+    )
 
     target_pids: list[int] = []
     for pid, env in processes:
@@ -271,6 +286,7 @@ def terminate_live_codex_processes_for_snapshot(snapshot_name: str) -> int:
             env=env,
             default_current_path=default_current_path,
             default_auth_path=default_auth_path,
+            suppress_unlabeled_default_scope_fallback=suppress_unlabeled_default_scope_fallback,
         )
         if resolved_snapshot_name == normalized_snapshot_name:
             target_pids.append(pid)
@@ -289,6 +305,7 @@ def _resolve_process_snapshot_name_for_accounting(
     env: dict[str, str] | None,
     default_current_path: Path,
     default_auth_path: Path,
+    suppress_unlabeled_default_scope_fallback: bool = False,
 ) -> str | None:
     process_default_current_path, process_default_auth_path = _resolve_process_default_auth_scope_paths(
         env=env or {},
@@ -317,6 +334,9 @@ def _resolve_process_snapshot_name_for_accounting(
     ):
         return None
 
+    if suppress_unlabeled_default_scope_fallback:
+        return None
+
     fallback_snapshot = _resolve_process_snapshot_name(
         pid,
         env=env,
@@ -327,6 +347,39 @@ def _resolve_process_snapshot_name_for_accounting(
     if fallback_snapshot:
         _remember_unlabeled_default_scope_snapshot_name(pid, fallback_snapshot)
     return fallback_snapshot
+
+
+def _has_ambiguous_uncached_unlabeled_default_scope_processes(
+    *,
+    processes: list[tuple[int, dict[str, str]]],
+    default_current_path: Path,
+    default_auth_path: Path,
+) -> bool:
+    uncached_eligible_count = 0
+
+    for pid, env in processes:
+        process_default_current_path, process_default_auth_path = _resolve_process_default_auth_scope_paths(
+            env=env,
+            default_current_path=default_current_path,
+            default_auth_path=default_auth_path,
+        )
+
+        if _resolve_cached_unlabeled_default_scope_snapshot_name(pid):
+            continue
+
+        if not _is_eligible_unlabeled_default_scope_process(
+            pid=pid,
+            env=env,
+            default_current_path=process_default_current_path,
+            default_auth_path=process_default_auth_path,
+        ):
+            continue
+
+        uncached_eligible_count += 1
+        if uncached_eligible_count > 1:
+            return True
+
+    return False
 
 
 def _resolve_process_default_auth_scope_paths(
