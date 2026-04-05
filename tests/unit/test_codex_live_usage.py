@@ -681,6 +681,138 @@ def test_read_local_codex_live_usage_samples_by_snapshot_returns_runtime_and_def
     assert used_primary == [12.0, 91.0]
 
 
+def test_read_local_codex_live_usage_by_snapshot_splits_default_scope_samples_by_live_process_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    now = datetime.now(timezone.utc)
+    sessions_root = tmp_path / "sessions"
+    monkeypatch.setenv("CODEX_SESSIONS_DIR", str(sessions_root))
+    monkeypatch.setenv("CODEX_AUTH_CURRENT_PATH", str(tmp_path / "current"))
+    monkeypatch.setenv("CODEX_AUTH_JSON_PATH", str(tmp_path / "auth.json"))
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage.build_snapshot_index",
+        lambda: SimpleNamespace(active_snapshot_name="thedailyscooby@gmail.com"),
+    )
+
+    day_dir = _sessions_day_dir(sessions_root, now)
+    scooby_rollout = day_dir / "rollout-2026-04-05T10-25-55-019d5cbf-9e4e-7113-a3b7-de101ac1615c.jsonl"
+    perzeus_rollout = day_dir / "rollout-2026-04-05T10-07-46-019d5caf-03d1-7791-abd3-0694d6bb1357.jsonl"
+    _write_rollout(
+        scooby_rollout,
+        timestamp=now - timedelta(seconds=30),
+        primary_used=97.0,
+        secondary_used=83.0,
+    )
+    _write_rollout(
+        perzeus_rollout,
+        timestamp=now - timedelta(seconds=20),
+        primary_used=59.0,
+        secondary_used=82.0,
+    )
+
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._iter_running_codex_commands",
+        lambda _proc_root: [
+            (201, ["/usr/bin/codex", "model_instructions_file=agents"]),
+            (202, ["/usr/bin/codex", "model_instructions_file=agents"]),
+        ],
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._read_process_env",
+        lambda pid: (
+            {"CODEX_AUTH_ACTIVE_SNAPSHOT": "thedailyscooby@gmail.com"}
+            if pid == 201
+            else {"CODEX_AUTH_ACTIVE_SNAPSHOT": "perzeus@nagyviktor.com"}
+        ),
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._resolve_process_rollout_path",
+        lambda pid: scooby_rollout if pid == 201 else perzeus_rollout,
+    )
+
+    usage_by_snapshot = read_local_codex_live_usage_by_snapshot(now=now)
+
+    assert set(usage_by_snapshot.keys()) == {
+        "thedailyscooby@gmail.com",
+        "perzeus@nagyviktor.com",
+    }
+    assert usage_by_snapshot["thedailyscooby@gmail.com"].primary is not None
+    assert usage_by_snapshot["thedailyscooby@gmail.com"].secondary is not None
+    assert usage_by_snapshot["thedailyscooby@gmail.com"].primary.used_percent == 97.0
+    assert usage_by_snapshot["thedailyscooby@gmail.com"].secondary.used_percent == 83.0
+    assert usage_by_snapshot["perzeus@nagyviktor.com"].primary is not None
+    assert usage_by_snapshot["perzeus@nagyviktor.com"].secondary is not None
+    assert usage_by_snapshot["perzeus@nagyviktor.com"].primary.used_percent == 59.0
+    assert usage_by_snapshot["perzeus@nagyviktor.com"].secondary.used_percent == 82.0
+
+
+def test_read_local_codex_live_usage_samples_by_snapshot_splits_default_scope_samples_by_live_process_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    now = datetime.now(timezone.utc)
+    sessions_root = tmp_path / "sessions"
+    monkeypatch.setenv("CODEX_SESSIONS_DIR", str(sessions_root))
+    monkeypatch.setenv("CODEX_AUTH_CURRENT_PATH", str(tmp_path / "current"))
+    monkeypatch.setenv("CODEX_AUTH_JSON_PATH", str(tmp_path / "auth.json"))
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage.build_snapshot_index",
+        lambda: SimpleNamespace(active_snapshot_name="thedailyscooby@gmail.com"),
+    )
+
+    day_dir = _sessions_day_dir(sessions_root, now)
+    scooby_rollout = day_dir / "rollout-2026-04-05T10-25-03-019d5cbe-d5f8-78d0-b3fd-272f24bafc82.jsonl"
+    perzeus_rollout = day_dir / "rollout-2026-04-05T10-06-51-019d5cae-2c1e-7493-b08d-20a4ebf98a27.jsonl"
+    _write_rollout(
+        scooby_rollout,
+        timestamp=now - timedelta(seconds=25),
+        primary_used=99.0,
+        secondary_used=83.0,
+    )
+    _write_rollout(
+        perzeus_rollout,
+        timestamp=now - timedelta(seconds=15),
+        primary_used=48.0,
+        secondary_used=81.0,
+    )
+
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._iter_running_codex_commands",
+        lambda _proc_root: [
+            (301, ["/usr/bin/codex", "model_instructions_file=agents"]),
+            (302, ["/usr/bin/codex", "model_instructions_file=agents"]),
+        ],
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._read_process_env",
+        lambda pid: (
+            {"CODEX_AUTH_ACTIVE_SNAPSHOT": "thedailyscooby@gmail.com"}
+            if pid == 301
+            else {"CODEX_AUTH_ACTIVE_SNAPSHOT": "perzeus@nagyviktor.com"}
+        ),
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._resolve_process_rollout_path",
+        lambda pid: scooby_rollout if pid == 301 else perzeus_rollout,
+    )
+
+    samples_by_snapshot = read_local_codex_live_usage_samples_by_snapshot(now=now)
+
+    assert set(samples_by_snapshot.keys()) == {
+        "thedailyscooby@gmail.com",
+        "perzeus@nagyviktor.com",
+    }
+    scooby_samples = samples_by_snapshot["thedailyscooby@gmail.com"]
+    perzeus_samples = samples_by_snapshot["perzeus@nagyviktor.com"]
+    assert len(scooby_samples) == 1
+    assert len(perzeus_samples) == 1
+    assert scooby_samples[0].primary is not None
+    assert perzeus_samples[0].primary is not None
+    assert scooby_samples[0].primary.used_percent == 99.0
+    assert perzeus_samples[0].primary.used_percent == 48.0
+
+
 def test_recent_active_snapshot_process_fallback_requires_recent_snapshot_switch(
     monkeypatch,
     tmp_path: Path,
@@ -1786,6 +1918,51 @@ def test_read_local_codex_task_previews_by_session_id_ignores_bootstrap_and_sani
 
     previews = read_local_codex_task_previews_by_session_id(now=now)
     assert previews[session_id].text == "Build bridge for [redacted-email] token=[redacted]"
+
+
+def test_read_local_codex_task_previews_by_session_id_extracts_task_from_bootstrap_wrapped_message(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    sessions_root = tmp_path / "sessions"
+    monkeypatch.setenv("CODEX_SESSIONS_DIR", str(sessions_root))
+    monkeypatch.setenv("CODEX_AUTH_RUNTIME_ROOT", str(tmp_path / "runtimes"))
+
+    day_dir = _sessions_day_dir(sessions_root, now)
+    session_id = "019d5a6a-4665-7873-9714-9efb95b24270"
+    rollout_path = day_dir / f"rollout-2026-04-04T21-33-29-{session_id}.jsonl"
+
+    wrapped_task_payload = {
+        "timestamp": (now - timedelta(seconds=2)).isoformat().replace("+00:00", "Z"),
+        "type": "response_item",
+        "payload": {
+            "type": "message",
+            "role": "user",
+            "content": [
+                {
+                    "type": "input_text",
+                    "text": (
+                        "# AGENTS.md instructions for /repo\n"
+                        "<INSTRUCTIONS>\n"
+                        "AUTONOMY DIRECTIVE\n"
+                        "</INSTRUCTIONS>\n"
+                        "<environment_context>\n"
+                        "<cwd>/repo</cwd>\n"
+                        "</environment_context>\n"
+                        "Fix task mapping for foo@example.com token=abc123"
+                    ),
+                }
+            ],
+        },
+    }
+
+    rollout_path.write_text(json.dumps(wrapped_task_payload) + "\n", encoding="utf-8")
+    ts = now.timestamp()
+    os.utime(rollout_path, (ts, ts))
+
+    previews = read_local_codex_task_previews_by_session_id(now=now)
+    assert previews[session_id].text == "Fix task mapping for [redacted-email] token=[redacted]"
 
 
 def test_read_local_codex_task_previews_by_session_id_ignores_warning_and_status_only_done(

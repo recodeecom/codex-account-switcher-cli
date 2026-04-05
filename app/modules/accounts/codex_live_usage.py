@@ -47,6 +47,24 @@ _TASK_PREVIEW_STATUS_ONLY_RE = re.compile(
 _TASK_PREVIEW_WARNING_PREFIX_RE = re.compile(r"(?i)^warning\b")
 _TASK_PREVIEW_LIVE_USAGE_XML_RE = re.compile(r"(?is)^<live_usage(?:\s|>)")
 _TASK_PREVIEW_LIVE_USAGE_MAPPING_XML_RE = re.compile(r"(?is)^<live_usage_mapping(?:\s|>)")
+_TASK_PREVIEW_LEADING_LIVE_USAGE_BLOCK_RE = re.compile(
+    r"(?is)^\s*<live_usage\b[^>]*>.*?</live_usage>\s*"
+)
+_TASK_PREVIEW_LEADING_LIVE_USAGE_MAPPING_BLOCK_RE = re.compile(
+    r"(?is)^\s*<live_usage_mapping\b[^>]*>.*?</live_usage_mapping>\s*"
+)
+_TASK_PREVIEW_BOOTSTRAP_AGENTS_HEADER_RE = re.compile(
+    r"(?is)^\s*#\s*agents\.md\s+instructions\s+for[^\n]*\n?"
+)
+_TASK_PREVIEW_BOOTSTRAP_INSTRUCTIONS_BLOCK_RE = re.compile(
+    r"(?is)^\s*<instructions>.*?</instructions>\s*"
+)
+_TASK_PREVIEW_BOOTSTRAP_ENVIRONMENT_BLOCK_RE = re.compile(
+    r"(?is)^\s*<environment_context>.*?</environment_context>\s*"
+)
+_TASK_PREVIEW_BOOTSTRAP_LIVE_USAGE_BLOCK_RE = re.compile(
+    r"(?is)^\s*<live_usage\b.*?</live_usage>\s*"
+)
 _DEFAULT_PROC_ROOT = Path("/proc")
 
 
@@ -117,15 +135,21 @@ def read_local_codex_live_usage_by_snapshot(*, now: datetime | None = None) -> d
     current = now or datetime.now(timezone.utc)
     usage_by_snapshot: dict[str, LocalCodexLiveUsage] = {}
 
-    active_snapshot_name = build_snapshot_index().active_snapshot_name
-    if active_snapshot_name:
-        default_usage = _read_local_codex_live_usage_for_sessions_dir(
-            sessions_dir=_resolve_sessions_dir(),
-            now=current,
-            aggregation_mode="latest",
-        )
-        if default_usage is not None:
-            usage_by_snapshot[active_snapshot_name] = default_usage
+    default_usage_by_snapshot = _read_default_scope_live_usage_by_snapshot_from_live_processes(
+        now=current
+    )
+    if default_usage_by_snapshot:
+        usage_by_snapshot.update(default_usage_by_snapshot)
+    else:
+        active_snapshot_name = build_snapshot_index().active_snapshot_name
+        if active_snapshot_name:
+            default_usage = _read_local_codex_live_usage_for_sessions_dir(
+                sessions_dir=_resolve_sessions_dir(),
+                now=current,
+                aggregation_mode="latest",
+            )
+            if default_usage is not None:
+                usage_by_snapshot[active_snapshot_name] = default_usage
 
     runtime_root = _resolve_runtime_root()
     if not runtime_root.exists() or not runtime_root.is_dir():
@@ -160,14 +184,21 @@ def read_local_codex_live_usage_samples_by_snapshot(
     current = now or datetime.now(timezone.utc)
     samples_by_snapshot: dict[str, list[LocalCodexLiveUsageSample]] = {}
 
-    active_snapshot_name = build_snapshot_index().active_snapshot_name
-    if active_snapshot_name:
-        default_samples = _read_local_codex_live_usage_sample_entries_for_sessions_dir(
-            sessions_dir=_resolve_sessions_dir(),
-            now=current,
-        )
-        if default_samples:
-            samples_by_snapshot[active_snapshot_name] = default_samples
+    default_samples_by_snapshot = _read_default_scope_live_usage_samples_by_snapshot_from_live_processes(
+        now=current
+    )
+    if default_samples_by_snapshot:
+        for snapshot_name, snapshot_samples in default_samples_by_snapshot.items():
+            samples_by_snapshot[snapshot_name] = list(snapshot_samples)
+    else:
+        active_snapshot_name = build_snapshot_index().active_snapshot_name
+        if active_snapshot_name:
+            default_samples = _read_local_codex_live_usage_sample_entries_for_sessions_dir(
+                sessions_dir=_resolve_sessions_dir(),
+                now=current,
+            )
+            if default_samples:
+                samples_by_snapshot[active_snapshot_name] = default_samples
 
     runtime_root = _resolve_runtime_root()
     if not runtime_root.exists() or not runtime_root.is_dir():
@@ -191,6 +222,109 @@ def read_local_codex_live_usage_samples_by_snapshot(
         samples_by_snapshot.setdefault(snapshot_name, []).extend(runtime_samples)
 
     return samples_by_snapshot
+
+
+def _read_default_scope_live_usage_by_snapshot_from_live_processes(
+    *,
+    now: datetime,
+) -> dict[str, LocalCodexLiveUsage]:
+    rollout_paths_by_snapshot = _read_default_scope_rollout_paths_by_snapshot_from_live_processes()
+    if not rollout_paths_by_snapshot:
+        return {}
+
+    usage_by_snapshot: dict[str, LocalCodexLiveUsage] = {}
+    for snapshot_name, rollout_paths in rollout_paths_by_snapshot.items():
+        live_usage = _read_local_codex_live_usage_for_rollout_paths(
+            rollout_paths=rollout_paths,
+            now=now,
+            aggregation_mode="latest",
+        )
+        if live_usage is None:
+            continue
+        usage_by_snapshot[snapshot_name] = live_usage
+    return usage_by_snapshot
+
+
+def _read_default_scope_live_usage_samples_by_snapshot_from_live_processes(
+    *,
+    now: datetime,
+) -> dict[str, list[LocalCodexLiveUsageSample]]:
+    rollout_paths_by_snapshot = _read_default_scope_rollout_paths_by_snapshot_from_live_processes()
+    if not rollout_paths_by_snapshot:
+        return {}
+
+    samples_by_snapshot: dict[str, list[LocalCodexLiveUsageSample]] = {}
+    for snapshot_name, rollout_paths in rollout_paths_by_snapshot.items():
+        samples = _read_local_codex_live_usage_sample_entries_for_rollout_paths(
+            rollout_paths=rollout_paths,
+            now=now,
+        )
+        if not samples:
+            continue
+        samples_by_snapshot[snapshot_name] = samples
+    return samples_by_snapshot
+
+
+def _read_default_scope_rollout_paths_by_snapshot_from_live_processes() -> dict[str, list[Path]]:
+    sessions_dir = _resolve_sessions_dir()
+    if not sessions_dir.exists() or not sessions_dir.is_dir():
+        return {}
+
+    proc_root = _resolve_proc_root()
+    if not proc_root.exists() or not proc_root.is_dir():
+        return {}
+
+    default_current_path = _resolve_current_path()
+    default_auth_path = _resolve_auth_path()
+    processes: list[tuple[int, dict[str, str]]] = []
+    for pid, _command in _iter_running_codex_commands(proc_root):
+        processes.append((pid, _read_process_env(pid) or {}))
+    _prune_unlabeled_default_scope_process_owner_cache(active_pids={pid for pid, _env in processes})
+    ambiguous_uncached_unlabeled_default_scope_pids = (
+        _resolve_ambiguous_uncached_unlabeled_default_scope_pids(
+            processes=processes,
+            default_current_path=default_current_path,
+            default_auth_path=default_auth_path,
+        )
+    )
+
+    rollout_paths_by_snapshot: dict[str, set[Path]] = {}
+    for pid, env in processes:
+        snapshot_name = _resolve_process_snapshot_name_for_accounting(
+            pid,
+            env=env,
+            default_current_path=default_current_path,
+            default_auth_path=default_auth_path,
+            suppress_unlabeled_default_scope_fallback=(
+                pid in ambiguous_uncached_unlabeled_default_scope_pids
+            ),
+        )
+        if not snapshot_name:
+            continue
+
+        rollout_path = _resolve_process_rollout_path(pid)
+        if rollout_path is None or not rollout_path.exists() or not rollout_path.is_file():
+            continue
+        if not _path_within_directory(rollout_path, sessions_dir):
+            continue
+
+        rollout_paths_by_snapshot.setdefault(snapshot_name, set()).add(rollout_path)
+
+    return {
+        snapshot_name: _prefer_newest_sessions(list(paths))
+        for snapshot_name, paths in rollout_paths_by_snapshot.items()
+        if paths
+    }
+
+
+def _path_within_directory(path: Path, directory: Path) -> bool:
+    try:
+        path.resolve().relative_to(directory.resolve())
+    except ValueError:
+        return False
+    except OSError:
+        return False
+    return True
 
 
 def read_live_codex_process_session_counts_by_snapshot() -> dict[str, int]:
@@ -642,47 +776,14 @@ def _read_local_codex_live_usage_for_sessions_dir(
     now: datetime,
     aggregation_mode: Literal["latest", "max_used"] = "latest",
 ) -> LocalCodexLiveUsage | None:
-    active_window_seconds = _active_window_seconds()
     if not sessions_dir.exists() or not sessions_dir.is_dir():
         return None
 
     candidates = _candidate_rollout_files(sessions_dir, now)
-    if not candidates:
-        return None
-
-    cutoff_ts = (now - timedelta(seconds=active_window_seconds)).timestamp()
-    active_files = [path for path in candidates if _safe_mtime(path) >= cutoff_ts]
-    if not active_files:
-        return None
-
-    if aggregation_mode == "max_used":
-        latest = _extract_max_used_rate_limit_from_paths(
-            _prefer_newest_sessions(active_files),
-            now=now,
-        )
-    else:
-        latest = _extract_latest_rate_limit_from_paths(_prefer_newest_sessions(active_files))
-    if latest is None:
-        # A newly started session can be active before it emits its first token_count
-        # event. In that case, fall back to the most recent known rate-limit payload
-        # from nearby rollout files so the dashboard does not remain stuck at stale
-        # values until the first prompt is sent.
-        latest = _extract_latest_rate_limit_from_paths(_prefer_newest_sessions(candidates))
-
-    if latest is None:
-        return LocalCodexLiveUsage(
-            recorded_at=now,
-            active_session_count=len(active_files),
-            primary=None,
-            secondary=None,
-        )
-
-    recorded_at, primary, secondary = latest
-    return LocalCodexLiveUsage(
-        recorded_at=recorded_at,
-        active_session_count=len(active_files),
-        primary=primary,
-        secondary=secondary,
+    return _read_local_codex_live_usage_for_rollout_paths(
+        rollout_paths=candidates,
+        now=now,
+        aggregation_mode=aggregation_mode,
     )
 
 
@@ -755,16 +856,75 @@ def _read_local_codex_live_usage_sample_entries_for_sessions_dir(
     sessions_dir: Path,
     now: datetime,
 ) -> list[LocalCodexLiveUsageSample]:
-    active_window_seconds = _active_window_seconds()
     if not sessions_dir.exists() or not sessions_dir.is_dir():
         return []
 
     candidates = _candidate_rollout_files(sessions_dir, now)
-    if not candidates:
+    return _read_local_codex_live_usage_sample_entries_for_rollout_paths(
+        rollout_paths=candidates,
+        now=now,
+    )
+
+
+def _read_local_codex_live_usage_for_rollout_paths(
+    *,
+    rollout_paths: list[Path],
+    now: datetime,
+    aggregation_mode: Literal["latest", "max_used"] = "latest",
+) -> LocalCodexLiveUsage | None:
+    active_window_seconds = _active_window_seconds()
+    if not rollout_paths:
+        return None
+
+    sorted_candidates = _prefer_newest_sessions(list(dict.fromkeys(rollout_paths)))
+    cutoff_ts = (now - timedelta(seconds=active_window_seconds)).timestamp()
+    active_files = [path for path in sorted_candidates if _safe_mtime(path) >= cutoff_ts]
+    if not active_files:
+        return None
+
+    if aggregation_mode == "max_used":
+        latest = _extract_max_used_rate_limit_from_paths(
+            _prefer_newest_sessions(active_files),
+            now=now,
+        )
+    else:
+        latest = _extract_latest_rate_limit_from_paths(_prefer_newest_sessions(active_files))
+    if latest is None:
+        # A newly started session can be active before it emits its first token_count
+        # event. In that case, fall back to the most recent known rate-limit payload
+        # from nearby rollout files so the dashboard does not remain stuck at stale
+        # values until the first prompt is sent.
+        latest = _extract_latest_rate_limit_from_paths(_prefer_newest_sessions(sorted_candidates))
+
+    if latest is None:
+        return LocalCodexLiveUsage(
+            recorded_at=now,
+            active_session_count=len(active_files),
+            primary=None,
+            secondary=None,
+        )
+
+    recorded_at, primary, secondary = latest
+    return LocalCodexLiveUsage(
+        recorded_at=recorded_at,
+        active_session_count=len(active_files),
+        primary=primary,
+        secondary=secondary,
+    )
+
+
+def _read_local_codex_live_usage_sample_entries_for_rollout_paths(
+    *,
+    rollout_paths: list[Path],
+    now: datetime,
+) -> list[LocalCodexLiveUsageSample]:
+    active_window_seconds = _active_window_seconds()
+    if not rollout_paths:
         return []
 
+    sorted_candidates = _prefer_newest_sessions(list(dict.fromkeys(rollout_paths)))
     cutoff_ts = (now - timedelta(seconds=active_window_seconds)).timestamp()
-    active_files = [path for path in candidates if _safe_mtime(path) >= cutoff_ts]
+    active_files = [path for path in sorted_candidates if _safe_mtime(path) >= cutoff_ts]
     if not active_files:
         return []
 
@@ -1845,10 +2005,13 @@ def _task_preview_event_from_line(raw_line: str) -> tuple[str, LocalCodexTaskPre
         return ("skip", None)
 
     raw_text = _extract_user_message_text(message_payload.get("content"))
-    if raw_text is None or _is_bootstrap_user_message(raw_text):
+    preview_source_text = (
+        _extract_task_preview_source_text(raw_text) if raw_text is not None else None
+    )
+    if preview_source_text is None:
         return ("skip", None)
 
-    normalized_source_text = " ".join(raw_text.split())
+    normalized_source_text = preview_source_text
     normalized_source_text = _TASK_PREVIEW_IMAGE_TAG_RE.sub(" ", normalized_source_text)
     normalized_source_text = _TASK_PREVIEW_IMAGE_LABEL_RE.sub(" ", normalized_source_text)
     normalized_source_text = " ".join(normalized_source_text.split())
@@ -1892,6 +2055,56 @@ def _extract_user_message_text(content: Any) -> str | None:
     return " ".join(parts)
 
 
+def _extract_task_preview_source_text(raw_text: str) -> str | None:
+    stripped = raw_text.strip()
+    if not stripped:
+        return None
+
+    stripped_bootstrap_prefix = _strip_known_bootstrap_prefix(stripped)
+    if stripped_bootstrap_prefix is None:
+        return None
+
+    normalized = " ".join(stripped_bootstrap_prefix.split())
+    if not normalized:
+        return None
+    if _is_bootstrap_user_message(normalized):
+        return None
+    return normalized
+
+
+def _strip_known_bootstrap_prefix(text: str) -> str | None:
+    stripped = text.strip()
+    if not stripped:
+        return None
+
+    lowered = stripped.lower()
+    if "# agents.md instructions for " not in lowered and "<instructions>" not in lowered:
+        return stripped
+
+    normalized = stripped
+    previous = ""
+    while normalized != previous:
+        previous = normalized
+        normalized = _TASK_PREVIEW_BOOTSTRAP_AGENTS_HEADER_RE.sub("", normalized, count=1).strip()
+        normalized = _TASK_PREVIEW_BOOTSTRAP_INSTRUCTIONS_BLOCK_RE.sub(
+            "",
+            normalized,
+            count=1,
+        ).strip()
+        normalized = _TASK_PREVIEW_BOOTSTRAP_ENVIRONMENT_BLOCK_RE.sub(
+            "",
+            normalized,
+            count=1,
+        ).strip()
+        normalized = _TASK_PREVIEW_BOOTSTRAP_LIVE_USAGE_BLOCK_RE.sub(
+            "",
+            normalized,
+            count=1,
+        ).strip()
+
+    return normalized or None
+
+
 def _is_bootstrap_user_message(text: str) -> bool:
     normalized = " ".join(text.split()).lower()
     if not normalized:
@@ -1917,7 +2130,7 @@ def _sanitize_codex_task_preview(text: str) -> str | None:
     redacted = _TASK_PREVIEW_EMAIL_RE.sub("[redacted-email]", normalized)
     redacted = _TASK_PREVIEW_BEARER_RE.sub("bearer [redacted]", redacted)
     redacted = _TASK_PREVIEW_SECRET_ASSIGNMENT_RE.sub(r"\1=[redacted]", redacted)
-    trimmed = redacted.strip()
+    trimmed = _strip_leading_live_usage_payload(redacted).strip()
     if not trimmed:
         return None
     if _TASK_PREVIEW_WARNING_PREFIX_RE.match(trimmed):
@@ -1931,6 +2144,24 @@ def _sanitize_codex_task_preview(text: str) -> str | None:
     if len(trimmed) <= _TASK_PREVIEW_MAX_LENGTH:
         return trimmed
     return trimmed[: _TASK_PREVIEW_MAX_LENGTH - 1].rstrip() + "…"
+
+
+def _strip_leading_live_usage_payload(text: str) -> str:
+    normalized = text.strip()
+    previous = ""
+    while normalized and normalized != previous:
+        previous = normalized
+        normalized = _TASK_PREVIEW_LEADING_LIVE_USAGE_BLOCK_RE.sub(
+            "",
+            normalized,
+            count=1,
+        ).strip()
+        normalized = _TASK_PREVIEW_LEADING_LIVE_USAGE_MAPPING_BLOCK_RE.sub(
+            "",
+            normalized,
+            count=1,
+        ).strip()
+    return normalized
 
 
 def _candidate_rollout_files(sessions_dir: Path, now: datetime) -> list[Path]:
