@@ -35,7 +35,10 @@ from app.modules.accounts.codex_auth_switcher import (
 )
 from app.modules.accounts.auth_manager import AuthManager
 from app.modules.accounts.codex_live_usage import terminate_live_codex_processes_for_snapshot
-from app.modules.accounts.live_usage_overrides import apply_local_live_usage_overrides
+from app.modules.accounts.live_usage_overrides import (
+    apply_local_live_usage_overrides,
+    remember_terminated_cli_session_snapshots,
+)
 from app.modules.accounts.live_usage_persistence import persist_live_usage_overrides
 from app.modules.accounts.mappers import build_account_summaries, build_account_usage_trends
 from app.modules.accounts.repository import AccountsRepository
@@ -339,6 +342,12 @@ class AccountsService:
         terminated_session_count = 0
         for snapshot_name in snapshot_names_to_terminate:
             terminated_session_count += terminate_live_codex_processes_for_snapshot(snapshot_name)
+
+        if terminated_session_count > 0:
+            remember_terminated_cli_session_snapshots(
+                snapshot_names_to_terminate,
+                observed_at=utcnow(),
+            )
 
         await self._repo.delete_codex_sessions_for_account(account.id)
         return AccountTerminateCliSessionsResponse(

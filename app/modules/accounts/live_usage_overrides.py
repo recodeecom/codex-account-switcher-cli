@@ -88,6 +88,47 @@ def remember_terminated_cli_session_snapshots(
         _terminated_cli_session_snapshot_cache[normalized_snapshot_name] = observed
 
 
+def _prune_terminated_cli_session_snapshot_cache(*, now: datetime) -> None:
+    cutoff = _normalize_observed_at(now) - _TERMINATED_CLI_SESSION_SNAPSHOT_TTL
+    stale_snapshot_names = [
+        snapshot_name
+        for snapshot_name, observed_at in _terminated_cli_session_snapshot_cache.items()
+        if _normalize_observed_at(observed_at) < cutoff
+    ]
+    for snapshot_name in stale_snapshot_names:
+        _terminated_cli_session_snapshot_cache.pop(snapshot_name, None)
+
+
+def _was_cli_session_snapshot_recently_terminated(
+    snapshot_name: str | None,
+    *,
+    now: datetime | None = None,
+) -> bool:
+    normalized_snapshot_name = _normalize_snapshot_name(snapshot_name)
+    if normalized_snapshot_name is None:
+        return False
+
+    observed = _normalize_observed_at(now or datetime.now(timezone.utc))
+    _prune_terminated_cli_session_snapshot_cache(now=observed)
+    terminated_at = _terminated_cli_session_snapshot_cache.get(normalized_snapshot_name)
+    if terminated_at is None:
+        return False
+    return _normalize_observed_at(terminated_at) >= observed - _TERMINATED_CLI_SESSION_SNAPSHOT_TTL
+
+
+def has_recently_terminated_cli_session_snapshot(
+    snapshot_names: list[str],
+    *,
+    selected_snapshot_name: str | None = None,
+    now: datetime | None = None,
+) -> bool:
+    candidate_snapshot_names = [selected_snapshot_name, *snapshot_names]
+    return any(
+        _was_cli_session_snapshot_recently_terminated(snapshot_name, now=now)
+        for snapshot_name in candidate_snapshot_names
+    )
+
+
 def apply_local_live_usage_overrides(
     *,
     accounts: list[Account],
@@ -196,11 +237,25 @@ def apply_local_live_usage_overrides(
             live_runtime_session_count if not has_process_session_visibility else 0
         )
         has_live_runtime_session = effective_live_runtime_session_count > 0
+        has_recently_terminated_cli_session = has_recently_terminated_cli_session_snapshot(
+            session_presence_snapshot_names,
+            selected_snapshot_name=effective_selected_snapshot_name,
+        )
+        if (
+            has_recently_terminated_cli_session
+            and not has_live_process_session
+            and not has_live_runtime_session
+        ):
+            live_usage = None
         deferred_default_scope_session_hint_count = (
             deferred_default_scope_session_hints_by_account.get(account.id, 0)
             if should_defer_active_snapshot_usage
             else 0
         )
+        if has_recently_terminated_cli_session and not (
+            has_live_process_session or has_live_runtime_session
+        ):
+            deferred_default_scope_session_hint_count = 0
         has_deferred_default_scope_session_hint = deferred_default_scope_session_hint_count > 0
         has_live_telemetry = bool(live_usage and live_usage.active_session_count > 0)
         if (

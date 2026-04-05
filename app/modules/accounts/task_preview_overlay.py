@@ -10,6 +10,7 @@ from app.modules.accounts.codex_live_usage import (
     read_local_codex_task_previews_by_session_id,
     read_local_codex_task_previews_by_snapshot,
 )
+from app.modules.accounts.live_usage_overrides import has_recently_terminated_cli_session_snapshot
 from app.modules.accounts.schemas import AccountCodexAuthStatus, AccountLiveQuotaDebug
 
 _ROLLOUT_SESSION_FILE_RE = re.compile(
@@ -50,6 +51,13 @@ def overlay_live_codex_task_previews(
                 continue
             if snapshot_name in waiting_process_snapshots:
                 codex_current_task_preview_by_account[account.id] = _WAITING_FOR_NEW_TASK_PREVIEW
+                continue
+            if has_recently_terminated_cli_session_snapshot(
+                [snapshot_name],
+                selected_snapshot_name=snapshot_name,
+                now=now,
+            ):
+                codex_current_task_preview_by_account.pop(account.id, None)
                 continue
 
         if codex_current_task_preview_by_account.get(account.id):

@@ -114,6 +114,27 @@ function resolveSortableResetAtMs(
   return parseTimestampMs(effectiveResetAt);
 }
 
+function shouldPinWeeklyDepletedAccountToEnd(metrics: {
+  primaryResetAtMs: number | null;
+  secondaryResetAtMs: number | null;
+  secondaryRemaining: number | null;
+}): boolean {
+  const weeklyDepleted =
+    metrics.secondaryRemaining != null && metrics.secondaryRemaining <= 0;
+  if (!weeklyDepleted) {
+    return false;
+  }
+
+  if (
+    metrics.primaryResetAtMs == null ||
+    metrics.secondaryResetAtMs == null
+  ) {
+    return true;
+  }
+
+  return metrics.secondaryResetAtMs > metrics.primaryResetAtMs;
+}
+
 function sortAccountsByAvailableQuota(
   accounts: AccountSummary[],
   nowMs: number,
@@ -146,14 +167,12 @@ function sortAccountsByAvailableQuota(
       return left.accountId.localeCompare(right.accountId);
     }
 
-    const leftWeeklyDepleted =
-      leftMetrics.secondaryRemaining != null && leftMetrics.secondaryRemaining <= 0;
-    const rightWeeklyDepleted =
-      rightMetrics.secondaryRemaining != null && rightMetrics.secondaryRemaining <= 0;
-    if (leftWeeklyDepleted !== rightWeeklyDepleted) {
-      return leftWeeklyDepleted ? 1 : -1;
+    const leftWeeklyDepletedPinned = shouldPinWeeklyDepletedAccountToEnd(leftMetrics);
+    const rightWeeklyDepletedPinned = shouldPinWeeklyDepletedAccountToEnd(rightMetrics);
+    if (leftWeeklyDepletedPinned !== rightWeeklyDepletedPinned) {
+      return leftWeeklyDepletedPinned ? 1 : -1;
     }
-    if (leftWeeklyDepleted && rightWeeklyDepleted) {
+    if (leftWeeklyDepletedPinned && rightWeeklyDepletedPinned) {
       const weeklyResetDiff = compareNullableNumberAsc(
         leftMetrics.secondaryResetAtMs,
         rightMetrics.secondaryResetAtMs,
@@ -232,10 +251,13 @@ function sortAccountsByLastSeenAndAvailableQuota(
       "secondary",
       nowMs,
     );
-    const isWeeklyDepleted =
-      weeklyRemaining != null && weeklyRemaining <= 0;
+    const shouldPinWeeklyDepleted = shouldPinWeeklyDepletedAccountToEnd({
+      primaryResetAtMs: resolveSortableResetAtMs(account, "primary"),
+      secondaryResetAtMs: resolveSortableResetAtMs(account, "secondary"),
+      secondaryRemaining: weeklyRemaining,
+    });
 
-    if (isWeeklyDepleted) {
+    if (shouldPinWeeklyDepleted) {
       weeklyDepletedAccounts.push(account);
     } else {
       weeklyAvailableAccounts.push(account);

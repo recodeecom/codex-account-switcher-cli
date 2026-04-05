@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import signal
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -1103,6 +1104,67 @@ def test_terminate_live_codex_processes_for_snapshot_respects_max_target_limit(
 
     assert terminated_count == 1
     assert terminated == [201]
+
+
+def test_terminate_codex_process_sends_sigint_before_forceful_shutdown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sent_signals: list[signal.Signals] = []
+    wait_calls: list[int] = []
+
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._is_pid_alive",
+        lambda _pid: True,
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._session_terminate_grace_seconds",
+        lambda: 3,
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._send_process_signal",
+        lambda _pid, sig: sent_signals.append(sig),
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._wait_for_process_exit",
+        lambda _pid, *, timeout_seconds: wait_calls.append(timeout_seconds) or True,
+    )
+
+    terminated = codex_live_usage_module._terminate_codex_process(321)
+
+    assert terminated is True
+    assert sent_signals == [signal.SIGINT]
+    assert wait_calls == [3]
+
+
+def test_terminate_codex_process_falls_back_from_sigint_to_sigterm_and_sigkill(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sent_signals: list[signal.Signals] = []
+    wait_results = iter([False, False])
+    alive_checks = iter([True, True, True, False])
+
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._is_pid_alive",
+        lambda _pid: next(alive_checks),
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._session_terminate_grace_seconds",
+        lambda: 2,
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._send_process_signal",
+        lambda _pid, sig: sent_signals.append(sig),
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._wait_for_process_exit",
+        lambda _pid, *, timeout_seconds: next(wait_results),
+    )
+    monkeypatch.setattr("app.modules.accounts.codex_live_usage.time.sleep", lambda _seconds: None)
+
+    terminated = codex_live_usage_module._terminate_codex_process(654)
+
+    assert terminated is True
+    assert sent_signals == [signal.SIGINT, signal.SIGTERM, signal.SIGKILL]
 
 
 def test_read_live_codex_process_session_counts_prefers_current_path_over_stale_explicit_snapshot(

@@ -6,7 +6,9 @@ from app.core.crypto import TokenEncryptor
 from app.db.models import Account, AccountStatus
 from app.modules.accounts.codex_live_usage import (
     LocalCodexProcessSessionAttribution,
+    LocalCodexTaskPreview,
 )
+from app.modules.accounts.live_usage_overrides import remember_terminated_cli_session_snapshots
 from app.modules.accounts.schemas import AccountCodexAuthStatus
 from app.modules.accounts.task_preview_overlay import overlay_live_codex_task_previews
 
@@ -115,3 +117,52 @@ def test_overlay_prefers_live_process_preview_for_snapshot(monkeypatch) -> None:
     )
 
     assert codex_current_task_preview_by_account[account.id] == "Investigate snapshot mapping"
+
+
+def test_overlay_suppresses_stale_snapshot_preview_after_recent_termination(monkeypatch) -> None:
+    now = datetime(2026, 4, 5, tzinfo=timezone.utc)
+    account = _make_account("acc-korona", "korona@nagyviktor.com")
+    snapshot_name = "korona@nagyviktor.com"
+    codex_auth_by_account = {
+        account.id: AccountCodexAuthStatus(
+            has_snapshot=True,
+            snapshot_name=snapshot_name,
+            active_snapshot_name="amodeus@nagyviktor.com",
+            is_active_snapshot=False,
+            has_live_session=False,
+        )
+    }
+    codex_current_task_preview_by_account = {
+        account.id: "Waiting for new task",
+    }
+
+    remember_terminated_cli_session_snapshots([snapshot_name], observed_at=now)
+
+    monkeypatch.setattr(
+        "app.modules.accounts.task_preview_overlay.read_local_codex_task_previews_by_snapshot",
+        lambda *, now: {snapshot_name: LocalCodexTaskPreview(text="Waiting for new task", recorded_at=now)},
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.task_preview_overlay.read_local_codex_task_previews_by_session_id",
+        lambda *, now: {},
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.task_preview_overlay.read_live_codex_process_session_attribution",
+        lambda: LocalCodexProcessSessionAttribution(
+            counts_by_snapshot={},
+            unattributed_session_pids=[],
+            mapped_session_pids_by_snapshot={},
+            task_preview_by_pid={},
+            task_previews_by_pid={},
+        ),
+    )
+
+    overlay_live_codex_task_previews(
+        accounts=[account],
+        codex_auth_by_account=codex_auth_by_account,
+        codex_current_task_preview_by_account=codex_current_task_preview_by_account,
+        live_quota_debug_by_account={},
+        now=now,
+    )
+
+    assert account.id not in codex_current_task_preview_by_account

@@ -1805,16 +1805,29 @@ async def test_terminate_account_cli_sessions_terminates_snapshot_scoped_codex_s
     monkeypatch.setenv("CODEX_AUTH_JSON_PATH", str(tmp_path / "auth.json"))
 
     terminated_snapshots: list[str] = []
+    remembered_snapshots: list[list[str]] = []
     from app.modules.accounts import service as accounts_service
 
     def _terminate_live_codex_processes_for_snapshot(snapshot_name: str) -> int:
         terminated_snapshots.append(snapshot_name)
         return 2
 
+    def _remember_terminated_cli_session_snapshots(
+        snapshot_names: list[str],
+        *,
+        observed_at=None,
+    ) -> None:
+        remembered_snapshots.append(snapshot_names)
+
     monkeypatch.setattr(
         accounts_service,
         "terminate_live_codex_processes_for_snapshot",
         _terminate_live_codex_processes_for_snapshot,
+    )
+    monkeypatch.setattr(
+        accounts_service,
+        "remember_terminated_cli_session_snapshots",
+        _remember_terminated_cli_session_snapshots,
     )
 
     terminate_response = await async_client.post(
@@ -1827,6 +1840,7 @@ async def test_terminate_account_cli_sessions_terminates_snapshot_scoped_codex_s
     assert payload["snapshotName"] == "work"
     assert payload["terminatedSessionCount"] == 2
     assert terminated_snapshots == ["work"]
+    assert remembered_snapshots == [["work"]]
 
     async with SessionLocal() as session:
         sticky_count = (

@@ -460,6 +460,47 @@ describe("AccountCards", () => {
     ]);
   });
 
+  it("does not force weekly-depleted accounts to the end when the weekly reset is sooner than 5h", () => {
+    const now = Date.now();
+    const healthyWeekly = createAccountSummary({
+      accountId: "acc_weekly_ok_soon_reset",
+      email: "weekly-ok-soon-reset@example.com",
+      displayName: "weekly-ok-soon-reset@example.com",
+      usage: {
+        primaryRemainingPercent: 41,
+        secondaryRemainingPercent: 44,
+      },
+    });
+    const weeklyDepletedSoonerThan5h = createAccountSummary({
+      accountId: "acc_weekly_zero_soon_reset",
+      email: "weekly-zero-soon-reset@example.com",
+      displayName: "weekly-zero-soon-reset@example.com",
+      usage: {
+        primaryRemainingPercent: 92,
+        secondaryRemainingPercent: 0,
+      },
+      resetAtPrimary: new Date(now + 60 * 60 * 1000).toISOString(),
+      resetAtSecondary: new Date(now + 30 * 60 * 1000).toISOString(),
+    });
+
+    const { container } = render(
+      <AccountCards
+        accounts={[healthyWeekly, weeklyDepletedSoonerThan5h]}
+        primaryWindow={null}
+        secondaryWindow={null}
+      />,
+    );
+
+    const cards = Array.from(container.querySelectorAll(".card-hover"));
+    const titles = cards.map((card) =>
+      card.querySelector("p.truncate.text-sm.font-semibold.leading-tight")?.textContent,
+    );
+    expect(titles).toEqual([
+      "weekly-zero-soon-reset@example.com",
+      "weekly-ok-soon-reset@example.com",
+    ]);
+  });
+
   it("orders weekly-depleted accounts by the nearest weekly reset time", () => {
     const now = Date.now();
     const weeklyOk = createAccountSummary({

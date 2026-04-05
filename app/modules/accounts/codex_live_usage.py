@@ -1608,16 +1608,29 @@ def _send_process_signal(pid: int, sig: signal.Signals) -> None:
         return
 
 
-def _terminate_codex_process(pid: int) -> bool:
-    if not _is_pid_alive(pid):
-        return False
-
-    _send_process_signal(pid, signal.SIGTERM)
-    deadline = time.monotonic() + _session_terminate_grace_seconds()
+def _wait_for_process_exit(pid: int, *, timeout_seconds: int) -> bool:
+    deadline = time.monotonic() + max(1, timeout_seconds)
     while time.monotonic() < deadline:
         if not _is_pid_alive(pid):
             return True
         time.sleep(0.05)
+    return not _is_pid_alive(pid)
+
+
+def _terminate_codex_process(pid: int) -> bool:
+    if not _is_pid_alive(pid):
+        return False
+
+    grace_seconds = _session_terminate_grace_seconds()
+
+    _send_process_signal(pid, signal.SIGINT)
+    if _wait_for_process_exit(pid, timeout_seconds=grace_seconds):
+        return True
+
+    if _is_pid_alive(pid):
+        _send_process_signal(pid, signal.SIGTERM)
+        if _wait_for_process_exit(pid, timeout_seconds=grace_seconds):
+            return True
 
     if _is_pid_alive(pid):
         _send_process_signal(pid, signal.SIGKILL)
