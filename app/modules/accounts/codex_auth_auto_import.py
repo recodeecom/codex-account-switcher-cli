@@ -253,38 +253,53 @@ def _select_snapshot_name_for_account(
     email: str,
     accounts_dir: Path,
 ) -> str | None:
+    normalized_email = email.strip().lower()
+    canonical_name = build_email_snapshot_name(normalized_email)
     snapshot_names_by_account_id = _snapshot_names_by_account_id(accounts_dir)
     existing_names = snapshot_names_by_account_id.get(account_id, [])
-    base_name = build_email_snapshot_name(email)
-    if existing_names:
-        existing_email_aliases = [
-            snapshot_name
-            for snapshot_name in existing_names
-            if _is_email_snapshot_alias(snapshot_name, base_name=base_name)
-        ]
-        if existing_email_aliases:
-            selected = select_snapshot_name(existing_email_aliases, None, email=email)
-            return selected or existing_email_aliases[0]
-        selected = select_snapshot_name(existing_names, None, email=email)
-        return selected or existing_names[0]
+    canonical_snapshot_path = accounts_dir / f"{canonical_name}.json"
+    if canonical_snapshot_path.exists():
+        canonical_snapshot_owner_email = _snapshot_email(canonical_snapshot_path)
+        if canonical_snapshot_owner_email in {None, normalized_email}:
+            return canonical_name
 
     snapshot_names_by_email = _snapshot_names_by_email(accounts_dir)
-    normalized_email = email.strip().lower()
     existing_email_names = snapshot_names_by_email.get(normalized_email, [])
     if existing_email_names:
-        selected = select_snapshot_name(existing_email_names, None, email=email)
-        return selected or existing_email_names[0]
+        # Force converging to the canonical email-shaped snapshot name even
+        # when legacy aliases exist for this email/account.
+        return canonical_name
 
-    return _next_available_email_snapshot_name(base_name=base_name, accounts_dir=accounts_dir)
+    if existing_names:
+        # Account-id matched legacy snapshots without email-shaped names.
+        # Materialize to canonical email-shaped name on next sync.
+        return canonical_name
+    if canonical_snapshot_path.exists():
+        # Canonical filename exists but belongs to another email identity.
+        # Preserve both snapshots by allocating a deterministic duplicate alias.
+        return _next_available_email_snapshot_name(base_name=canonical_name, accounts_dir=accounts_dir)
+    return canonical_name
 
 
 def _next_available_email_snapshot_name(*, base_name: str, accounts_dir: Path) -> str:
     candidate = base_name
     suffix = 2
     while (accounts_dir / f"{candidate}.json").exists():
-        candidate = f"{base_name}-{suffix}"
+        candidate = f"{base_name}--dup-{suffix}"
         suffix += 1
     return candidate
+
+
+def _snapshot_email(snapshot_path: Path) -> str | None:
+    try:
+        auth = parse_auth_json(snapshot_path.read_bytes())
+    except (json.JSONDecodeError, ValidationError, UnicodeDecodeError, TypeError, OSError):
+        return None
+    claims = claims_from_auth(auth)
+    email = (claims.email or DEFAULT_EMAIL).strip().lower()
+    if not email or email == DEFAULT_EMAIL:
+        return None
+    return email
 
 
 def _is_email_snapshot_alias(snapshot_name: str, *, base_name: str) -> bool:

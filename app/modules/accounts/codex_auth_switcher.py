@@ -47,10 +47,14 @@ class CodexAuthSnapshotRepairResult:
 
 
 _INVALID_SNAPSHOT_CHARS = re.compile(r"[^a-z0-9._-]+")
+_EMAIL_SNAPSHOT_NAME_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 def build_email_snapshot_name(email: str) -> str:
     normalized_email = email.strip().lower()
+    if _EMAIL_SNAPSHOT_NAME_PATTERN.match(normalized_email):
+        return normalized_email
+
     local_part, _, domain_part = normalized_email.partition("@")
     domain_segment = domain_part.replace(".", "-") if domain_part else ""
     source = "-".join(segment for segment in (local_part, domain_segment) if segment)

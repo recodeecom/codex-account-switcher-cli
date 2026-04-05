@@ -504,7 +504,7 @@ export const handlers = [
 		const url = new URL(request.url);
 		const mode = url.searchParams.get("mode") === "rename" ? "rename" : "readd";
 		const previousSnapshotName = account.codexAuth?.snapshotName ?? "main";
-		const expectedSnapshotName = account.codexAuth?.expectedSnapshotName ?? account.email.replace("@", "-").replace(/\./g, "-");
+		const expectedSnapshotName = account.codexAuth?.expectedSnapshotName ?? account.email.trim().toLowerCase();
 		state.accounts = state.accounts.map((entry) =>
 			entry.accountId === accountId
 				? {

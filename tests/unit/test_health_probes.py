@@ -56,6 +56,10 @@ async def test_live_usage_returns_xml_payload():
             new=AsyncMock(return_value={}),
         ),
         patch(
+            "app.modules.health.api._read_live_usage_snapshot_alias_map",
+            new=AsyncMock(return_value={}),
+        ),
+        patch(
             "app.modules.health.api.utcnow",
             return_value=datetime(2026, 4, 5, 0, 0, 0),
         ),
@@ -110,6 +114,10 @@ async def test_live_usage_includes_task_previews_mapped_to_snapshot():
             new=AsyncMock(return_value={}),
         ),
         patch(
+            "app.modules.health.api._read_live_usage_snapshot_alias_map",
+            new=AsyncMock(return_value={}),
+        ),
+        patch(
             "app.modules.health.api.utcnow",
             return_value=datetime(2026, 4, 5, 0, 0, 0),
         ),
@@ -157,6 +165,10 @@ async def test_live_usage_surfaces_unattributed_cli_sessions():
         ),
         patch(
             "app.modules.health.api._read_live_usage_account_emails_by_snapshot",
+            new=AsyncMock(return_value={}),
+        ),
+        patch(
+            "app.modules.health.api._read_live_usage_snapshot_alias_map",
             new=AsyncMock(return_value={}),
         ),
         patch(
@@ -212,6 +224,10 @@ async def test_live_usage_lists_multiple_tasks_per_session_and_waiting_state():
             new=AsyncMock(return_value={}),
         ),
         patch(
+            "app.modules.health.api._read_live_usage_snapshot_alias_map",
+            new=AsyncMock(return_value={}),
+        ),
+        patch(
             "app.modules.health.api.utcnow",
             return_value=datetime(2026, 4, 5, 0, 0, 0),
         ),
@@ -227,6 +243,48 @@ async def test_live_usage_lists_multiple_tasks_per_session_and_waiting_state():
     assert '<task preview="latest task" />' in body
     assert '<task preview="previous task still active" />' in body
     assert '<session pid="1329526" state="waiting_for_new_task" />' in body
+
+
+@pytest.mark.asyncio
+async def test_live_usage_remaps_alias_snapshot_counts_to_selected_snapshot():
+    from app.modules.accounts.codex_live_usage import LocalCodexProcessSessionAttribution
+    from app.modules.health.api import live_usage
+
+    with (
+        patch(
+            "app.modules.health.api.read_live_codex_process_session_attribution",
+            return_value=LocalCodexProcessSessionAttribution(
+                counts_by_snapshot={"koronanagyviktorcom": 2},
+                unattributed_session_pids=[],
+                mapped_session_pids_by_snapshot={"koronanagyviktorcom": [1325536, 1329526]},
+                task_preview_by_pid={},
+            ),
+        ),
+        patch(
+            "app.modules.health.api._read_live_usage_task_previews_by_snapshot",
+            new=AsyncMock(return_value={}),
+        ),
+        patch(
+            "app.modules.health.api._read_live_usage_account_emails_by_snapshot",
+            new=AsyncMock(return_value={"korona@nagyviktor.com": ["korona@nagyviktor.com"]}),
+        ),
+        patch(
+            "app.modules.health.api._read_live_usage_snapshot_alias_map",
+            new=AsyncMock(return_value={"koronanagyviktorcom": "korona@nagyviktor.com"}),
+        ),
+        patch(
+            "app.modules.health.api.utcnow",
+            return_value=datetime(2026, 4, 5, 0, 0, 0),
+        ),
+    ):
+        response = await live_usage()
+
+    body = response.body.decode("utf-8")
+    assert (
+        '<snapshot name="korona@nagyviktor.com" session_count="2" session_row_count="2" session_task_preview_count="0" account_emails="korona@nagyviktor.com">'
+        in body
+    )
+    assert '<snapshot name="koronanagyviktorcom"' not in body
 
 
 @pytest.mark.asyncio
@@ -253,6 +311,10 @@ async def test_live_usage_includes_account_emails_mapped_to_snapshot():
             new=AsyncMock(
                 return_value={"unique": ["nagy.viktordp@gmail.com", "tokio@edixai.com"]}
             ),
+        ),
+        patch(
+            "app.modules.health.api._read_live_usage_snapshot_alias_map",
+            new=AsyncMock(return_value={}),
         ),
         patch(
             "app.modules.health.api.utcnow",

@@ -52,10 +52,28 @@ async def health_live() -> HealthCheckResponse:
 @router.get("/live_usage")
 async def live_usage() -> Response:
     attribution = read_live_codex_process_session_attribution()
-    counts_by_snapshot = attribution.counts_by_snapshot
+    counts_by_snapshot_raw = attribution.counts_by_snapshot
     unattributed_session_pids = attribution.unattributed_session_pids
-    mapped_session_pids_by_snapshot = attribution.mapped_session_pids_by_snapshot
+    mapped_session_pids_by_snapshot_raw = attribution.mapped_session_pids_by_snapshot
     task_preview_by_pid = attribution.task_preview_by_pid
+    snapshot_alias_map = await _read_live_usage_snapshot_alias_map()
+    mapped_session_pids_by_snapshot: dict[str, list[int]] = {}
+    for snapshot_name, session_pids in mapped_session_pids_by_snapshot_raw.items():
+        target_snapshot_name = snapshot_alias_map.get(snapshot_name, snapshot_name)
+        mapped_session_pids_by_snapshot.setdefault(target_snapshot_name, []).extend(session_pids)
+    for snapshot_name, session_pids in mapped_session_pids_by_snapshot.items():
+        mapped_session_pids_by_snapshot[snapshot_name] = sorted(set(session_pids))
+
+    counts_by_snapshot: dict[str, int] = {
+        snapshot_name: len(session_pids)
+        for snapshot_name, session_pids in mapped_session_pids_by_snapshot.items()
+    }
+    for snapshot_name, raw_count in counts_by_snapshot_raw.items():
+        target_snapshot_name = snapshot_alias_map.get(snapshot_name, snapshot_name)
+        counts_by_snapshot[target_snapshot_name] = max(
+            counts_by_snapshot.get(target_snapshot_name, 0),
+            max(0, raw_count),
+        )
     task_previews_by_pid = (
         attribution.task_previews_by_pid
         if attribution.task_previews_by_pid
@@ -65,7 +83,20 @@ async def live_usage() -> Response:
             if _normalize_task_preview(preview)
         }
     )
-    task_previews_by_snapshot = await _read_live_usage_task_previews_by_snapshot()
+    raw_task_previews_by_snapshot = await _read_live_usage_task_previews_by_snapshot()
+    task_previews_by_snapshot: dict[str, list[_LiveUsageTaskPreview]] = {}
+    for snapshot_name, task_previews in raw_task_previews_by_snapshot.items():
+        target_snapshot_name = snapshot_alias_map.get(snapshot_name, snapshot_name)
+        existing = task_previews_by_snapshot.setdefault(target_snapshot_name, [])
+        existing_pairs = {(preview.account_id, preview.preview) for preview in existing}
+        for task_preview in task_previews:
+            key = (task_preview.account_id, task_preview.preview)
+            if key in existing_pairs:
+                continue
+            existing.append(task_preview)
+            existing_pairs.add(key)
+    for previews in task_previews_by_snapshot.values():
+        previews.sort(key=lambda preview: preview.account_id)
     account_emails_by_snapshot = await _read_live_usage_account_emails_by_snapshot()
 
     session_task_previews_by_snapshot: dict[str, dict[int, list[str]]] = {}
@@ -505,6 +536,39 @@ async def _read_live_usage_account_emails_by_snapshot() -> dict[str, list[str]]:
                 snapshot_name: sorted(snapshot_emails)
                 for snapshot_name, snapshot_emails in emails_by_snapshot.items()
             }
+    except Exception:
+        return {}
+
+    return {}
+
+
+async def _read_live_usage_snapshot_alias_map() -> dict[str, str]:
+    try:
+        snapshot_index = build_snapshot_index()
+        async for session in get_session():
+            repository = AccountsRepository(session)
+            accounts = await repository.list_accounts()
+            if not accounts:
+                return {}
+
+            alias_to_selected: dict[str, str] = {}
+            for account in accounts:
+                snapshot_candidates = snapshot_index.snapshots_by_account_id.get(account.id, [])
+                if not snapshot_candidates:
+                    continue
+
+                selected_snapshot_name = select_snapshot_name(
+                    snapshot_candidates,
+                    snapshot_index.active_snapshot_name,
+                    email=account.email,
+                )
+                if not selected_snapshot_name:
+                    continue
+
+                for snapshot_name in snapshot_candidates:
+                    alias_to_selected[snapshot_name] = selected_snapshot_name
+
+            return alias_to_selected
     except Exception:
         return {}
 
