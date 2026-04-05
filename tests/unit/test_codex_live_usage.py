@@ -813,6 +813,55 @@ def test_read_local_codex_live_usage_samples_by_snapshot_splits_default_scope_sa
     assert perzeus_samples[0].primary.used_percent == 48.0
 
 
+def test_read_local_codex_live_usage_by_snapshot_maps_host_proc_rollout_paths_into_mounted_sessions_dir(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    now = datetime.now(timezone.utc)
+    sessions_root = tmp_path / "sessions"
+    monkeypatch.setenv("CODEX_SESSIONS_DIR", str(sessions_root))
+    monkeypatch.setenv("CODEX_AUTH_CURRENT_PATH", str(tmp_path / "current"))
+    monkeypatch.setenv("CODEX_AUTH_JSON_PATH", str(tmp_path / "auth.json"))
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage.build_snapshot_index",
+        lambda: SimpleNamespace(active_snapshot_name="thedailyscooby@gmail.com"),
+    )
+
+    day_dir = _sessions_day_dir(sessions_root, now)
+    rollout_name = "rollout-2026-04-05T10-07-46-019d5caf-03d1-7791-abd3-0694d6bb1357.jsonl"
+    mounted_rollout = day_dir / rollout_name
+    _write_rollout(
+        mounted_rollout,
+        timestamp=now - timedelta(seconds=20),
+        primary_used=59.0,
+        secondary_used=82.0,
+    )
+
+    host_rollout = Path("/home/deadpool/.codex/sessions/2026/04/05") / rollout_name
+
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._iter_running_codex_commands",
+        lambda _proc_root: [(401, ["/usr/bin/codex", "model_instructions_file=agents"])],
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._read_process_env",
+        lambda _pid: {"CODEX_AUTH_ACTIVE_SNAPSHOT": "perzeus@nagyviktor.com"},
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._resolve_process_rollout_path",
+        lambda _pid: host_rollout,
+    )
+
+    usage_by_snapshot = read_local_codex_live_usage_by_snapshot(now=now)
+
+    assert set(usage_by_snapshot.keys()) == {"perzeus@nagyviktor.com"}
+    perzeus_usage = usage_by_snapshot["perzeus@nagyviktor.com"]
+    assert perzeus_usage.primary is not None
+    assert perzeus_usage.secondary is not None
+    assert perzeus_usage.primary.used_percent == 59.0
+    assert perzeus_usage.secondary.used_percent == 82.0
+
+
 def test_recent_active_snapshot_process_fallback_requires_recent_snapshot_switch(
     monkeypatch,
     tmp_path: Path,
@@ -2055,6 +2104,51 @@ def test_read_local_codex_task_previews_by_session_id_ignores_live_usage_xml_pay
 
     previews = read_local_codex_task_previews_by_session_id(now=now)
     assert session_id not in previews
+
+
+def test_read_local_codex_task_previews_by_session_id_extracts_task_from_live_usage_xml_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    sessions_root = tmp_path / "sessions"
+    monkeypatch.setenv("CODEX_SESSIONS_DIR", str(sessions_root))
+    monkeypatch.setenv("CODEX_AUTH_RUNTIME_ROOT", str(tmp_path / "runtimes"))
+
+    day_dir = _sessions_day_dir(sessions_root, now)
+    session_id = "019d5a6a-4665-7873-9714-9efb95b24281"
+    rollout_path = day_dir / f"rollout-2026-04-04T21-33-32-{session_id}.jsonl"
+
+    mixed_payload = {
+        "timestamp": (now - timedelta(seconds=3)).isoformat().replace("+00:00", "Z"),
+        "type": "response_item",
+        "payload": {
+            "type": "message",
+            "role": "user",
+            "content": [
+                {
+                    "type": "input_text",
+                    "text": (
+                        '<live_usage generated_at="2026-04-05T08:05:39.199074Z" '
+                        'total_sessions="2" mapped_sessions="2" '
+                        'unattributed_sessions="0"></live_usage> '
+                        "both are waiting for tasks when we set tasks for the session so improve this"
+                    ),
+                }
+            ],
+        },
+    }
+
+    rollout_path.write_text(json.dumps(mixed_payload) + "\n", encoding="utf-8")
+    ts = now.timestamp()
+    os.utime(rollout_path, (ts, ts))
+
+    previews = read_local_codex_task_previews_by_session_id(now=now)
+    assert session_id in previews
+    assert (
+        previews[session_id].text
+        == "both are waiting for tasks when we set tasks for the session so improve this"
+    )
 
 
 def test_read_local_codex_task_previews_by_session_id_keeps_latest_task_when_warning_follows(

@@ -302,10 +302,16 @@ def _read_default_scope_rollout_paths_by_snapshot_from_live_processes() -> dict[
         if not snapshot_name:
             continue
 
-        rollout_path = _resolve_process_rollout_path(pid)
-        if rollout_path is None or not rollout_path.exists() or not rollout_path.is_file():
-            continue
-        if not _path_within_directory(rollout_path, sessions_dir):
+        # In containerized deployments the process-side /proc symlink can
+        # expose host paths (for example /home/user/.codex/sessions/...)
+        # while this service reads mounted paths (for example
+        # /home/app/.codex/sessions/...). Reconcile by filename/date and keep
+        # only paths that resolve inside the configured sessions dir.
+        rollout_path = _resolve_sessions_scoped_rollout_path(
+            rollout_path=_resolve_process_rollout_path(pid),
+            sessions_dir=sessions_dir,
+        )
+        if rollout_path is None:
             continue
 
         rollout_paths_by_snapshot.setdefault(snapshot_name, set()).add(rollout_path)
@@ -325,6 +331,53 @@ def _path_within_directory(path: Path, directory: Path) -> bool:
     except OSError:
         return False
     return True
+
+
+def _resolve_sessions_scoped_rollout_path(*, rollout_path: Path | None, sessions_dir: Path) -> Path | None:
+    if rollout_path is None:
+        return None
+
+    if rollout_path.exists() and rollout_path.is_file() and _path_within_directory(rollout_path, sessions_dir):
+        try:
+            return rollout_path.resolve()
+        except OSError:
+            return rollout_path
+
+    from_filename = _resolve_rollout_path_in_sessions_dir_by_filename(
+        filename=rollout_path.name,
+        sessions_dir=sessions_dir,
+    )
+    if from_filename is not None:
+        return from_filename
+
+    return None
+
+
+def _resolve_rollout_path_in_sessions_dir_by_filename(*, filename: str, sessions_dir: Path) -> Path | None:
+    match = _ROLLOUT_SESSION_FILE_RE.match(filename)
+    if match is not None:
+        start = match.group("start")
+        date_prefix = start[:10]
+        try:
+            year, month, day = date_prefix.split("-")
+        except ValueError:
+            year = month = day = ""
+        if year and month and day:
+            candidate = sessions_dir / year / month / day / filename
+            if candidate.exists() and candidate.is_file():
+                try:
+                    return candidate.resolve()
+                except OSError:
+                    return candidate
+
+    fallback_matches = sorted(sessions_dir.rglob(filename), key=_safe_mtime, reverse=True)
+    for candidate in fallback_matches[:1]:
+        if candidate.is_file():
+            try:
+                return candidate.resolve()
+            except OSError:
+                return candidate
+    return None
 
 
 def read_live_codex_process_session_counts_by_snapshot() -> dict[str, int]:

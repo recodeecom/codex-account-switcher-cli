@@ -39,6 +39,12 @@ _TASK_PREVIEW_STATUS_ONLY_RE = re.compile(
 _TASK_PREVIEW_WARNING_PREFIX_RE = re.compile(r"(?i)^warning\b")
 _TASK_PREVIEW_LIVE_USAGE_XML_RE = re.compile(r"(?is)^<live_usage(?:\s|>)")
 _TASK_PREVIEW_LIVE_USAGE_MAPPING_XML_RE = re.compile(r"(?is)^<live_usage_mapping(?:\s|>)")
+_TASK_PREVIEW_LEADING_LIVE_USAGE_BLOCK_RE = re.compile(
+    r"(?is)^\s*<live_usage\b[^>]*>.*?</live_usage>\s*"
+)
+_TASK_PREVIEW_LEADING_LIVE_USAGE_MAPPING_BLOCK_RE = re.compile(
+    r"(?is)^\s*<live_usage_mapping\b[^>]*>.*?</live_usage_mapping>\s*"
+)
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -481,6 +487,7 @@ class _LiveUsageTaskPreview:
 
 def _normalize_task_preview(value: str | None) -> str:
     normalized = " ".join((value or "").split()).strip()
+    normalized = _strip_leading_live_usage_payload(normalized)
     if not normalized:
         return ""
     if _TASK_PREVIEW_WARNING_PREFIX_RE.match(normalized):
@@ -494,6 +501,24 @@ def _normalize_task_preview(value: str | None) -> str:
     # Keep the XML feed compact for MCP consumers while retaining enough
     # context to identify the active CLI task.
     return normalized[:160]
+
+
+def _strip_leading_live_usage_payload(value: str) -> str:
+    normalized = value.strip()
+    previous = ""
+    while normalized and normalized != previous:
+        previous = normalized
+        normalized = _TASK_PREVIEW_LEADING_LIVE_USAGE_BLOCK_RE.sub(
+            "",
+            normalized,
+            count=1,
+        ).strip()
+        normalized = _TASK_PREVIEW_LEADING_LIVE_USAGE_MAPPING_BLOCK_RE.sub(
+            "",
+            normalized,
+            count=1,
+        ).strip()
+    return normalized
 
 
 async def _read_live_usage_task_previews_by_snapshot() -> dict[str, list[_LiveUsageTaskPreview]]:

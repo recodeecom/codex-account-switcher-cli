@@ -545,6 +545,11 @@ export function AccountCard({
     hasLiveSession,
     primaryRemainingPercent: primaryRemaining,
   });
+  const hasRemainingTokensExhausted =
+    showTokensRemaining &&
+    typeof tokensRemaining === "number" &&
+    tokensRemaining <= 0;
+  const showUsageLimitHitBadge = usageLimitHit || hasRemainingTokensExhausted;
   const showUsageLimitGraceOverlay = Boolean(
     usageLimitHit && usageLimitHitCountdownMs != null && usageLimitHitCountdownMs > 0,
   );
@@ -714,7 +719,7 @@ export function AccountCard({
     <div
       className={cn(
         "card-hover relative overflow-hidden rounded-xl border border-border/70 bg-gradient-to-b from-card to-card/80 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]",
-        usageLimitHit &&
+        showUsageLimitHitBadge &&
           "border-red-500/40 bg-gradient-to-b from-red-500/12 via-card to-card/85",
       )}
     >
@@ -764,7 +769,7 @@ export function AccountCard({
               {deactivatedLastSeenDisplay.label}
             </Badge>
           ) : null}
-          {usageLimitHit ? (
+          {showUsageLimitHitBadge ? (
             <Badge
               variant="outline"
               className="gap-1.5 border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-300"
@@ -774,7 +779,7 @@ export function AccountCard({
                 aria-hidden
               />
               Usage limit hit
-              {usageLimitHitCountdownLabel ? (
+              {usageLimitHit && usageLimitHitCountdownLabel ? (
                 <span className="font-medium text-red-700 dark:text-red-300">
                   · leaves in {usageLimitHitCountdownLabel}
                 </span>

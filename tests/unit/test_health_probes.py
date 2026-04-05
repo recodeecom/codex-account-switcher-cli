@@ -491,6 +491,59 @@ async def test_live_usage_ignores_live_usage_xml_payload_as_session_task_preview
 
 
 @pytest.mark.asyncio
+async def test_live_usage_extracts_task_after_live_usage_xml_prefix():
+    from app.modules.accounts.codex_live_usage import LocalCodexProcessSessionAttribution
+    from app.modules.health.api import live_usage
+
+    with (
+        patch(
+            "app.modules.health.api.read_live_codex_process_session_attribution",
+            return_value=LocalCodexProcessSessionAttribution(
+                counts_by_snapshot={"itrexsale@gmail.com": 1},
+                unattributed_session_pids=[],
+                mapped_session_pids_by_snapshot={"itrexsale@gmail.com": [902]},
+                task_preview_by_pid={
+                    902: (
+                        '<live_usage generated_at="2026-04-05T08:05:39.199074Z" '
+                        'total_sessions="2" mapped_sessions="2" '
+                        'unattributed_sessions="0"></live_usage> '
+                        "both are waiting for tasks when we set tasks for the session so improve this"
+                    )
+                },
+            ),
+        ),
+        patch(
+            "app.modules.health.api._read_live_usage_task_previews_by_snapshot",
+            new=AsyncMock(return_value={}),
+        ),
+        patch(
+            "app.modules.health.api._read_live_usage_account_emails_by_snapshot",
+            new=AsyncMock(return_value={"itrexsale@gmail.com": ["itrexsale@gmail.com"]}),
+        ),
+        patch(
+            "app.modules.health.api._read_live_usage_snapshot_alias_map",
+            new=AsyncMock(return_value={}),
+        ),
+        patch(
+            "app.modules.health.api.utcnow",
+            return_value=datetime(2026, 4, 5, 0, 0, 0),
+        ),
+    ):
+        response = await live_usage()
+
+    body = response.body.decode("utf-8")
+    assert '<snapshot name="itrexsale@gmail.com" session_count="1"' in body
+    assert 'session_row_count="1"' in body
+    assert 'session_task_preview_count="1"' in body
+    assert 'account_emails="itrexsale@gmail.com"' in body
+    assert (
+        'task_preview="both are waiting for tasks when we set tasks for the session so improve this"'
+        in body
+    )
+    assert '<session pid="902" state="waiting_for_new_task" />' not in body
+
+
+@pytest.mark.asyncio
 async def test_live_usage_includes_account_emails_mapped_to_snapshot():
     from app.modules.accounts.codex_live_usage import LocalCodexProcessSessionAttribution
     from app.modules.health.api import live_usage
