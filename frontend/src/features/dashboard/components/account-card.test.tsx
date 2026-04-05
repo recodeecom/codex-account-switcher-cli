@@ -1247,6 +1247,34 @@ describe("AccountCard", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows a Next.js badge when task previews mention next.js or turbopack", () => {
+    const account = createAccountSummary({
+      codexCurrentTaskPreview: "Change the Next.js dev server to Turbopack",
+      codexLastTaskPreview: "Verify turbopack startup and debug state",
+      codexLiveSessionCount: 1,
+      codexSessionCount: 1,
+      codexTrackedSessionCount: 1,
+      codexSessionTaskPreviews: [
+        {
+          sessionKey: "sess-next",
+          taskPreview: "Boot next js with turbopack and validate dashboard",
+          taskUpdatedAt: "2026-04-05T10:00:00.000Z",
+        },
+      ],
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+    });
+
+    render(<AccountCard account={account} />);
+
+    expect(screen.getAllByLabelText("Next.js task").length).toBeGreaterThanOrEqual(2);
+  });
+
   it("renders current task preview for non-working accounts when provided", () => {
     const account = createAccountSummary({
       codexLiveSessionCount: 0,

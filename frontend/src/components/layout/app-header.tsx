@@ -3,6 +3,7 @@ import { useState } from "react";
 import { NavLink } from "@/lib/router-compat";
 
 import { CodexLogo } from "@/components/brand/codex-logo";
+import { AccountMenu } from "@/components/layout/account-menu";
 import { NAV_ITEMS } from "@/components/layout/nav-items";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -101,18 +102,11 @@ export function AppHeader({
           >
             <PrivacyIcon className="h-3.5 w-3.5" aria-hidden="true" />
           </Button>
-          {showLogout && (
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={onLogout}
-              className="press-scale hidden h-8 gap-1.5 rounded-lg text-xs text-muted-foreground hover:text-foreground sm:inline-flex"
-            >
-              <LogOut className="h-3.5 w-3.5" aria-hidden="true" />
-              Logout
-            </Button>
-          )}
+          <AccountMenu
+            onLogout={onLogout}
+            showLogout={showLogout}
+            className="press-scale hidden sm:inline-flex"
+          />
 
           {/* Mobile menu */}
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>

@@ -110,6 +110,27 @@ function getPlanSnapshotDetails(
 const NEAR_ZERO_QUOTA_PERCENT = 5;
 const WAITING_FOR_NEW_TASK_LABEL = "Waiting for new task";
 const SESSION_TASK_PREVIEW_MAX_ROWS = 4;
+const NEXT_TASK_PREVIEW_PATTERN = /\bnext(?:\.?js)?\b|\bturbopack\b/i;
+
+function hasNextTaskHint(taskPreview: string | null | undefined): boolean {
+  const normalized = taskPreview?.trim();
+  if (!normalized) {
+    return false;
+  }
+  return NEXT_TASK_PREVIEW_PATTERN.test(normalized);
+}
+
+function NextTaskBadge() {
+  return (
+    <span
+      className="inline-flex h-4 min-w-4 items-center justify-center rounded-full border border-cyan-500/35 bg-cyan-500/12 px-1 text-[9px] font-semibold uppercase tracking-[0.08em] text-cyan-200"
+      title="Next.js task"
+      aria-label="Next.js task"
+    >
+      N
+    </span>
+  );
+}
 
 function formatSessionKeyLabel(sessionKey: string): string {
   const normalized = sessionKey.trim();
@@ -1055,15 +1076,21 @@ export function AccountCard(props: AccountCardProps) {
               className="break-words whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground"
               title={effectiveCurrentTaskPreview ?? undefined}
             >
-              {effectiveCurrentTaskPreview ?? "No active task reported"}
+              <span className="inline-flex items-center gap-1.5">
+                {hasNextTaskHint(effectiveCurrentTaskPreview) ? <NextTaskBadge /> : null}
+                <span>{effectiveCurrentTaskPreview ?? "No active task reported"}</span>
+              </span>
             </p>
             {showLastTaskPreview ? (
               <p
                 className="break-words whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground/80"
                 title={codexLastTaskPreview ?? undefined}
               >
-                <span className="font-medium text-muted-foreground">Last task:</span>{" "}
-                {codexLastTaskPreview}
+                <span className="font-medium text-muted-foreground">Last task:</span>
+                <span className="ml-1 inline-flex items-center gap-1.5">
+                  {hasNextTaskHint(codexLastTaskPreview) ? <NextTaskBadge /> : null}
+                  <span>{codexLastTaskPreview}</span>
+                </span>
               </p>
             ) : null}
             {hasSessionTaskPreviews ? (
@@ -1084,7 +1111,10 @@ export function AccountCard(props: AccountCardProps) {
                         className="break-words whitespace-pre-wrap leading-relaxed text-muted-foreground"
                         title={preview.taskPreview}
                       >
-                        {preview.taskPreview}
+                        <span className="inline-flex items-center gap-1.5">
+                          {hasNextTaskHint(preview.taskPreview) ? <NextTaskBadge /> : null}
+                          <span>{preview.taskPreview}</span>
+                        </span>
                       </span>
                     </li>
                   ))}

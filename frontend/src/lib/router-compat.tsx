@@ -82,10 +82,23 @@ function navigateTo(url: string, options?: NavigateOptions) {
     return;
   }
 
+  const currentUrl = new URL(window.location.href);
   const nextUrl = new URL(url, window.location.href);
   const sameOrigin = nextUrl.origin === window.location.origin;
+  const pathChanged = currentUrl.pathname !== nextUrl.pathname;
+  const nextRuntimeDetected =
+    typeof (window as typeof window & { __NEXT_DATA__?: unknown }).__NEXT_DATA__ !== "undefined";
 
   if (!sameOrigin) {
+    if (options?.replace) {
+      window.location.replace(nextUrl.toString());
+      return;
+    }
+    window.location.assign(nextUrl.toString());
+    return;
+  }
+
+  if (nextRuntimeDetected && pathChanged) {
     if (options?.replace) {
       window.location.replace(nextUrl.toString());
       return;
@@ -168,8 +181,14 @@ function isRouteActive(currentPathname: string, targetPathname: string): boolean
 export function NavLink({ to, className, children, onClick }: NavLinkProps) {
   const location = useLocationSnapshot();
   const target = new URL(to, "http://localhost");
+  const hydrated = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
+
   const state: NavLinkRenderState = {
-    isActive: isRouteActive(location.pathname, target.pathname),
+    isActive: hydrated && isRouteActive(location.pathname, target.pathname),
   };
 
   const resolvedClassName = typeof className === "function" ? className(state) : className;
