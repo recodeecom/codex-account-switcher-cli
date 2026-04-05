@@ -68,7 +68,7 @@ def test_select_snapshot_name_for_account_prefers_existing_email_alias(monkeypat
     assert selected == "nagy.viktordp@gmail.com"
 
 
-def test_select_snapshot_name_for_account_converges_existing_generic_snapshot_for_same_account(
+def test_select_snapshot_name_for_account_preserves_existing_generic_snapshot_for_same_account(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     email = "nagy.viktordp@gmail.com"
@@ -85,7 +85,7 @@ def test_select_snapshot_name_for_account_converges_existing_generic_snapshot_fo
         accounts_dir=accounts_dir,
     )
 
-    assert selected == "nagy.viktordp@gmail.com"
+    assert selected == "unique"
 
 
 def test_select_snapshot_name_for_account_appends_dup_suffix_when_email_alias_taken_by_other_account(
@@ -114,7 +114,7 @@ def test_select_snapshot_name_for_account_appends_dup_suffix_when_email_alias_ta
     assert selected == f"{taken_name}--dup-2"
 
 
-def test_select_snapshot_name_for_account_converges_existing_email_matched_snapshot_when_account_id_drifted(
+def test_select_snapshot_name_for_account_preserves_existing_email_matched_snapshot_when_account_id_drifted(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     email = "nagy.viktordp@gmail.com"
@@ -131,10 +131,10 @@ def test_select_snapshot_name_for_account_converges_existing_email_matched_snaps
         accounts_dir=accounts_dir,
     )
 
-    assert selected == "nagy.viktordp@gmail.com"
+    assert selected == "work"
 
 
-def test_materialize_active_auth_snapshot_materializes_canonical_email_snapshot_on_new_login(
+def test_materialize_active_auth_snapshot_updates_existing_alias_without_creating_new_canonical_snapshot(
     tmp_path: Path,
 ) -> None:
     accounts_dir = tmp_path / "accounts"
@@ -167,11 +167,11 @@ def test_materialize_active_auth_snapshot_materializes_canonical_email_snapshot_
 
     canonical_snapshot_path = accounts_dir / "nagy.viktordp@gmail.com.json"
     assert legacy_snapshot_path.exists()
-    assert canonical_snapshot_path.exists()
-    assert canonical_snapshot_path.read_bytes() == active_auth_path.read_bytes()
+    assert not canonical_snapshot_path.exists()
+    assert legacy_snapshot_path.read_bytes() == active_auth_path.read_bytes()
 
 
-def test_materialize_active_auth_snapshot_materializes_canonical_name_even_when_active_auth_targets_existing_alias(
+def test_materialize_active_auth_snapshot_keeps_existing_alias_when_active_auth_points_to_alias(
     tmp_path: Path,
 ) -> None:
     accounts_dir = tmp_path / "accounts"
@@ -198,5 +198,5 @@ def test_materialize_active_auth_snapshot_materializes_canonical_name_even_when_
 
     canonical_snapshot_path = accounts_dir / "cica@nagyviktor.com.json"
     assert alias_snapshot_path.exists()
-    assert canonical_snapshot_path.exists()
-    assert canonical_snapshot_path.read_bytes() == alias_snapshot_path.read_bytes()
+    assert not canonical_snapshot_path.exists()
+    assert alias_snapshot_path.read_bytes() == active_auth_path.read_bytes()
