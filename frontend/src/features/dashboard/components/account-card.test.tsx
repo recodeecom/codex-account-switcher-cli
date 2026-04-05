@@ -731,7 +731,7 @@ describe("AccountCard", () => {
     expect(card?.className).toContain("border-red-500/40");
   });
 
-  it("shows weekly usage-limit badge when 5h is available but weekly is 0%", () => {
+  it("shows only the weekly usage-limit badge when 5h is available but weekly is 0%", () => {
     const account = createAccountSummary({
       status: "active",
       usage: {
@@ -752,9 +752,8 @@ describe("AccountCard", () => {
 
     render(<AccountCard account={account} />);
 
-    expect(
-      screen.getByText("Usage limit hit · Weekly usage limit hit"),
-    ).toBeInTheDocument();
+    expect(screen.queryByText(/^Usage limit hit$/)).not.toBeInTheDocument();
+    expect(screen.getByText("Weekly usage limit hit")).toBeInTheDocument();
   });
 
   it("treats sub-5% 5h quota as depleted for live usage-limit state", () => {

@@ -24,6 +24,7 @@ def overlay_live_codex_task_previews(
     accounts: list[Account],
     codex_auth_by_account: dict[str, AccountCodexAuthStatus],
     codex_current_task_preview_by_account: dict[str, str],
+    codex_last_task_preview_by_account: dict[str, str],
     live_quota_debug_by_account: dict[str, AccountLiveQuotaDebug] | None,
     now: datetime,
 ) -> None:
@@ -42,6 +43,7 @@ def overlay_live_codex_task_previews(
         return
 
     for account in accounts:
+        codex_last_task_preview_by_account.pop(account.id, None)
         codex_auth_status = codex_auth_by_account.get(account.id)
         snapshot_name = codex_auth_status.snapshot_name if codex_auth_status else None
         if snapshot_name:
@@ -51,6 +53,16 @@ def overlay_live_codex_task_previews(
                 continue
             if snapshot_name in waiting_process_snapshots:
                 codex_current_task_preview_by_account[account.id] = _WAITING_FOR_NEW_TASK_PREVIEW
+                waiting_last_preview = _resolve_waiting_snapshot_last_preview(
+                    snapshot_name=snapshot_name,
+                    debug=live_quota_debug_by_account.get(account.id)
+                    if live_quota_debug_by_account is not None
+                    else None,
+                    previews_by_snapshot=previews_by_snapshot,
+                    previews_by_session_id=previews_by_session_id,
+                )
+                if waiting_last_preview is not None:
+                    codex_last_task_preview_by_account[account.id] = waiting_last_preview.text
                 continue
             if has_recently_terminated_cli_session_snapshot(
                 [snapshot_name],
@@ -115,6 +127,28 @@ def _read_live_process_task_preview_state_by_snapshot() -> tuple[dict[str, str],
         waiting_snapshots.add(snapshot_name)
 
     return preview_by_snapshot, waiting_snapshots
+
+
+def _resolve_waiting_snapshot_last_preview(
+    *,
+    snapshot_name: str,
+    debug: AccountLiveQuotaDebug | None,
+    previews_by_snapshot: dict[str, LocalCodexTaskPreview],
+    previews_by_session_id: dict[str, LocalCodexTaskPreview],
+) -> LocalCodexTaskPreview | None:
+    preview_from_source = _resolve_preview_from_debug_sources(
+        debug=debug,
+        previews_by_session_id=previews_by_session_id,
+    )
+    if preview_from_source is not None:
+        return preview_from_source
+
+    preview_from_snapshot = previews_by_snapshot.get(snapshot_name)
+    if preview_from_snapshot is None:
+        return None
+    if preview_from_snapshot.text.strip() == _WAITING_FOR_NEW_TASK_PREVIEW:
+        return None
+    return preview_from_snapshot
 
 
 def _resolve_preview_from_debug_sources(

@@ -102,6 +102,7 @@ export const AccountSummarySchema = z.object({
   codexTrackedSessionCount: z.number().int().nonnegative().optional(),
   codexSessionCount: z.number().int().nonnegative().optional(),
   codexCurrentTaskPreview: z.string().nullable().optional(),
+  codexLastTaskPreview: z.string().nullable().optional(),
   liveQuotaDebug: AccountLiveQuotaDebugSchema.nullable().optional(),
   auth: AccountAuthSchema.nullable().optional(),
   codexAuth: AccountCodexAuthSchema.nullable().optional(),

@@ -79,6 +79,7 @@ class DashboardService:
             account_ids,
             active_since=active_codex_window_start,
         )
+        codex_last_task_preview_by_account: dict[str, str] = {}
         snapshot_index = build_snapshot_index()
         codex_auth_by_account = {
             account.id: _build_codex_auth_status(account=account, snapshot_index=snapshot_index)
@@ -103,6 +104,7 @@ class DashboardService:
             accounts=accounts,
             codex_auth_by_account=codex_auth_by_account,
             codex_current_task_preview_by_account=codex_current_task_preview_by_account,
+            codex_last_task_preview_by_account=codex_last_task_preview_by_account,
             live_quota_debug_by_account=live_quota_debug_by_account,
             now=now,
         )
@@ -115,6 +117,7 @@ class DashboardService:
             codex_live_session_counts_by_account=codex_live_session_counts_by_account,
             codex_tracked_session_counts_by_account=codex_tracked_session_counts_by_account,
             codex_current_task_preview_by_account=codex_current_task_preview_by_account,
+            codex_last_task_preview_by_account=codex_last_task_preview_by_account,
             live_quota_debug_by_account=live_quota_debug_by_account,
             codex_auth_by_account=codex_auth_by_account,
             encryptor=self._encryptor,

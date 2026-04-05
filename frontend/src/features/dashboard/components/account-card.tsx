@@ -447,15 +447,20 @@ function formatLimitHitCountdown(remainingMs: number): string {
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
-export function AccountCard({
-  account,
-  tokensUsed = null,
-  tokensRemaining = null,
-  showTokensRemaining = false,
-  showAccountId = false,
-  useLocalBusy = false,
-  onAction,
-}: AccountCardProps) {
+export function AccountCard(props: AccountCardProps) {
+  const {
+    account,
+    tokensUsed = null,
+    showTokensRemaining = false,
+    showAccountId = false,
+    useLocalBusy = false,
+    onAction,
+  } = props;
+  const tokensRemaining = props.tokensRemaining ?? null;
+  const hasExplicitUnknownTokensRemaining =
+    showTokensRemaining &&
+    Object.prototype.hasOwnProperty.call(props, "tokensRemaining") &&
+    props.tokensRemaining == null;
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -583,6 +588,7 @@ export function AccountCard({
   const remainingTokensValue = tokensRemaining ?? 0;
   const hasRemainingTokensExhausted =
     showTokensRemaining &&
+    !hasExplicitUnknownTokensRemaining &&
     remainingTokensValue <= 0;
   const useLocalBlockedByWeeklyQuota =
     typeof secondaryRemaining === "number" &&
@@ -592,12 +598,10 @@ export function AccountCard({
     typeof primaryRemaining === "number" &&
     normalizeNearZeroQuotaPercent(primaryRemaining) < 1;
   const showUsageLimitHitBadge =
-    usageLimitHit ||
-    hasRemainingTokensExhausted ||
-    useLocalBlockedByWeeklyQuota ||
-    useLocalBlockedByPrimaryQuota;
-  const showWeeklyUsageLimitDetailBadge =
-    useLocalBlockedByWeeklyQuota && !usageLimitHit && !hasRemainingTokensExhausted;
+    usageLimitHit || hasRemainingTokensExhausted || useLocalBlockedByPrimaryQuota;
+  const showWeeklyUsageLimitDetailBadge = useLocalBlockedByWeeklyQuota;
+  const showLimitTint =
+    showUsageLimitHitBadge || showWeeklyUsageLimitDetailBadge;
   const showUsageLimitGraceOverlay = Boolean(
     usageLimitHit && usageLimitHitCountdownMs != null && usageLimitHitCountdownMs > 0,
   );
@@ -703,9 +707,11 @@ export function AccountCard({
   const tokenMetricValueRaw = showTokensRemaining
     ? remainingTokensValue
     : (tokensUsed ?? account.requestUsage?.totalTokens ?? 0);
-  const tokenMetricValue = isWorkingNow
-    ? formatTokenUsagePrecise(tokenMetricValueRaw)
-    : formatTokenUsageCompact(tokenMetricValueRaw);
+  const tokenMetricValue = hasExplicitUnknownTokensRemaining
+    ? "--"
+    : isWorkingNow
+      ? formatTokenUsagePrecise(tokenMetricValueRaw)
+      : formatTokenUsageCompact(tokenMetricValueRaw);
   const hasRuntimeLiveSessionSignal =
     hasLiveSession ||
     (account.codexAuth?.hasLiveSession ?? false) ||
@@ -770,7 +776,7 @@ export function AccountCard({
     <div
       className={cn(
         "card-hover relative overflow-hidden rounded-xl border border-border/70 bg-gradient-to-b from-card to-card/80 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]",
-        showUsageLimitHitBadge &&
+        showLimitTint &&
           "border-red-500/40 bg-gradient-to-b from-red-500/12 via-card to-card/85",
       )}
     >
@@ -829,9 +835,7 @@ export function AccountCard({
                 className="h-1.5 w-1.5 rounded-full bg-current"
                 aria-hidden
               />
-              {showWeeklyUsageLimitDetailBadge
-                ? "Usage limit hit · Weekly usage limit hit"
-                : "Usage limit hit"}
+              Usage limit hit
               {usageLimitHit && usageLimitHitCountdownLabel ? (
                 <span className="font-medium text-red-700 dark:text-red-300">
                   · leaves in {usageLimitHitCountdownLabel}
@@ -848,6 +852,18 @@ export function AccountCard({
                 aria-hidden
               />
               Working now
+            </Badge>
+          ) : null}
+          {showWeeklyUsageLimitDetailBadge ? (
+            <Badge
+              variant="outline"
+              className="gap-1.5 border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-300"
+            >
+              <span
+                className="h-1.5 w-1.5 rounded-full bg-current"
+                aria-hidden
+              />
+              Weekly usage limit hit
             </Badge>
           ) : null}
           {hasExpiredRefreshToken ? (

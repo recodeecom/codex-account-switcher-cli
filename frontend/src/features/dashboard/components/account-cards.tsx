@@ -119,20 +119,7 @@ function shouldPinWeeklyDepletedAccountToEnd(metrics: {
   secondaryResetAtMs: number | null;
   secondaryRemaining: number | null;
 }): boolean {
-  const weeklyDepleted =
-    metrics.secondaryRemaining != null && metrics.secondaryRemaining <= 0;
-  if (!weeklyDepleted) {
-    return false;
-  }
-
-  if (
-    metrics.primaryResetAtMs == null ||
-    metrics.secondaryResetAtMs == null
-  ) {
-    return true;
-  }
-
-  return metrics.secondaryResetAtMs > metrics.primaryResetAtMs;
+  return metrics.secondaryRemaining != null && metrics.secondaryRemaining <= 0;
 }
 
 function sortAccountsByAvailableQuota(

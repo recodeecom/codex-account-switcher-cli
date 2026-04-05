@@ -108,6 +108,7 @@ class AccountsService:
             account_ids,
             active_since=active_codex_window_start,
         )
+        codex_last_task_preview_by_account: dict[str, str] = {}
         request_usage_rows = await self._repo.list_request_usage_summary_by_account(account_ids)
         request_usage_by_account = {
             account_id: AccountRequestUsage(
@@ -184,6 +185,7 @@ class AccountsService:
             accounts=accounts,
             codex_auth_by_account=codex_auth_by_account,
             codex_current_task_preview_by_account=codex_current_task_preview_by_account,
+            codex_last_task_preview_by_account=codex_last_task_preview_by_account,
             live_quota_debug_by_account=live_quota_debug_by_account,
             now=utcnow(),
         )
@@ -196,6 +198,7 @@ class AccountsService:
             codex_live_session_counts_by_account=codex_live_session_counts_by_account,
             codex_tracked_session_counts_by_account=codex_tracked_session_counts_by_account,
             codex_current_task_preview_by_account=codex_current_task_preview_by_account,
+            codex_last_task_preview_by_account=codex_last_task_preview_by_account,
             live_quota_debug_by_account=live_quota_debug_by_account,
             additional_quotas_by_account=additional_quotas_by_account,
             codex_auth_by_account=codex_auth_by_account,

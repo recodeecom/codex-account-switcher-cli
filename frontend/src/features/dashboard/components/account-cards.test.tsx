@@ -460,7 +460,7 @@ describe("AccountCards", () => {
     ]);
   });
 
-  it("does not force weekly-depleted accounts to the end when the weekly reset is sooner than 5h", () => {
+  it("keeps weekly-depleted accounts at the end even when the weekly reset is sooner than 5h", () => {
     const now = Date.now();
     const healthyWeekly = createAccountSummary({
       accountId: "acc_weekly_ok_soon_reset",
@@ -496,8 +496,8 @@ describe("AccountCards", () => {
       card.querySelector("p.truncate.text-sm.font-semibold.leading-tight")?.textContent,
     );
     expect(titles).toEqual([
-      "weekly-zero-soon-reset@example.com",
       "weekly-ok-soon-reset@example.com",
+      "weekly-zero-soon-reset@example.com",
     ]);
   });
 

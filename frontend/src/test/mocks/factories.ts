@@ -92,6 +92,7 @@ export function createAccountSummary(
 		windowMinutesSecondary: 10_080,
 		codexTrackedSessionCount: 0,
 		codexSessionCount: 0,
+		codexLastTaskPreview: null,
 		auth: {
 			access: { expiresAt: offsetIso(30), state: null },
 			refresh: { state: "stored" },

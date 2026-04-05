@@ -207,6 +207,18 @@ async def live_usage() -> Response:
         task_previews_for_snapshot.sort(key=lambda task_preview: task_preview.account_id)
         effective_task_previews_by_snapshot[snapshot_name] = task_previews_for_snapshot
 
+    waiting_last_task_preview_by_snapshot = {
+        snapshot_name: preview
+        for snapshot_name, preview in (
+            (
+                snapshot_name,
+                _resolve_unique_waiting_last_task_preview(task_previews),
+            )
+            for snapshot_name, task_previews in task_previews_by_snapshot.items()
+        )
+        if preview
+    }
+
     total_account_task_previews = sum(
         len(task_previews) for task_previews in effective_task_previews_by_snapshot.values()
     )
@@ -278,7 +290,20 @@ async def live_usage() -> Response:
         for pid in session_pids:
             previews = session_task_previews.get(pid, [])
             if not previews:
-                lines.append(f'    <session pid="{pid}" state="waiting_for_new_task" />')
+                last_task_preview = _resolve_session_waiting_last_task_preview(
+                    pid=pid,
+                    session_pids=session_pids,
+                    session_task_previews=session_task_previews,
+                    snapshot_last_task_preview=waiting_last_task_preview_by_snapshot.get(snapshot_name),
+                )
+                last_task_preview_attribute = (
+                    f' last_task_preview="{escape(last_task_preview, quote=True)}"'
+                    if last_task_preview
+                    else ""
+                )
+                lines.append(
+                    f'    <session pid="{pid}" state="waiting_for_new_task"{last_task_preview_attribute} />'
+                )
                 continue
             if len(previews) == 1:
                 lines.append(
@@ -483,6 +508,38 @@ class _LiveUsageTaskPreview:
     def __init__(self, account_id: str, preview: str) -> None:
         self.account_id = account_id
         self.preview = preview
+
+
+def _resolve_unique_waiting_last_task_preview(
+    task_previews: list[_LiveUsageTaskPreview],
+) -> str | None:
+    unique_previews: list[str] = []
+    seen_previews: set[str] = set()
+    for task_preview in task_previews:
+        normalized_preview = _normalize_task_preview(task_preview.preview)
+        if not normalized_preview or normalized_preview in seen_previews:
+            continue
+        seen_previews.add(normalized_preview)
+        unique_previews.append(normalized_preview)
+        if len(unique_previews) > 1:
+            return None
+    return unique_previews[0] if unique_previews else None
+
+
+def _resolve_session_waiting_last_task_preview(
+    *,
+    pid: int,
+    session_pids: list[int],
+    session_task_previews: dict[int, list[str]],
+    snapshot_last_task_preview: str | None,
+) -> str | None:
+    if not snapshot_last_task_preview:
+        return None
+    if any(session_task_previews.get(session_pid, []) for session_pid in session_pids):
+        return None
+    if len(session_pids) != 1 or session_pids[0] != pid:
+        return None
+    return snapshot_last_task_preview
 
 
 def _normalize_task_preview(value: str | None) -> str:

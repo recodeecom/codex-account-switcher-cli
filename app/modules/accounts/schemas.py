@@ -114,6 +114,7 @@ class AccountSummary(DashboardModel):
     codex_tracked_session_count: int = 0
     codex_session_count: int = 0
     codex_current_task_preview: str | None = None
+    codex_last_task_preview: str | None = None
     live_quota_debug: AccountLiveQuotaDebug | None = None
     additional_quotas: list[AccountAdditionalQuota] = Field(default_factory=list)
     deactivation_reason: str | None = None
