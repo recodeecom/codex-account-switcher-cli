@@ -499,6 +499,52 @@ def test_read_runtime_live_session_counts_by_snapshot_ignores_stale_runtime_sess
     assert counts == {}
 
 
+def test_read_runtime_live_session_counts_by_snapshot_keeps_pre_switch_runtime_sessions_on_previous_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    now = datetime(2026, 4, 6, 12, 0, tzinfo=timezone.utc)
+    runtime_root = tmp_path / "runtimes"
+    monkeypatch.setenv("CODEX_AUTH_RUNTIME_ROOT", str(runtime_root))
+    registry_path = tmp_path / "accounts" / "registry.json"
+    registry_path.parent.mkdir(parents=True, exist_ok=True)
+    registry_path.write_text(
+        json.dumps(
+            {
+                "activeAccountName": "personal",
+                "previousActiveAccountName": "work",
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CODEX_AUTH_REGISTRY_PATH", str(registry_path))
+
+    runtime = runtime_root / "terminal-main"
+    runtime.mkdir(parents=True, exist_ok=True)
+    current_path = runtime / "current"
+    current_path.write_text("personal", encoding="utf-8")
+    switch_ts = (now - timedelta(seconds=45)).timestamp()
+    os.utime(current_path, (switch_ts, switch_ts))
+
+    day_dir = _sessions_day_dir(runtime / "sessions", now)
+    _write_rollout(
+        day_dir / "rollout-2026-04-06T11-56-10-11111111-1111-1111-1111-111111111111.jsonl",
+        timestamp=now - timedelta(minutes=3, seconds=50),
+        primary_used=60.0,
+        secondary_used=30.0,
+    )
+    _write_rollout(
+        day_dir / "rollout-2026-04-06T11-59-30-22222222-2222-2222-2222-222222222222.jsonl",
+        timestamp=now - timedelta(seconds=30),
+        primary_used=22.0,
+        secondary_used=12.0,
+    )
+
+    counts = read_runtime_live_session_counts_by_snapshot(now=now)
+
+    assert counts == {"work": 1, "personal": 1}
+
+
 def test_read_local_codex_live_usage_by_snapshot_runtime_prefers_newest_sample_within_runtime(
     monkeypatch,
     tmp_path: Path,
@@ -2309,6 +2355,57 @@ def test_read_local_codex_task_previews_by_snapshot_reads_default_and_runtime_pr
     previews = read_local_codex_task_previews_by_snapshot(now=now)
     assert previews["alpha"].text == "Investigate alpha session drift"
     assert previews["beta"].text == "Fix beta websocket retry task"
+
+
+def test_read_local_codex_task_previews_by_snapshot_keeps_pre_switch_runtime_tasks_on_previous_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    now = datetime(2026, 4, 6, 12, 0, tzinfo=timezone.utc).replace(microsecond=0)
+    runtime_root = tmp_path / "runtimes"
+    monkeypatch.setenv("CODEX_AUTH_RUNTIME_ROOT", str(runtime_root))
+    monkeypatch.setenv("CODEX_SESSIONS_DIR", str(tmp_path / "sessions"))
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage.build_snapshot_index",
+        lambda: SimpleNamespace(active_snapshot_name=None),
+    )
+
+    registry_path = tmp_path / "accounts" / "registry.json"
+    registry_path.parent.mkdir(parents=True, exist_ok=True)
+    registry_path.write_text(
+        json.dumps(
+            {
+                "activeAccountName": "personal",
+                "previousActiveAccountName": "work",
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CODEX_AUTH_REGISTRY_PATH", str(registry_path))
+
+    runtime_dir = runtime_root / "runtime-main"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    current_path = runtime_dir / "current"
+    current_path.write_text("personal", encoding="utf-8")
+    switch_ts = (now - timedelta(seconds=45)).timestamp()
+    os.utime(current_path, (switch_ts, switch_ts))
+
+    runtime_day_dir = _sessions_day_dir(runtime_dir / "sessions", now)
+    _write_rollout_with_user_task(
+        runtime_day_dir / "rollout-2026-04-06T11-56-10-11111111-1111-1111-1111-111111111111.jsonl",
+        timestamp=now - timedelta(minutes=3, seconds=50),
+        task="Keep this work task on previous snapshot",
+    )
+    _write_rollout_with_user_task(
+        runtime_day_dir / "rollout-2026-04-06T11-59-30-22222222-2222-2222-2222-222222222222.jsonl",
+        timestamp=now - timedelta(seconds=30),
+        task="Show this personal task on active snapshot",
+    )
+
+    previews = read_local_codex_task_previews_by_snapshot(now=now)
+
+    assert previews["work"].text == "Keep this work task on previous snapshot"
+    assert previews["personal"].text == "Show this personal task on active snapshot"
 
 
 def test_read_local_codex_task_previews_by_snapshot_keeps_latest_task_when_session_is_live_but_file_is_stale(

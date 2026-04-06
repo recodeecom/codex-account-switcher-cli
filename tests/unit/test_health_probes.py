@@ -309,6 +309,131 @@ async def test_live_usage_surfaces_unattributed_cli_sessions():
 
 
 @pytest.mark.asyncio
+async def test_live_usage_reattributes_unattributed_session_when_task_preview_matches_single_snapshot():
+    from app.modules.accounts.codex_live_usage import LocalCodexProcessSessionAttribution
+    from app.modules.health.api import live_usage
+
+    with (
+        patch(
+            "app.modules.health.api.read_live_codex_process_session_attribution",
+            return_value=LocalCodexProcessSessionAttribution(
+                counts_by_snapshot={"new@example.com": 1},
+                unattributed_session_pids=[1702],
+                mapped_session_pids_by_snapshot={"new@example.com": [1601]},
+                task_preview_by_pid={
+                    1601: "new account active task",
+                    1702: "old account long-running task",
+                },
+            ),
+        ),
+        patch(
+            "app.modules.health.api._read_live_usage_task_previews_by_snapshot",
+            new=AsyncMock(
+                return_value={
+                    "old@example.com": [
+                        SimpleNamespace(
+                            account_id="acc-old",
+                            preview="old account long-running task",
+                        )
+                    ]
+                }
+            ),
+        ),
+        patch(
+            "app.modules.health.api._read_live_usage_account_emails_by_snapshot",
+            new=AsyncMock(
+                return_value={
+                    "old@example.com": ["old@example.com"],
+                    "new@example.com": ["new@example.com"],
+                }
+            ),
+        ),
+        patch(
+            "app.modules.health.api._read_live_usage_snapshot_alias_map",
+            new=AsyncMock(return_value={}),
+        ),
+        patch(
+            "app.modules.health.api.utcnow",
+            return_value=datetime(2026, 4, 5, 0, 0, 0),
+        ),
+    ):
+        response = await live_usage()
+
+    body = response.body.decode("utf-8")
+    assert (
+        '<live_usage generated_at="2026-04-05T00:00:00Z" total_sessions="2" mapped_sessions="2" unattributed_sessions="0" total_task_previews="2" account_task_previews="2" session_task_previews="2">'
+        in body
+    )
+    assert (
+        '<snapshot name="old@example.com" session_count="1" task_preview_count="1" session_row_count="1" session_task_preview_count="1" account_emails="old@example.com">'
+        in body
+    )
+    assert '<session pid="1702" task_preview="old account long-running task" />' in body
+    assert "<unattributed_sessions" not in body
+
+
+@pytest.mark.asyncio
+async def test_live_usage_keeps_unattributed_session_when_task_preview_matches_multiple_snapshots():
+    from app.modules.accounts.codex_live_usage import LocalCodexProcessSessionAttribution
+    from app.modules.health.api import live_usage
+
+    with (
+        patch(
+            "app.modules.health.api.read_live_codex_process_session_attribution",
+            return_value=LocalCodexProcessSessionAttribution(
+                counts_by_snapshot={"new@example.com": 1},
+                unattributed_session_pids=[1802],
+                mapped_session_pids_by_snapshot={"new@example.com": [1801]},
+                task_preview_by_pid={
+                    1801: "new account active task",
+                    1802: "shared preview text",
+                },
+            ),
+        ),
+        patch(
+            "app.modules.health.api._read_live_usage_task_previews_by_snapshot",
+            new=AsyncMock(
+                return_value={
+                    "old@example.com": [
+                        SimpleNamespace(
+                            account_id="acc-old",
+                            preview="shared preview text",
+                        )
+                    ],
+                    "another@example.com": [
+                        SimpleNamespace(
+                            account_id="acc-another",
+                            preview="shared preview text",
+                        )
+                    ],
+                }
+            ),
+        ),
+        patch(
+            "app.modules.health.api._read_live_usage_account_emails_by_snapshot",
+            new=AsyncMock(return_value={}),
+        ),
+        patch(
+            "app.modules.health.api._read_live_usage_snapshot_alias_map",
+            new=AsyncMock(return_value={}),
+        ),
+        patch(
+            "app.modules.health.api.utcnow",
+            return_value=datetime(2026, 4, 5, 0, 0, 0),
+        ),
+    ):
+        response = await live_usage()
+
+    body = response.body.decode("utf-8")
+    assert (
+        '<live_usage generated_at="2026-04-05T00:00:00Z" total_sessions="2" mapped_sessions="1" unattributed_sessions="1" total_task_previews="3" account_task_previews="3" session_task_previews="2">'
+        in body
+    )
+    assert '<session pid="1802" task_preview="shared preview text" />' in body
+    assert '<unattributed_sessions count="1" task_preview_count="1">' in body
+
+
+@pytest.mark.asyncio
 async def test_live_usage_lists_multiple_tasks_per_session_and_waiting_state():
     from app.modules.accounts.codex_live_usage import LocalCodexProcessSessionAttribution
     from app.modules.health.api import live_usage

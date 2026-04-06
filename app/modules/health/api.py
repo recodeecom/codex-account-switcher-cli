@@ -127,6 +127,42 @@ async def live_usage() -> Response:
         for snapshot_name, snapshot_emails in account_emails_by_snapshot_sets.items()
     }
 
+    if unattributed_session_pids and task_previews_by_snapshot:
+        snapshot_names_by_task_preview = _build_snapshot_names_by_task_preview(
+            task_previews_by_snapshot
+        )
+        if snapshot_names_by_task_preview:
+            reattributed_unattributed_session_pids: list[int] = []
+            for pid in unattributed_session_pids:
+                session_previews = [
+                    normalized
+                    for normalized in (
+                        _normalize_task_preview(preview)
+                        for preview in task_previews_by_pid.get(pid, [])
+                    )
+                    if normalized
+                ]
+                inferred_snapshot_name = _infer_snapshot_name_from_session_task_previews(
+                    session_previews=session_previews,
+                    snapshot_names_by_task_preview=snapshot_names_by_task_preview,
+                )
+                if inferred_snapshot_name is None:
+                    reattributed_unattributed_session_pids.append(pid)
+                    continue
+
+                mapped_session_pids_by_snapshot.setdefault(
+                    inferred_snapshot_name, []
+                ).append(pid)
+
+            unattributed_session_pids = reattributed_unattributed_session_pids
+            for snapshot_name, session_pids in mapped_session_pids_by_snapshot.items():
+                normalized_session_pids = sorted(set(session_pids))
+                mapped_session_pids_by_snapshot[snapshot_name] = normalized_session_pids
+                counts_by_snapshot[snapshot_name] = max(
+                    counts_by_snapshot.get(snapshot_name, 0),
+                    len(normalized_session_pids),
+                )
+
     session_task_previews_by_snapshot: dict[str, dict[int, list[str]]] = {}
     mapped_session_task_preview_count = 0
     for snapshot_name, session_pids in mapped_session_pids_by_snapshot.items():
@@ -512,6 +548,35 @@ class _LiveUsageTaskPreview:
     def __init__(self, account_id: str, preview: str) -> None:
         self.account_id = account_id
         self.preview = preview
+
+
+def _build_snapshot_names_by_task_preview(
+    task_previews_by_snapshot: dict[str, list[_LiveUsageTaskPreview]],
+) -> dict[str, set[str]]:
+    snapshot_names_by_task_preview: dict[str, set[str]] = {}
+    for snapshot_name, task_previews in task_previews_by_snapshot.items():
+        for task_preview in task_previews:
+            normalized_preview = _normalize_task_preview(task_preview.preview)
+            if not normalized_preview:
+                continue
+            snapshot_names_by_task_preview.setdefault(normalized_preview, set()).add(
+                snapshot_name
+            )
+    return snapshot_names_by_task_preview
+
+
+def _infer_snapshot_name_from_session_task_previews(
+    *,
+    session_previews: list[str],
+    snapshot_names_by_task_preview: dict[str, set[str]],
+) -> str | None:
+    candidate_snapshot_names: set[str] = set()
+    for preview in session_previews:
+        candidate_snapshot_names.update(snapshot_names_by_task_preview.get(preview, set()))
+
+    if len(candidate_snapshot_names) != 1:
+        return None
+    return next(iter(candidate_snapshot_names))
 
 
 def _resolve_unique_waiting_last_task_preview(

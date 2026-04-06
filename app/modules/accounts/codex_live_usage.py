@@ -174,20 +174,21 @@ def read_local_codex_live_usage_by_snapshot(*, now: datetime | None = None) -> d
         if not runtime_dir.is_dir():
             continue
 
-        snapshot_name = _read_runtime_current_snapshot(runtime_dir)
-        if not snapshot_name:
-            continue
-
-        runtime_usage = _read_local_codex_live_usage_for_sessions_dir(
-            sessions_dir=runtime_dir / "sessions",
+        runtime_rollout_paths_by_snapshot = _resolve_runtime_rollout_paths_by_snapshot(
+            runtime_dir=runtime_dir,
             now=current,
-            aggregation_mode="latest",
         )
-        if runtime_usage is None:
-            continue
+        for snapshot_name, rollout_paths in runtime_rollout_paths_by_snapshot.items():
+            runtime_usage = _read_local_codex_live_usage_for_rollout_paths(
+                rollout_paths=rollout_paths,
+                now=current,
+                aggregation_mode="latest",
+            )
+            if runtime_usage is None:
+                continue
 
-        previous = usage_by_snapshot.get(snapshot_name)
-        usage_by_snapshot[snapshot_name] = _merge_live_usage(previous, runtime_usage)
+            previous = usage_by_snapshot.get(snapshot_name)
+            usage_by_snapshot[snapshot_name] = _merge_live_usage(previous, runtime_usage)
 
     return usage_by_snapshot
 
@@ -225,18 +226,19 @@ def read_local_codex_live_usage_samples_by_snapshot(
         if not runtime_dir.is_dir():
             continue
 
-        snapshot_name = _read_runtime_current_snapshot(runtime_dir)
-        if not snapshot_name:
-            continue
-
-        runtime_samples = _read_local_codex_live_usage_sample_entries_for_sessions_dir(
-            sessions_dir=runtime_dir / "sessions",
+        runtime_rollout_paths_by_snapshot = _resolve_runtime_rollout_paths_by_snapshot(
+            runtime_dir=runtime_dir,
             now=current,
         )
-        if not runtime_samples:
-            continue
+        for snapshot_name, rollout_paths in runtime_rollout_paths_by_snapshot.items():
+            runtime_samples = _read_local_codex_live_usage_sample_entries_for_rollout_paths(
+                rollout_paths=rollout_paths,
+                now=current,
+            )
+            if not runtime_samples:
+                continue
 
-        samples_by_snapshot.setdefault(snapshot_name, []).extend(runtime_samples)
+            samples_by_snapshot.setdefault(snapshot_name, []).extend(runtime_samples)
 
     return samples_by_snapshot
 
@@ -916,17 +918,15 @@ def read_runtime_live_session_counts_by_snapshot(*, now: datetime | None = None)
         if not runtime_dir.is_dir():
             continue
 
-        snapshot_name = _read_runtime_current_snapshot(runtime_dir)
-        if not snapshot_name:
-            continue
-
-        live_count = _count_active_rollout_sessions_for_sessions_dir(
-            sessions_dir=runtime_dir / "sessions",
+        runtime_rollout_paths_by_snapshot = _resolve_runtime_rollout_paths_by_snapshot(
+            runtime_dir=runtime_dir,
             now=current,
         )
-        if live_count <= 0:
-            continue
-        counts[snapshot_name] = counts.get(snapshot_name, 0) + live_count
+        for snapshot_name, rollout_paths in runtime_rollout_paths_by_snapshot.items():
+            live_count = len(rollout_paths)
+            if live_count <= 0:
+                continue
+            counts[snapshot_name] = counts.get(snapshot_name, 0) + live_count
 
     return counts
 
@@ -967,22 +967,107 @@ def read_local_codex_task_previews_by_snapshot(
         if not runtime_dir.is_dir():
             continue
 
-        snapshot_name = _read_runtime_current_snapshot(runtime_dir)
-        if not snapshot_name:
-            continue
-
-        runtime_candidates = _read_local_codex_task_preview_candidates_for_sessions_dir(
-            sessions_dir=runtime_dir / "sessions",
+        runtime_rollout_paths_by_snapshot = _resolve_runtime_rollout_paths_by_snapshot(
+            runtime_dir=runtime_dir,
             now=current,
-            allow_inactive_fallback=has_live_session_for_snapshot(snapshot_name),
         )
-        _merge_task_preview_candidates_for_snapshot(
-            previews_by_snapshot=previews_by_snapshot,
-            snapshot_name=snapshot_name,
-            candidates=runtime_candidates,
-        )
+        for snapshot_name, rollout_paths in runtime_rollout_paths_by_snapshot.items():
+            runtime_candidates = _read_local_codex_task_preview_candidates_for_rollout_paths(
+                rollout_paths=rollout_paths,
+                now=current,
+                allow_inactive_fallback=has_live_session_for_snapshot(snapshot_name),
+            )
+            _merge_task_preview_candidates_for_snapshot(
+                previews_by_snapshot=previews_by_snapshot,
+                snapshot_name=snapshot_name,
+                candidates=runtime_candidates,
+            )
 
     return previews_by_snapshot
+
+
+def _resolve_runtime_rollout_paths_by_snapshot(
+    *,
+    runtime_dir: Path,
+    now: datetime,
+) -> dict[str, list[Path]]:
+    snapshot_name = _read_runtime_current_snapshot(runtime_dir)
+    if not snapshot_name:
+        return {}
+
+    sessions_dir = runtime_dir / "sessions"
+    if not sessions_dir.exists() or not sessions_dir.is_dir():
+        return {}
+
+    candidates = _candidate_rollout_files(sessions_dir, now)
+    if not candidates:
+        return {}
+
+    cutoff_ts = (now - timedelta(seconds=_active_window_seconds())).timestamp()
+    active_files = [path for path in candidates if _safe_mtime(path) >= cutoff_ts]
+    if not active_files:
+        return {}
+
+    current_path = runtime_dir / "current"
+    selection_changed_at = _safe_mtime(current_path)
+    (
+        registry_active_matches_current,
+        previous_snapshot_name,
+    ) = _resolve_runtime_registry_snapshot_transition(
+        current_snapshot_name=snapshot_name,
+    )
+
+    grouped_paths: dict[str, list[Path]] = {}
+    for path in _prefer_newest_sessions(active_files):
+        resolved_snapshot_name = snapshot_name
+        if selection_changed_at > 0:
+            rollout_started_at = _resolve_rollout_started_at_from_path(path)
+            if rollout_started_at is None or rollout_started_at <= 0:
+                rollout_started_at = _safe_mtime(path)
+
+            if (
+                rollout_started_at > 0
+                and (rollout_started_at + float(_unlabeled_process_start_tolerance_seconds()))
+                < selection_changed_at
+            ):
+                fallback_snapshot_name = previous_snapshot_name
+                if fallback_snapshot_name is None and registry_active_matches_current:
+                    fallback_snapshot_name = _infer_recent_previous_snapshot_name_from_registry(
+                        current_snapshot_name=snapshot_name,
+                        selection_changed_at=selection_changed_at,
+                        process_started_at=rollout_started_at,
+                    )
+                if fallback_snapshot_name and fallback_snapshot_name != snapshot_name:
+                    resolved_snapshot_name = fallback_snapshot_name
+
+        grouped_paths.setdefault(resolved_snapshot_name, []).append(path)
+
+    return grouped_paths
+
+
+def _resolve_runtime_registry_snapshot_transition(
+    *,
+    current_snapshot_name: str,
+) -> tuple[bool, str | None]:
+    payload = _read_registry_payload()
+    if payload is None:
+        return False, None
+
+    active_snapshot_name = payload.get("activeAccountName")
+    if not isinstance(active_snapshot_name, str):
+        return False, None
+
+    normalized_active_snapshot_name = active_snapshot_name.strip()
+    if not normalized_active_snapshot_name or normalized_active_snapshot_name != current_snapshot_name:
+        return False, None
+
+    previous_snapshot_name = payload.get("previousActiveAccountName")
+    if not isinstance(previous_snapshot_name, str):
+        return True, None
+    normalized_previous_snapshot_name = previous_snapshot_name.strip()
+    if not normalized_previous_snapshot_name or normalized_previous_snapshot_name == current_snapshot_name:
+        return True, None
+    return True, normalized_previous_snapshot_name
 
 
 def read_local_codex_task_previews_by_session_id(
@@ -2206,6 +2291,39 @@ def _read_local_codex_task_preview_candidates_for_sessions_dir(
         # Keep current task visible while a CLI session is still live even if
         # no new user message landed inside the active file-mtime window.
         source_files = _prefer_newest_sessions(candidates[:5])
+    else:
+        return []
+
+    collected: list[tuple[str, LocalCodexTaskPreview]] = []
+    for path in source_files:
+        session_id = _rollout_session_id_from_path(path)
+        if session_id is None:
+            continue
+        preview = _extract_latest_task_preview_from_file(path)
+        if preview is None:
+            continue
+        collected.append((session_id, preview))
+    return collected
+
+
+def _read_local_codex_task_preview_candidates_for_rollout_paths(
+    *,
+    rollout_paths: list[Path],
+    now: datetime,
+    allow_inactive_fallback: bool = False,
+) -> list[tuple[str, LocalCodexTaskPreview]]:
+    if not rollout_paths:
+        return []
+
+    unique_paths = _prefer_newest_sessions(list(dict.fromkeys(rollout_paths)))
+    cutoff_ts = (now - timedelta(seconds=_active_window_seconds())).timestamp()
+    active_files = [path for path in unique_paths if _safe_mtime(path) >= cutoff_ts]
+    if active_files:
+        source_files = _prefer_newest_sessions(active_files)
+    elif allow_inactive_fallback:
+        # Keep current task visible while a CLI session is still live even if
+        # no new user message landed inside the active file-mtime window.
+        source_files = _prefer_newest_sessions(unique_paths[:5])
     else:
         return []
 
