@@ -47,6 +47,7 @@ class RequestLogFilterOptionsResponse(DashboardModel):
 
 class RequestLogUsageSummaryAccountTokens(DashboardModel):
     account_id: str | None = None
+    account_email: str | None = Field(default=None, alias="accountEmail")
     tokens: int
     cost_usd: float
     cost_eur: float

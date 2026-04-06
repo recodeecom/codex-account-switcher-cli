@@ -120,6 +120,7 @@ export const RequestLogFilterOptionsSchema = z.object({
 
 export const RequestLogUsageSummaryAccountSchema = z.object({
   accountId: z.string().nullable(),
+  accountEmail: z.string().nullable().optional(),
   tokens: z.number().int().nonnegative(),
   costUsd: z.number().nonnegative(),
   costEur: z.number().nonnegative(),

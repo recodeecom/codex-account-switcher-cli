@@ -2,6 +2,7 @@ import { type CSSProperties, useEffect, useMemo, useState } from "react";
 import { Users } from "lucide-react";
 
 import { EmptyState } from "@/components/empty-state";
+import { Button } from "@/components/ui/button";
 import {
   AccountCard,
   type AccountCardProps,
@@ -23,7 +24,13 @@ import { normalizeRemainingPercentForDisplay } from "@/utils/quota-display";
 
 const RECENT_LAST_SEEN_SORT_WINDOW_MS = 30 * 60 * 1000;
 const WEEKLY_DEPLETED_SORT_THRESHOLD_PERCENT = 5;
+const QUOTA_SORT_BUCKET_PERCENT = 5;
 const ACCOUNT_CARDS_CLOCK_TICK_MS = 5_000;
+
+type OtherAccountsSortMode =
+  | "available-first"
+  | "usage-limit-available-first"
+  | "stable";
 
 function roundAveragePercent(
   values: Array<number | null | undefined>,
@@ -71,6 +78,16 @@ function normalizeNearZeroQuotaPercent(value: number): number {
     return 0;
   }
   return clamped;
+}
+
+function bucketizeQuotaPercent(value: number | null): number | null {
+  if (value == null) {
+    return null;
+  }
+  return (
+    Math.floor(normalizeNearZeroQuotaPercent(value) / QUOTA_SORT_BUCKET_PERCENT) *
+    QUOTA_SORT_BUCKET_PERCENT
+  );
 }
 
 function resolveSortableRemainingPercent(
@@ -143,24 +160,30 @@ function sortAccountsByAvailableQuota(
   nowMs: number,
 ): AccountSummary[] {
   const sortMetricsByAccountId = new Map(
-    accounts.map((account) => [
-      account.accountId,
-      {
-        primaryRemaining: resolveSortableRemainingPercent(
-          account,
-          "primary",
-          nowMs,
-        ),
-        primaryResetAtMs: resolveSortableResetAtMs(account, "primary"),
-        secondaryResetAtMs: resolveSortableResetAtMs(account, "secondary"),
-        secondaryRemaining: resolveSortableRemainingPercent(
-          account,
-          "secondary",
-          nowMs,
-        ),
-        title: account.displayName || account.email || account.accountId,
-      },
-    ]),
+    accounts.map((account) => {
+      const primaryRemaining = resolveSortableRemainingPercent(
+        account,
+        "primary",
+        nowMs,
+      );
+      const secondaryRemaining = resolveSortableRemainingPercent(
+        account,
+        "secondary",
+        nowMs,
+      );
+      return [
+        account.accountId,
+        {
+          primaryRemaining,
+          primarySortBucket: bucketizeQuotaPercent(primaryRemaining),
+          primaryResetAtMs: resolveSortableResetAtMs(account, "primary"),
+          secondaryResetAtMs: resolveSortableResetAtMs(account, "secondary"),
+          secondaryRemaining,
+          secondarySortBucket: bucketizeQuotaPercent(secondaryRemaining),
+          title: account.displayName || account.email || account.accountId,
+        },
+      ] as const;
+    }),
   );
 
   return [...accounts].sort((left, right) => {
@@ -184,8 +207,8 @@ function sortAccountsByAvailableQuota(
     }
 
     const primaryDiff = compareNullableNumberDesc(
-      leftMetrics.primaryRemaining,
-      rightMetrics.primaryRemaining,
+      leftMetrics.primarySortBucket,
+      rightMetrics.primarySortBucket,
     );
     if (primaryDiff !== 0) return primaryDiff;
 
@@ -202,13 +225,75 @@ function sortAccountsByAvailableQuota(
     }
 
     const secondaryDiff = compareNullableNumberDesc(
-      leftMetrics.secondaryRemaining,
-      rightMetrics.secondaryRemaining,
+      leftMetrics.secondarySortBucket,
+      rightMetrics.secondarySortBucket,
     );
     if (secondaryDiff !== 0) return secondaryDiff;
 
     return leftMetrics.title.localeCompare(rightMetrics.title);
   });
+}
+
+function sortAccountsByStableOrder(
+  accounts: AccountSummary[],
+  stableOrder: Map<string, number>,
+): AccountSummary[] {
+  return [...accounts].sort((left, right) => {
+    const leftRank = stableOrder.get(left.accountId) ?? Number.MAX_SAFE_INTEGER;
+    const rightRank = stableOrder.get(right.accountId) ?? Number.MAX_SAFE_INTEGER;
+    if (leftRank !== rightRank) {
+      return leftRank - rightRank;
+    }
+    return left.accountId.localeCompare(right.accountId);
+  });
+}
+
+function isUsageLimitAvailableAccount(
+  account: AccountSummary,
+  nowMs: number,
+): boolean {
+  const primaryRemaining = resolveSortableRemainingPercent(
+    account,
+    "primary",
+    nowMs,
+  );
+  const secondaryRemaining = resolveSortableRemainingPercent(
+    account,
+    "secondary",
+    nowMs,
+  );
+  const usageLimitHit =
+    account.status === "rate_limited" ||
+    account.status === "quota_exceeded" ||
+    (primaryRemaining != null &&
+      normalizeNearZeroQuotaPercent(primaryRemaining) <= 0);
+  const weeklyAvailable =
+    secondaryRemaining == null ||
+    normalizeNearZeroQuotaPercent(secondaryRemaining) > 0;
+
+  return usageLimitHit && weeklyAvailable;
+}
+
+function sortAccountsByUsageLimitAvailableFirst(
+  accounts: AccountSummary[],
+  nowMs: number,
+): AccountSummary[] {
+  const usageLimitAvailable: AccountSummary[] = [];
+  const otherAccounts: AccountSummary[] = [];
+
+  const orderedByAvailability = sortAccountsByLastSeenAndAvailableQuota(
+    accounts,
+    nowMs,
+  );
+  for (const account of orderedByAvailability) {
+    if (isUsageLimitAvailableAccount(account, nowMs)) {
+      usageLimitAvailable.push(account);
+    } else {
+      otherAccounts.push(account);
+    }
+  }
+
+  return [...usageLimitAvailable, ...otherAccounts];
 }
 
 function resolveMostRecentUsageRecordedAtMs(account: AccountSummary): number | null {
@@ -345,6 +430,8 @@ export function AccountCards({
   onAction,
 }: AccountCardsProps) {
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
+  const [otherAccountsSortMode, setOtherAccountsSortMode] =
+    useState<OtherAccountsSortMode>("available-first");
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -352,6 +439,14 @@ export function AccountCards({
     }, ACCOUNT_CARDS_CLOCK_TICK_MS);
     return () => window.clearInterval(timer);
   }, []);
+
+  const stableAccountOrder = useMemo(
+    () =>
+      new Map(
+        accounts.map((account, index) => [account.accountId, index] as const),
+      ),
+    [accounts],
+  );
 
   const primaryWindowLabel = formatWindowLabel(
     "primary",
@@ -402,11 +497,22 @@ export function AccountCards({
     return {
       working: sortAccountsByAvailableQuota(working, nowMs),
       remaining: [
-        ...sortAccountsByLastSeenAndAvailableQuota(active, nowMs),
-        ...sortAccountsByLastSeenAndAvailableQuota(deactivated, nowMs),
+        ...(otherAccountsSortMode === "available-first"
+          ? sortAccountsByLastSeenAndAvailableQuota(active, nowMs)
+            : otherAccountsSortMode === "usage-limit-available-first"
+              ? sortAccountsByUsageLimitAvailableFirst(active, nowMs)
+            : sortAccountsByStableOrder(active, stableAccountOrder)),
+        ...(otherAccountsSortMode === "available-first"
+          ? sortAccountsByLastSeenAndAvailableQuota(deactivated, nowMs)
+          : otherAccountsSortMode === "usage-limit-available-first"
+            ? sortAccountsByUsageLimitAvailableFirst(deactivated, nowMs)
+            : sortAccountsByStableOrder(
+                deactivated,
+                stableAccountOrder,
+              )),
       ],
     };
-  }, [accounts, nowMs]);
+  }, [accounts, nowMs, otherAccountsSortMode, stableAccountOrder]);
   const workingSummary = useMemo(() => {
     const liveSessions = groupedAccounts.working.reduce((sum, account) => {
       if (!hasFreshLiveTelemetry(account, nowMs)) {
@@ -493,54 +599,108 @@ export function AccountCards({
     </div>
   );
 
-  if (groupedAccounts.working.length === 0) {
-    return renderGrid(groupedAccounts.remaining, "all");
-  }
-
   return (
     <div className="space-y-5">
-      <section className="space-y-4 rounded-2xl border border-cyan-500/25 bg-cyan-500/[0.04] p-4 md:p-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="space-y-1">
-            <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-cyan-700 dark:text-cyan-300">
-              Working now
-            </h3>
-            <p className="text-xs text-muted-foreground">
-              Accounts with active CLI sessions are grouped first so you can
-              switch faster.
-            </p>
+      {groupedAccounts.working.length > 0 ? (
+        <section className="space-y-4 rounded-2xl border border-cyan-500/25 bg-cyan-500/[0.04] p-4 md:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="space-y-1">
+              <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-cyan-700 dark:text-cyan-300">
+                Working now
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                Accounts with active CLI sessions are grouped first so you can
+                switch faster.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <span className="inline-flex items-center rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-1 text-[11px] font-semibold tabular-nums text-cyan-700 dark:text-cyan-300">
+                {groupedAccounts.working.length} working
+              </span>
+              {workingSummary.liveSessions > 0 ? (
+                <span className="inline-flex items-center rounded-full border border-cyan-500/25 bg-cyan-500/10 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-cyan-700 dark:text-cyan-300">
+                  {workingSummary.liveSessions} live sessions
+                </span>
+              ) : null}
+              {workingSummary.avgPrimaryRemaining !== null ? (
+                <span className="inline-flex items-center rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-emerald-700 dark:text-emerald-300">
+                  {primaryWindowLabel} avg {workingSummary.avgPrimaryRemaining}%
+                </span>
+              ) : null}
+              {workingSummary.avgSecondaryRemaining !== null ? (
+                <span className="inline-flex items-center rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-emerald-700 dark:text-emerald-300">
+                  Weekly avg {workingSummary.avgSecondaryRemaining}%
+                </span>
+              ) : null}
+            </div>
           </div>
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <span className="inline-flex items-center rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-1 text-[11px] font-semibold tabular-nums text-cyan-700 dark:text-cyan-300">
-              {groupedAccounts.working.length} working
-            </span>
-            {workingSummary.liveSessions > 0 ? (
-              <span className="inline-flex items-center rounded-full border border-cyan-500/25 bg-cyan-500/10 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-cyan-700 dark:text-cyan-300">
-                {workingSummary.liveSessions} live sessions
-              </span>
-            ) : null}
-            {workingSummary.avgPrimaryRemaining !== null ? (
-              <span className="inline-flex items-center rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-emerald-700 dark:text-emerald-300">
-                {primaryWindowLabel} avg {workingSummary.avgPrimaryRemaining}%
-              </span>
-            ) : null}
-            {workingSummary.avgSecondaryRemaining !== null ? (
-              <span className="inline-flex items-center rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-emerald-700 dark:text-emerald-300">
-                Weekly avg {workingSummary.avgSecondaryRemaining}%
-              </span>
-            ) : null}
-          </div>
-        </div>
-        {renderGrid(groupedAccounts.working, "working")}
-      </section>
+          {renderGrid(groupedAccounts.working, "working")}
+        </section>
+      ) : null}
 
       {groupedAccounts.remaining.length > 0 ? (
         <section className="space-y-2.5">
-          <div className="flex items-center gap-2.5 px-0.5">
-            <h3 className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-              Other accounts
-            </h3>
-            <div className="h-px flex-1 bg-border/70" />
+          <div className="flex flex-wrap items-center justify-between gap-2.5 px-0.5">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <h3 className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                Other accounts
+              </h3>
+              <div className="h-px w-12 bg-border/70 sm:w-24" />
+            </div>
+            <div
+              className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-background/70 p-1"
+              role="group"
+              aria-label="Other accounts order"
+            >
+              <Button
+                type="button"
+                size="sm"
+                variant={
+                  otherAccountsSortMode === "available-first"
+                    ? "secondary"
+                    : "ghost"
+                }
+                className="h-7 px-2.5 text-[11px]"
+                aria-pressed={otherAccountsSortMode === "available-first"}
+                onClick={() => {
+                  setOtherAccountsSortMode("available-first");
+                }}
+              >
+                Available first
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={
+                  otherAccountsSortMode === "usage-limit-available-first"
+                    ? "secondary"
+                    : "ghost"
+                }
+                className="h-7 px-2.5 text-[11px]"
+                aria-pressed={
+                  otherAccountsSortMode === "usage-limit-available-first"
+                }
+                onClick={() => {
+                  setOtherAccountsSortMode("usage-limit-available-first");
+                }}
+              >
+                Usage-limit available
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={
+                  otherAccountsSortMode === "stable" ? "secondary" : "ghost"
+                }
+                className="h-7 px-2.5 text-[11px]"
+                aria-pressed={otherAccountsSortMode === "stable"}
+                onClick={() => {
+                  setOtherAccountsSortMode("stable");
+                }}
+              >
+                Stable order
+              </Button>
+            </div>
           </div>
           {renderGrid(groupedAccounts.remaining, "remaining")}
         </section>

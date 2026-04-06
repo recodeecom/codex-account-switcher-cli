@@ -105,7 +105,7 @@ function buildDonutItems(accounts: AccountSummary[], window: UsageSummaryWindow)
   const knownAccountIds = new Set(accounts.map((account) => account.accountId));
   const unknownRowsByAccountId = new Map<
     string,
-    { accountId: string; tokens: number; costEur: number }
+    { accountId: string; accountEmail: string | null; tokens: number; costEur: number }
   >();
   for (const row of window.accounts) {
     if (!row.accountId || knownAccountIds.has(row.accountId)) {
@@ -115,6 +115,7 @@ function buildDonutItems(accounts: AccountSummary[], window: UsageSummaryWindow)
     if (!existing) {
       unknownRowsByAccountId.set(row.accountId, {
         accountId: row.accountId,
+        accountEmail: row.accountEmail ?? null,
         tokens: Math.max(0, row.tokens),
         costEur: Math.max(0, row.costEur),
       });
@@ -122,6 +123,7 @@ function buildDonutItems(accounts: AccountSummary[], window: UsageSummaryWindow)
     }
     unknownRowsByAccountId.set(row.accountId, {
       accountId: row.accountId,
+      accountEmail: existing.accountEmail ?? row.accountEmail ?? null,
       tokens: existing.tokens + Math.max(0, row.tokens),
       costEur: existing.costEur + Math.max(0, row.costEur),
     });
@@ -134,9 +136,9 @@ function buildDonutItems(accounts: AccountSummary[], window: UsageSummaryWindow)
     if (!row.accountId) continue;
     items.push({
       id: row.accountId,
-      label: row.accountId,
+      label: row.accountEmail || row.accountId,
       labelSuffix: "",
-      isEmail: false,
+      isEmail: !!row.accountEmail,
       value: row.tokens,
       costEur: row.costEur,
     });

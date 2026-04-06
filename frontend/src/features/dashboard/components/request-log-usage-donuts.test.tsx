@@ -81,6 +81,33 @@ describe("RequestLogUsageDonuts", () => {
     expect(screen.getAllByText("Unassigned").length).toBeGreaterThanOrEqual(2);
   });
 
+  it("uses accountEmail from usage summary for deleted accounts not present in active account list", () => {
+    render(
+      <RequestLogUsageDonuts
+        accounts={[]}
+        usageSummary={{
+          last5h: {
+            totalTokens: 120,
+            totalCostUsd: 0.3,
+            totalCostEur: 0.28,
+            accounts: [{ accountId: "acc-deleted", accountEmail: "deleted@example.com", tokens: 120, costUsd: 0.3, costEur: 0.28 }],
+          },
+          last7d: {
+            totalTokens: 120,
+            totalCostUsd: 0.3,
+            totalCostEur: 0.28,
+            accounts: [{ accountId: "acc-deleted", accountEmail: "deleted@example.com", tokens: 120, costUsd: 0.3, costEur: 0.28 }],
+          },
+          fxRateUsdToEur: 0.92,
+        }}
+        fallback={{ last5h: false, last7d: false, active: false }}
+      />,
+    );
+
+    expect(screen.getAllByText("deleted@example.com").length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText("acc-deleted")).not.toBeInTheDocument();
+  });
+
   it("groups duplicate identities into one legend row with combined consumed usage", () => {
     render(
       <RequestLogUsageDonuts

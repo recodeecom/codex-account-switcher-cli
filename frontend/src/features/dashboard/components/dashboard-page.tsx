@@ -67,19 +67,23 @@ export function DashboardPage() {
     (account: AccountSummary, action: string) => {
       switch (action) {
         case "details":
-          navigate(`/accounts?selected=${account.accountId}`);
+          navigate(`/accounts?selected=${encodeURIComponent(account.accountId)}`);
           break;
         case "resume":
           resumeMutation.mutate(account.accountId);
           break;
         case "reauth":
-          navigate(`/accounts?selected=${account.accountId}&oauth=prompt`);
+          navigate(
+            `/accounts?selected=${encodeURIComponent(account.accountId)}&oauth=prompt`,
+          );
           break;
         case "useLocal":
           useLocalMutation.mutate(account.accountId, {
             onError: (error) => {
               if (isCodexAuthSnapshotMissingError(error)) {
-                navigate(`/accounts?selected=${account.accountId}`);
+                navigate(
+                  `/accounts?selected=${encodeURIComponent(account.accountId)}`,
+                );
               }
             },
           });

@@ -74,7 +74,7 @@ class DashboardRepository:
         account_ids: list[str] | None = None,
         *,
         active_since: datetime | None = None,
-        limit_per_account: int = 4,
+        limit_per_account: int | None = 4,
     ) -> dict[str, list[AccountSessionTaskPreview]]:
         return await self._accounts_repo.list_codex_session_task_previews_by_account(
             account_ids,

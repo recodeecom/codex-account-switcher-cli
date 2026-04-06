@@ -168,12 +168,12 @@ export function SessionsPage() {
   const selectedAccountId = searchParams.get("accountId");
 
   const sessionsQuery = useQuery({
-    queryKey: ["sticky-sessions", "codex-sessions", { offset, limit, activeOnly: true }],
+    queryKey: ["sticky-sessions", "codex-sessions", { offset, limit, activeOnly: false }],
     queryFn: () =>
       listStickySessions({
         kind: "codex_session",
         staleOnly: false,
-        activeOnly: true,
+        activeOnly: false,
         offset,
         limit,
       }),

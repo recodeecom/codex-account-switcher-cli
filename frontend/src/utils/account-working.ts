@@ -449,11 +449,9 @@ export function hasActiveCliSessionSignal(
     hasFreshTaskPreviewSignal(account) ||
     getFreshDebugRawSampleCount(account, nowMs) > 0;
   if (!hasHardSignal) {
-    usageLimitHitByAccount.delete(account.accountId);
     return false;
   }
   if (shouldSuppressNoCliSampleSessionSignal(account, nowMs)) {
-    usageLimitHitByAccount.delete(account.accountId);
     return false;
   }
 
@@ -623,11 +621,9 @@ export function getWorkingNowUsageLimitHitCountdownMs(
     (account.codexAuth?.hasLiveSession ?? false) ||
     hasTaskPreviewSignal;
   if (!hasActiveCliSessionSignal) {
-    usageLimitHitByAccount.delete(account.accountId);
     return null;
   }
   if (shouldSuppressNoCliSampleSessionSignal(account, nowMs)) {
-    usageLimitHitByAccount.delete(account.accountId);
     return null;
   }
 

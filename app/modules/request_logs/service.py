@@ -46,6 +46,7 @@ class RequestLogsPage:
 @dataclass(frozen=True, slots=True)
 class RequestLogUsageAccountTokens:
     account_id: str | None
+    account_email: str | None
     tokens: int
     cost_usd: float
     cost_eur: float
@@ -215,6 +216,7 @@ def _build_usage_window(
     accounts = [
         RequestLogUsageAccountTokens(
             account_id=row.account_id,
+            account_email=row.account_email,
             tokens=max(0, row.tokens_5h if window == "5h" else row.tokens_7d),
             cost_usd=max(0.0, getattr(row, cost_attr)),
             cost_eur=max(0.0, getattr(row, cost_attr) * fx_rate_usd_to_eur),

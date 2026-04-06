@@ -221,7 +221,16 @@ describe("AccountCard", () => {
     expect(
       within(lockedAccountOverlay as HTMLElement).getByText("primary@example.com"),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Unlock" })).toBeInTheDocument();
+    expect(
+      within(lockedAccountOverlay as HTMLElement).getByRole("button", {
+        name: "Unlock",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(lockedAccountOverlay as HTMLElement).getByRole("button", {
+        name: "Delete",
+      }),
+    ).toBeInTheDocument();
   });
 
   it("shows codex-only subtitle only for self-serve business usage based plan", () => {
@@ -254,12 +263,42 @@ describe("AccountCard", () => {
       },
     });
     const onAction = vi.fn();
+    window.history.replaceState({}, "", "/dashboard");
 
     render(<AccountCard account={account} onAction={onAction} />);
 
     await user.click(screen.getByRole("button", { name: "Unlock" }));
 
     expect(onAction).toHaveBeenCalledWith(account, "reauth");
+    expect(window.location.pathname).toBe("/dashboard");
+    expect(window.location.search).toBe("");
+  });
+
+  it("calls delete action when lock-overlay delete is clicked for a missing snapshot", async () => {
+    const user = userEvent.setup({ delay: null });
+    const account = createAccountSummary({
+      codexAuth: {
+        hasSnapshot: false,
+        snapshotName: null,
+        activeSnapshotName: null,
+        isActiveSnapshot: false,
+      },
+    });
+    const onAction = vi.fn();
+
+    render(<AccountCard account={account} onAction={onAction} />);
+
+    const lockedAccountHeading = screen.getByText("Locked account");
+    const lockedAccountOverlay = lockedAccountHeading.closest("div.relative");
+    expect(lockedAccountOverlay).not.toBeNull();
+
+    await user.click(
+      within(lockedAccountOverlay as HTMLElement).getByRole("button", {
+        name: "Delete",
+      }),
+    );
+
+    expect(onAction).toHaveBeenCalledWith(account, "delete");
   });
 
   it("navigates to OAuth prompt when unlock is clicked without action handler", async () => {
@@ -1642,7 +1681,10 @@ describe("AccountCard", () => {
 
     render(<AccountCard account={account} />);
 
-    expect(screen.getByText("working...")).toBeInTheDocument();
+    const workingIndicator = screen.getByText("working...");
+    expect(workingIndicator).toBeInTheDocument();
+    expect(workingIndicator.closest("div")?.className).not.toContain("bg-cyan-500/10");
+    expect(workingIndicator.closest("div")?.className).toContain("border-cyan-500/35");
     expect(screen.queryByText("Live token status")).not.toBeInTheDocument();
     expect(screen.getByText("63%")).toBeInTheDocument();
   });

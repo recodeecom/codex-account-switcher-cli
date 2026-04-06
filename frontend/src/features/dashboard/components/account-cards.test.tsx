@@ -1,4 +1,4 @@
-import { act, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { AccountCards } from "@/features/dashboard/components/account-cards";
@@ -701,6 +701,142 @@ describe("AccountCards", () => {
       "weekly-depleted-recent@example.com",
       "weekly-depleted-later@example.com",
     ]);
+  });
+
+  it("allows switching Other accounts sorting to stable order", () => {
+    const first = createAccountSummary({
+      accountId: "acc_stable_first",
+      email: "stable-first@example.com",
+      displayName: "stable-first@example.com",
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "stable-first",
+        activeSnapshotName: "stable-first",
+        isActiveSnapshot: true,
+      },
+      usage: {
+        primaryRemainingPercent: 12,
+        secondaryRemainingPercent: 42,
+      },
+    });
+    const second = createAccountSummary({
+      accountId: "acc_stable_second",
+      email: "stable-second@example.com",
+      displayName: "stable-second@example.com",
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "stable-second",
+        activeSnapshotName: "stable-second",
+        isActiveSnapshot: true,
+      },
+      usage: {
+        primaryRemainingPercent: 85,
+        secondaryRemainingPercent: 62,
+      },
+    });
+    const third = createAccountSummary({
+      accountId: "acc_stable_third",
+      email: "stable-third@example.com",
+      displayName: "stable-third@example.com",
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "stable-third",
+        activeSnapshotName: "stable-third",
+        isActiveSnapshot: true,
+      },
+      usage: {
+        primaryRemainingPercent: 40,
+        secondaryRemainingPercent: 55,
+      },
+    });
+
+    const { container } = render(
+      <AccountCards
+        accounts={[first, second, third]}
+        primaryWindow={null}
+        secondaryWindow={null}
+      />,
+    );
+
+    let cards = Array.from(container.querySelectorAll(".card-hover"));
+    let cardText = cards.map((card) => card.textContent ?? "");
+    expect(cardText[0]).toContain("stable-second");
+    expect(cardText[1]).toContain("stable-third");
+    expect(cardText[2]).toContain("stable-first");
+
+    fireEvent.click(screen.getByRole("button", { name: "Stable order" }));
+
+    cards = Array.from(container.querySelectorAll(".card-hover"));
+    cardText = cards.map((card) => card.textContent ?? "");
+    expect(cardText[0]).toContain("stable-first");
+    expect(cardText[1]).toContain("stable-second");
+    expect(cardText[2]).toContain("stable-third");
+  });
+
+  it("can prioritize usage-limit available accounts at the top of Other accounts", () => {
+    const normalHigh = createAccountSummary({
+      accountId: "acc_normal_high",
+      email: "normal-high@example.com",
+      displayName: "normal-high@example.com",
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "normal-high",
+        activeSnapshotName: "normal-high",
+        isActiveSnapshot: true,
+      },
+      usage: {
+        primaryRemainingPercent: 92,
+        secondaryRemainingPercent: 65,
+      },
+    });
+    const usageLimitAvailable = createAccountSummary({
+      accountId: "acc_usage_limit_available",
+      email: "usage-limit-available@example.com",
+      displayName: "usage-limit-available@example.com",
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "usage-limit-available",
+        activeSnapshotName: "usage-limit-available",
+        isActiveSnapshot: true,
+      },
+      usage: {
+        primaryRemainingPercent: 0,
+        secondaryRemainingPercent: 78,
+      },
+    });
+    const normalLow = createAccountSummary({
+      accountId: "acc_normal_low",
+      email: "normal-low@example.com",
+      displayName: "normal-low@example.com",
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "normal-low",
+        activeSnapshotName: "normal-low",
+        isActiveSnapshot: true,
+      },
+      usage: {
+        primaryRemainingPercent: 18,
+        secondaryRemainingPercent: 82,
+      },
+    });
+
+    const { container } = render(
+      <AccountCards
+        accounts={[normalHigh, usageLimitAvailable, normalLow]}
+        primaryWindow={null}
+        secondaryWindow={null}
+      />,
+    );
+
+    let cards = Array.from(container.querySelectorAll(".card-hover"));
+    let cardText = cards.map((card) => card.textContent ?? "");
+    expect(cardText[0]).toContain("normal-high");
+
+    fireEvent.click(screen.getByRole("button", { name: "Usage-limit available" }));
+
+    cards = Array.from(container.querySelectorAll(".card-hover"));
+    cardText = cards.map((card) => card.textContent ?? "");
+    expect(cardText[0]).toContain("usage-limit-available");
   });
 
   it("prioritizes non-zero 5h remaining accounts above zero-percent accounts", () => {

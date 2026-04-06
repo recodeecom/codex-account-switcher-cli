@@ -25,6 +25,7 @@ class _RequestLogFilters:
 @dataclass(frozen=True, slots=True)
 class RequestLogTokenUsageRow:
     account_id: str | None
+    account_email: str | None
     tokens_5h: int
     tokens_7d: int
     cost_usd_5h: float
@@ -52,6 +53,7 @@ class RequestLogsRepository:
         stmt = (
             select(
                 RequestLog.account_id,
+                Account.email,
                 func.coalesce(
                     func.sum(case((RequestLog.requested_at >= since_5h, token_expr), else_=0)),
                     0,
@@ -63,20 +65,23 @@ class RequestLogsRepository:
                 ).label("cost_usd_5h"),
                 func.coalesce(func.sum(cost_usd_expr), 0.0).label("cost_usd_7d"),
             )
+            .select_from(RequestLog)
+            .join(Account, Account.id == RequestLog.account_id, isouter=True)
             .where(RequestLog.requested_at >= since_7d)
-            .group_by(RequestLog.account_id)
+            .group_by(RequestLog.account_id, Account.email)
             .order_by(RequestLog.account_id.asc())
         )
         result = await self._session.execute(stmt)
         return [
             RequestLogTokenUsageRow(
                 account_id=account_id,
+                account_email=account_email,
                 tokens_5h=int(tokens_5h or 0),
                 tokens_7d=int(tokens_7d or 0),
                 cost_usd_5h=float(cost_usd_5h or 0.0),
                 cost_usd_7d=float(cost_usd_7d or 0.0),
             )
-            for account_id, tokens_5h, tokens_7d, cost_usd_5h, cost_usd_7d in result.all()
+            for account_id, account_email, tokens_5h, tokens_7d, cost_usd_5h, cost_usd_7d in result.all()
         ]
 
     async def aggregate_by_bucket(

@@ -449,6 +449,75 @@ describe("isAccountWorkingNow", () => {
     expect(isAccountWorkingNow(base, afterGraceMs)).toBe(false);
   });
 
+  it("does not restart usage-limit grace after a transient no-signal gap", () => {
+    const base = createAccountSummary({
+      status: "active",
+      usage: {
+        primaryRemainingPercent: 0,
+        secondaryRemainingPercent: 88,
+      },
+      resetAtPrimary: "2026-04-04T14:30:00.000Z",
+      codexLiveSessionCount: 1,
+      codexTrackedSessionCount: 1,
+      codexSessionCount: 1,
+      codexCurrentTaskPreview: "Investigate quota termination behavior",
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+      lastUsageRecordedAtPrimary: "2026-04-04T11:58:30.000Z",
+      lastUsageRecordedAtSecondary: "2026-04-04T11:58:30.000Z",
+    });
+
+    const firstNowMs = new Date("2026-04-04T11:59:00.000Z").getTime();
+    expect(getWorkingNowUsageLimitHitCountdownMs(base, firstNowMs)).toBeGreaterThan(0);
+
+    const afterGraceMs = new Date("2026-04-04T12:00:10.000Z").getTime();
+    expect(getWorkingNowUsageLimitHitCountdownMs(base, afterGraceMs)).toBe(0);
+
+    const noSignalGap = {
+      ...base,
+      codexLiveSessionCount: 0,
+      codexTrackedSessionCount: 0,
+      codexSessionCount: 0,
+      codexCurrentTaskPreview: null,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
+        hasLiveSession: false,
+      },
+      lastUsageRecordedAtPrimary: null,
+      lastUsageRecordedAtSecondary: null,
+    };
+    expect(hasActiveCliSessionSignal(noSignalGap, afterGraceMs + 500)).toBe(false);
+
+    const resumedSameCycle = {
+      ...base,
+      codexLiveSessionCount: 0,
+      codexTrackedSessionCount: 0,
+      codexSessionCount: 0,
+      codexCurrentTaskPreview: null,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+      lastUsageRecordedAtPrimary: "2026-04-04T12:00:20.000Z",
+      lastUsageRecordedAtSecondary: "2026-04-04T12:00:20.000Z",
+    };
+    const resumedNowMs = new Date("2026-04-04T12:00:20.000Z").getTime();
+
+    expect(getWorkingNowUsageLimitHitCountdownMs(resumedSameCycle, resumedNowMs)).toBe(0);
+    expect(isAccountWorkingNow(resumedSameCycle, resumedNowMs)).toBe(false);
+  });
+
   it("returns false when no-live-telemetry fallback reports 0% even if baseline usage is higher", () => {
     const nowMs = new Date("2026-04-04T12:00:00.000Z").getTime();
     const account = createAccountSummary({

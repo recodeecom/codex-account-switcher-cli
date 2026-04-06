@@ -32,7 +32,6 @@ from app.modules.health.schemas import BridgeRingInfo, HealthCheckResponse, Heal
 from app.modules.proxy.ring_membership import RING_STALE_THRESHOLD_SECONDS
 
 router = APIRouter(tags=["health"])
-_ACTIVE_CLI_SIGNAL_WINDOW = timedelta(minutes=5)
 _TASK_PREVIEW_STATUS_ONLY_RE = re.compile(
     r"(?i)^(?:task\s+)?(?:is\s+)?(?:already\s+)?(?:done|complete(?:d)?|finished)(?:\s+already)?[.!]?$"
 )
@@ -369,11 +368,9 @@ async def live_usage_mapping(
     account_ids = [account.id for account in accounts]
     tracked_session_counts = await repository.list_codex_session_counts_by_account(
         account_ids=account_ids,
-        active_since=utcnow() - _ACTIVE_CLI_SIGNAL_WINDOW,
     )
     task_previews = await repository.list_codex_current_task_preview_by_account(
         account_ids=account_ids,
-        active_since=utcnow() - _ACTIVE_CLI_SIGNAL_WINDOW,
     )
 
     mapped_snapshot_names: set[str] = set()
@@ -625,7 +622,6 @@ async def _read_live_usage_task_previews_by_snapshot() -> dict[str, list[_LiveUs
             if account_ids:
                 task_previews = await repository.list_codex_current_task_preview_by_account(
                     account_ids=account_ids,
-                    active_since=utcnow() - _ACTIVE_CLI_SIGNAL_WINDOW,
                 )
 
             previews_by_snapshot: dict[str, list[_LiveUsageTaskPreview]] = {}

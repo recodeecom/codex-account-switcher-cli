@@ -123,6 +123,7 @@ async def get_request_log_usage_summary(
             accounts=[
                 RequestLogUsageSummaryAccountTokens(
                     account_id=row.account_id,
+                    account_email=row.account_email,
                     tokens=row.tokens,
                     cost_usd=row.cost_usd,
                     cost_eur=row.cost_eur,
@@ -137,6 +138,7 @@ async def get_request_log_usage_summary(
             accounts=[
                 RequestLogUsageSummaryAccountTokens(
                     account_id=row.account_id,
+                    account_email=row.account_email,
                     tokens=row.tokens,
                     cost_usd=row.cost_usd,
                     cost_eur=row.cost_eur,

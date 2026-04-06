@@ -119,7 +119,6 @@ function isCodexOnlyPlanType(planType: string): boolean {
 const NEAR_ZERO_QUOTA_PERCENT = 5;
 const WAITING_FOR_NEW_TASK_LABEL = "Waiting for new task";
 const TASK_FINISHED_LABEL = "Task finished";
-const SESSION_TASK_PREVIEW_MAX_ROWS = 4;
 const NEXT_TASK_PREVIEW_PATTERN = /\bnext(?:\.?js)?\b|\bturbopack\b/i;
 
 function hasNextTaskHint(taskPreview: string | null | undefined): boolean {
@@ -139,6 +138,23 @@ function NextTaskBadge() {
     >
       N
     </span>
+  );
+}
+
+function TaskFinishedPill({ className }: { className?: string }) {
+  return (
+    <div
+      className={cn(
+        "inline-flex h-7 items-center gap-2 rounded-full bg-emerald-500/10 px-2.5 text-emerald-200",
+        className,
+      )}
+    >
+      <span className="sr-only">Task finished</span>
+      <span className="h-1.5 w-1.5 rounded-full bg-current" />
+      <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-100/95">
+        task finished
+      </span>
+    </div>
   );
 }
 
@@ -761,7 +777,10 @@ export function AccountCard(props: AccountCardProps) {
   ]);
 
   const handleUnlock = () => {
-    onAction?.(account, "reauth");
+    if (onAction) {
+      onAction(account, "reauth");
+      return;
+    }
 
     const selectedAccountId = encodeURIComponent(account.accountId);
     const unlockTarget = `/accounts?selected=${selectedAccountId}&oauth=prompt`;
@@ -884,7 +903,6 @@ export function AccountCard(props: AccountCardProps) {
         seenSessionKeys.add(sessionKey);
         return true;
       })
-      .slice(0, SESSION_TASK_PREVIEW_MAX_ROWS)
       .map((preview) => ({
         sessionKey: preview.sessionKey.trim(),
         taskPreview: resolveSessionTaskPreview(preview.taskPreview),
@@ -998,7 +1016,7 @@ export function AccountCard(props: AccountCardProps) {
                   ) : null}
                 </Badge>
               ) : showWorkingIndicator ? (
-                <div className="inline-flex h-7 items-center gap-2 rounded-full bg-cyan-500/10 px-2.5 text-cyan-200">
+                <div className="inline-flex h-7 items-center gap-2 rounded-full border border-cyan-500/35 px-2.5 text-cyan-200">
                   <span className="sr-only">Codex working</span>
                   <span className="flex items-end gap-1" aria-hidden>
                     <span className="h-2 w-1 rounded-full bg-zinc-100/95 shadow-[0_0_8px_rgba(255,255,255,0.25)] animate-bounce [animation-duration:900ms]" />
@@ -1011,13 +1029,7 @@ export function AccountCard(props: AccountCardProps) {
                   </span>
                 </div>
               ) : showTaskFinishedIndicator ? (
-                <div className="inline-flex h-7 items-center gap-2 rounded-full bg-emerald-500/10 px-2.5 text-emerald-200">
-                  <span className="sr-only">Task finished</span>
-                  <span className="h-1.5 w-1.5 rounded-full bg-current" />
-                  <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-100/95">
-                    task finished
-                  </span>
-                </div>
+                <TaskFinishedPill />
               ) : null}
               {showWeeklyUsageLimitDetailBadge ? (
                 <Badge
@@ -1189,26 +1201,32 @@ export function AccountCard(props: AccountCardProps) {
                     <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-700 dark:text-cyan-300">
                       CLI session tasks
                     </p>
-                    <ul className="space-y-1.5">
+                    <ul className="space-y-2">
                       {sessionTaskPreviews.map((preview) => (
                         <li
                           key={preview.sessionKey}
-                          className="grid grid-cols-[auto,1fr] items-start gap-2 text-xs"
+                          className="rounded-md border border-cyan-500/20 bg-cyan-500/[0.05] p-1.5"
                         >
-                          <span className="inline-flex items-center rounded border border-cyan-500/25 bg-cyan-500/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wide text-cyan-700 dark:text-cyan-300">
-                            {formatSessionKeyLabel(preview.sessionKey)}
-                          </span>
-                          <span
-                            className="break-words whitespace-pre-wrap leading-relaxed text-zinc-200/90"
-                            title={preview.taskPreview}
-                          >
-                            <span className="inline-flex items-center gap-1.5">
-                              {hasNextTaskHint(preview.taskPreview) ? (
-                                <NextTaskBadge />
-                              ) : null}
-                              <span>{preview.taskPreview}</span>
+                          <div className="space-y-1.5">
+                            <span className="inline-flex w-full items-center rounded border border-cyan-500/25 bg-cyan-500/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wide text-cyan-700 dark:text-cyan-300">
+                              {formatSessionKeyLabel(preview.sessionKey)}
                             </span>
-                          </span>
+                            <div
+                              className="rounded-lg border border-white/10 bg-black/25 px-2.5 py-2"
+                              title={preview.taskPreview}
+                            >
+                              {preview.taskPreview === TASK_FINISHED_LABEL ? (
+                                <TaskFinishedPill />
+                              ) : (
+                                <span className="inline-flex items-center gap-1.5 break-words whitespace-pre-wrap text-xs leading-relaxed text-zinc-100/95">
+                                  {hasNextTaskHint(preview.taskPreview) ? (
+                                    <NextTaskBadge />
+                                  ) : null}
+                                  <span>{preview.taskPreview}</span>
+                                </span>
+                              )}
+                            </div>
+                          </div>
                         </li>
                       ))}
                     </ul>
@@ -1458,15 +1476,28 @@ export function AccountCard(props: AccountCardProps) {
             >
               {lockedAccountIdentity}
             </p>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="h-7 rounded-lg border-white/15 bg-white/[0.04] px-3 text-xs font-semibold text-zinc-100 hover:border-cyan-400/35 hover:bg-cyan-400/12 hover:text-cyan-100"
-              onClick={handleUnlock}
-            >
-              Unlock
-            </Button>
+            <div className="mt-0.5 flex w-full items-center justify-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7 rounded-lg border-white/15 bg-white/[0.04] px-3 text-xs font-semibold text-zinc-100 hover:border-cyan-400/35 hover:bg-cyan-400/12 hover:text-cyan-100"
+                onClick={handleUnlock}
+              >
+                Unlock
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7 gap-1 rounded-lg border-red-500/25 bg-red-500/10 px-3 text-xs font-semibold text-red-200 hover:border-red-400/35 hover:bg-red-500/16 hover:text-red-100 disabled:pointer-events-none disabled:opacity-60"
+                disabled={deleteBusy}
+                onClick={() => onAction?.(account, "delete")}
+              >
+                <Trash2 className="h-3 w-3" />
+                Delete
+              </Button>
+            </div>
           </div>
         </div>
       ) : null}

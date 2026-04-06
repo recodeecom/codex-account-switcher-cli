@@ -73,7 +73,7 @@ describe("sessions flow integration", () => {
     const alphaAccount = screen.getByText("alpha@example.com");
     const betaAccount = screen.getByText("beta@example.com");
     expect(alphaAccount.compareDocumentPosition(betaAccount) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(requestUrl).toContain("activeOnly=true");
+    expect(requestUrl).toContain("activeOnly=false");
   });
 
   it("navigates to sessions from header tab", async () => {
@@ -269,7 +269,7 @@ describe("sessions flow integration", () => {
     expect(await screen.findByRole("heading", { name: "Sessions" })).toBeInTheDocument();
     expect(await screen.findByText("Session activity")).toBeInTheDocument();
     expect(screen.getAllByText("runtime@example.com").length).toBeGreaterThan(0);
-    expect(screen.getByText("Live")).toBeInTheDocument();
+    expect(screen.getAllByText("Live").length).toBeGreaterThan(0);
     expect(screen.getByText("Up to date")).toBeInTheDocument();
     expect(screen.getByText("1 tracked session")).toBeInTheDocument();
     expect(screen.getAllByText("1").length).toBeGreaterThan(0);

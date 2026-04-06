@@ -197,3 +197,46 @@ async def test_request_logs_usage_summary_returns_rolling_5h_and_7d_totals(async
     assert last7d_accounts[1]["tokens"] == 40
     assert last7d_accounts[2]["accountId"] is None
     assert last7d_accounts[2]["tokens"] == 10
+
+
+@pytest.mark.asyncio
+async def test_request_logs_usage_summary_keeps_deleted_accounts_within_7d_window(async_client, db_setup):
+    now = utcnow()
+    account_id = "acc_usage_deleted"
+    email = "usage-deleted@example.com"
+
+    async with SessionLocal() as session:
+        accounts_repo = AccountsRepository(session)
+        logs_repo = RequestLogsRepository(session)
+        await accounts_repo.upsert(_make_account(account_id, email))
+        await logs_repo.add_log(
+            account_id=account_id,
+            request_id="req_usage_deleted_1",
+            model="gpt-5.1",
+            input_tokens=80,
+            output_tokens=20,
+            latency_ms=100,
+            status="success",
+            error_code=None,
+            requested_at=now - timedelta(hours=2),
+        )
+
+    deleted = await async_client.delete(f"/api/accounts/{account_id}")
+    assert deleted.status_code == 200
+    assert deleted.json()["status"] == "deleted"
+
+    listed_accounts = await async_client.get("/api/accounts")
+    assert listed_accounts.status_code == 200
+    assert all(account["accountId"] != account_id for account in listed_accounts.json()["accounts"])
+
+    usage_summary = await async_client.get("/api/request-logs/usage-summary")
+    assert usage_summary.status_code == 200
+    payload = usage_summary.json()
+
+    row_5h = next((row for row in payload["last5h"]["accounts"] if row["accountId"] == account_id), None)
+    row_7d = next((row for row in payload["last7d"]["accounts"] if row["accountId"] == account_id), None)
+    assert row_5h is not None
+    assert row_7d is not None
+    assert row_5h["tokens"] == 100
+    assert row_7d["tokens"] == 100
+    assert row_7d["accountEmail"] == email

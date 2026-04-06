@@ -9,6 +9,7 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import (
+    AdditionalUsageHistory,
     Account,
     AccountStatus,
     DashboardSettings,
@@ -20,6 +21,11 @@ from app.db.models import (
 
 _SETTINGS_ROW_ID = 1
 _DUPLICATE_ACCOUNT_SUFFIX = "__copy"
+_DELETED_ACCOUNT_DEACTIVATION_REASON = "deleted_by_user"
+
+
+def _not_deleted_account_clause():
+    return func.coalesce(Account.deactivation_reason, "") != _DELETED_ACCOUNT_DEACTIVATION_REASON
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,11 +57,19 @@ class AccountsRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def get_by_id(self, account_id: str) -> Account | None:
-        return await self._session.get(Account, account_id)
+    async def get_by_id(self, account_id: str, *, include_deleted: bool = False) -> Account | None:
+        stmt = select(Account).where(Account.id == account_id)
+        if not include_deleted:
+            stmt = stmt.where(_not_deleted_account_clause())
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
 
     async def list_accounts(self) -> list[Account]:
-        result = await self._session.execute(select(Account).order_by(Account.email))
+        result = await self._session.execute(
+            select(Account)
+            .where(_not_deleted_account_clause())
+            .order_by(Account.email)
+        )
         return list(result.scalars().all())
 
     async def list_request_usage_summary_by_account(
@@ -172,9 +186,11 @@ class AccountsRepository:
         account_ids: list[str] | None = None,
         *,
         active_since: datetime | None = None,
-        limit_per_account: int = 4,
+        limit_per_account: int | None = 4,
     ) -> dict[str, list[AccountSessionTaskPreview]]:
-        limit_per_account = max(1, int(limit_per_account))
+        normalized_limit = (
+            max(1, int(limit_per_account)) if limit_per_account is not None else None
+        )
         task_timestamp = func.coalesce(StickySession.task_updated_at, StickySession.updated_at).label("task_timestamp")
         ranked_sessions = (
             select(
@@ -201,14 +217,15 @@ class AccountsRepository:
             ranked_sessions = ranked_sessions.where(StickySession.updated_at >= active_since)
 
         ranked_subquery = ranked_sessions.subquery()
-        result = await self._session.execute(
-            select(
-                ranked_subquery.c.account_id,
-                ranked_subquery.c.session_key,
-                ranked_subquery.c.task_preview,
-                ranked_subquery.c.task_timestamp,
-            ).where(ranked_subquery.c.row_number <= limit_per_account)
+        query = select(
+            ranked_subquery.c.account_id,
+            ranked_subquery.c.session_key,
+            ranked_subquery.c.task_preview,
+            ranked_subquery.c.task_timestamp,
         )
+        if normalized_limit is not None:
+            query = query.where(ranked_subquery.c.row_number <= normalized_limit)
+        result = await self._session.execute(query)
 
         previews_by_account: dict[str, list[AccountSessionTaskPreview]] = {}
         for account_id, session_key, task_preview, task_timestamp in result.all():
@@ -275,6 +292,9 @@ class AccountsRepository:
                 await self._acquire_postgresql_identity_lock(account.id)
 
         existing = await self._session.get(Account, account.id)
+        if existing and existing.deactivation_reason == _DELETED_ACCOUNT_DEACTIVATION_REASON:
+            existing = None
+            account.id = await self._next_available_account_id(account.id)
         if existing:
             if merge_by_email:
                 _apply_account_updates(existing, account)
@@ -331,6 +351,7 @@ class AccountsRepository:
         result = await self._session.execute(
             update(Account)
             .where(Account.id == account_id)
+            .where(_not_deleted_account_clause())
             .values(status=status, deactivation_reason=deactivation_reason, reset_at=reset_at)
             .returning(Account.id)
         )
@@ -351,6 +372,7 @@ class AccountsRepository:
         stmt = (
             update(Account)
             .where(Account.id == account_id)
+            .where(_not_deleted_account_clause())
             .where(Account.status == expected_status)
             .values(status=status, deactivation_reason=deactivation_reason, reset_at=reset_at)
             .returning(Account.id)
@@ -369,9 +391,22 @@ class AccountsRepository:
 
     async def delete(self, account_id: str) -> bool:
         await self._session.execute(delete(UsageHistory).where(UsageHistory.account_id == account_id))
-        await self._session.execute(delete(RequestLog).where(RequestLog.account_id == account_id))
+        await self._session.execute(delete(AdditionalUsageHistory).where(AdditionalUsageHistory.account_id == account_id))
         await self._session.execute(delete(StickySession).where(StickySession.account_id == account_id))
-        result = await self._session.execute(delete(Account).where(Account.id == account_id).returning(Account.id))
+        result = await self._session.execute(
+            update(Account)
+            .where(Account.id == account_id)
+            .where(_not_deleted_account_clause())
+            .values(
+                status=AccountStatus.DEACTIVATED,
+                deactivation_reason=_DELETED_ACCOUNT_DEACTIVATION_REASON,
+                reset_at=None,
+                access_token_encrypted=b"",
+                refresh_token_encrypted=b"",
+                id_token_encrypted=b"",
+            )
+            .returning(Account.id)
+        )
         await self._session.commit()
         return result.scalar_one_or_none() is not None
 
@@ -430,7 +465,11 @@ class AccountsRepository:
 
     async def _single_account_by_email(self, email: str) -> Account | None:
         result = await self._session.execute(
-            select(Account).where(Account.email == email).order_by(Account.created_at.asc(), Account.id.asc()).limit(2)
+            select(Account)
+            .where(Account.email == email)
+            .where(_not_deleted_account_clause())
+            .order_by(Account.created_at.asc(), Account.id.asc())
+            .limit(2)
         )
         matches = list(result.scalars().all())
         if not matches:

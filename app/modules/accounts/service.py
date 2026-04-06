@@ -65,9 +65,6 @@ from app.modules.usage.updater import AdditionalUsageRepositoryPort, UsageUpdate
 
 _SPARKLINE_DAYS = 7
 _DETAIL_BUCKET_SECONDS = 3600  # 1h → 168 points
-_ACTIVE_CODEX_TASK_WINDOW = timedelta(minutes=5)
-
-
 class InvalidAuthJsonError(Exception):
     pass
 
@@ -99,20 +96,16 @@ class AccountsService:
             await self._usage_updater.refresh_accounts(accounts, primary_usage)
             primary_usage = await self._usage_repo.latest_by_account(window="primary")
         secondary_usage = await self._usage_repo.latest_by_account(window="secondary") if self._usage_repo else {}
-        active_codex_window_start = utcnow() - _ACTIVE_CODEX_TASK_WINDOW
         codex_tracked_session_counts_by_account = await self._repo.list_codex_session_counts_by_account(
             account_ids,
-            active_since=active_codex_window_start,
         )
         codex_live_session_counts_by_account = {account_id: 0 for account_id in account_ids}
         codex_current_task_preview_by_account = await self._repo.list_codex_current_task_preview_by_account(
             account_ids,
-            active_since=active_codex_window_start,
         )
         raw_codex_session_task_previews_by_account = await self._repo.list_codex_session_task_previews_by_account(
             account_ids,
-            active_since=active_codex_window_start,
-            limit_per_account=4,
+            limit_per_account=None,
         )
         codex_session_task_previews_by_account: dict[str, list[AccountSessionTaskPreview]] = {
             account_id: [

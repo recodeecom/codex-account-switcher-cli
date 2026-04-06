@@ -41,9 +41,6 @@ from app.modules.usage.depletion_service import (
 )
 from app.modules.usage.updater import UsageUpdater
 
-_ACTIVE_CODEX_TASK_WINDOW = timedelta(minutes=5)
-
-
 class DashboardService:
     def __init__(self, repo: DashboardRepository) -> None:
         self._repo = repo
@@ -74,20 +71,16 @@ class DashboardService:
             )
             for account_id, row in request_usage_rows.items()
         }
-        active_codex_window_start = now - _ACTIVE_CODEX_TASK_WINDOW
         codex_tracked_session_counts_by_account = await self._repo.list_codex_session_counts_by_account(
             account_ids,
-            active_since=active_codex_window_start,
         )
         codex_live_session_counts_by_account = {account_id: 0 for account_id in account_ids}
         codex_current_task_preview_by_account = await self._repo.list_codex_current_task_preview_by_account(
             account_ids,
-            active_since=active_codex_window_start,
         )
         raw_codex_session_task_previews_by_account = await self._repo.list_codex_session_task_previews_by_account(
             account_ids,
-            active_since=active_codex_window_start,
-            limit_per_account=4,
+            limit_per_account=None,
         )
         codex_session_task_previews_by_account: dict[str, list[AccountSessionTaskPreview]] = {
             account_id: [
