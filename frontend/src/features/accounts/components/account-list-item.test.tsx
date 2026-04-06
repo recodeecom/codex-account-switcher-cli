@@ -393,6 +393,38 @@ describe("AccountListItem", () => {
     expect(screen.getByText("Disconnected")).toBeInTheDocument();
   });
 
+  it("shows active status in list rows when a deactivated account is verifiably working now", () => {
+    const nowIso = new Date().toISOString();
+    const account = createAccountSummary({
+      status: "deactivated",
+      codexLiveSessionCount: 2,
+      codexTrackedSessionCount: 2,
+      codexSessionCount: 2,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "zeus",
+        activeSnapshotName: "zeus",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+      lastUsageRecordedAtPrimary: nowIso,
+      lastUsageRecordedAtSecondary: nowIso,
+    });
+
+    render(
+      <AccountListItem
+        account={account}
+        selected={false}
+        onSelect={vi.fn()}
+        onUseLocal={vi.fn()}
+        useLocalBusy={false}
+      />,
+    );
+
+    expect(screen.queryByText("Disconnected")).not.toBeInTheDocument();
+    expect(screen.getByText("Active")).toBeInTheDocument();
+  });
+
   it("keeps deactivated status visible in list rows with local snapshots", () => {
     const account = createAccountSummary({
       status: "deactivated",

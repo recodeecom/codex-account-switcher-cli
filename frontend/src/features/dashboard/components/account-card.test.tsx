@@ -233,7 +233,7 @@ describe("AccountCard", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows codex-only subtitle only for self-serve business usage based plan", () => {
+  it("shows codex-only subtitle with email only for self-serve business usage based plan", () => {
     const account = createAccountSummary({
       planType: "self_serve_business_usage_based",
       codexAuth: {
@@ -246,7 +246,9 @@ describe("AccountCard", () => {
 
     render(<AccountCard account={account} />);
 
-    expect(screen.getByText("CODEX ONLY ACCOUNT")).toBeInTheDocument();
+    expect(
+      screen.getByText("CODEX ONLY ACCOUNT · codexina@edixai.com"),
+    ).toBeInTheDocument();
     expect(
       screen.queryByText("Self serve business usage based · codexina@edixai.com"),
     ).not.toBeInTheDocument();
@@ -529,6 +531,30 @@ describe("AccountCard", () => {
     expect(screen.getByText("Disconnected")).toBeInTheDocument();
     expect(screen.queryByText("Active")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Re-auth" })).toBeInTheDocument();
+  });
+
+  it("shows active status when a deactivated account is verifiably working now", () => {
+    const nowIso = new Date().toISOString();
+    const account = createAccountSummary({
+      status: "deactivated",
+      codexLiveSessionCount: 4,
+      codexTrackedSessionCount: 4,
+      codexSessionCount: 4,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "zeus",
+        activeSnapshotName: "zeus",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+      lastUsageRecordedAtPrimary: nowIso,
+      lastUsageRecordedAtSecondary: nowIso,
+    });
+
+    render(<AccountCard account={account} />);
+
+    expect(screen.queryByText("Disconnected")).not.toBeInTheDocument();
+    expect(screen.getByText("Active")).toBeInTheDocument();
   });
 
   it("shows expired refresh token badge and re-auth action when refresh token re-login is required", () => {
@@ -1078,7 +1104,7 @@ describe("AccountCard", () => {
     }
   });
 
-  it("shows live-session fallback label when runtime sessions have no telemetry timestamps yet", () => {
+  it("does not show a live-session fallback label when runtime sessions have no telemetry timestamps yet", () => {
     const account = createAccountSummary({
       usage: {
         primaryRemainingPercent: null,
@@ -1099,12 +1125,12 @@ describe("AccountCard", () => {
 
     render(<AccountCard account={account} />);
 
-    expect(screen.getAllByText("Live session detected").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText("Live session detected")).not.toBeInTheDocument();
     expect(screen.queryByText("Telemetry pending")).not.toBeInTheDocument();
     expect(screen.queryByText("Syncing live telemetry")).not.toBeInTheDocument();
   });
 
-  it("shows live-session fallback label when quota percentages are missing", () => {
+  it("does not show a live-session fallback label when quota percentages are missing", () => {
     const nowIso = new Date().toISOString();
     const account = createAccountSummary({
       usage: {
@@ -1126,7 +1152,7 @@ describe("AccountCard", () => {
 
     render(<AccountCard account={account} />);
 
-    expect(screen.getAllByText("Live session detected").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText("Live session detected")).not.toBeInTheDocument();
     expect(screen.queryByText("Telemetry pending")).not.toBeInTheDocument();
     expect(screen.queryByText("Syncing live telemetry")).not.toBeInTheDocument();
   });
@@ -1267,7 +1293,7 @@ describe("AccountCard", () => {
     expect(screen.getAllByText("Telemetry pending").length).toBeGreaterThanOrEqual(1);
   });
 
-  it("keeps baseline usage when deferred mixed-session fallback is not trusted", () => {
+  it("keeps baseline usage bars when deferred mixed-session fallback is not trusted", () => {
     const nowIso = new Date().toISOString();
     const account = createAccountSummary({
       usage: {
@@ -1317,7 +1343,8 @@ describe("AccountCard", () => {
 
     render(<AccountCard account={account} />);
 
-    expect(screen.getAllByText("--").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("50%").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("56%").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText(/\b16%\b/)).not.toBeInTheDocument();
     expect(screen.queryByText(/\b40%\b/)).not.toBeInTheDocument();
   });
@@ -1428,8 +1455,38 @@ describe("AccountCard", () => {
     render(<AccountCard account={account} />);
 
     expect(screen.queryByText("Current task")).not.toBeInTheDocument();
-    expect(screen.getAllByText("Task finished").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("CLI session tasks")).toBeInTheDocument();
+    expect(screen.getByText("Session 1")).toBeInTheDocument();
+    expect(screen.getByText("Session 2")).toBeInTheDocument();
+    expect(screen.getAllByText("Waiting for new task").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText("working...")).not.toBeInTheDocument();
+  });
+
+  it("fills session task rows up to live CLI session count", () => {
+    const nowIso = new Date().toISOString();
+    const account = createAccountSummary({
+      codexCurrentTaskPreview: null,
+      codexLiveSessionCount: 4,
+      codexSessionCount: 4,
+      codexTrackedSessionCount: 4,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "zeus",
+        activeSnapshotName: "zeus",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+      lastUsageRecordedAtPrimary: nowIso,
+      lastUsageRecordedAtSecondary: nowIso,
+    });
+
+    render(<AccountCard account={account} />);
+
+    expect(screen.getByText("CLI session tasks")).toBeInTheDocument();
+    expect(screen.getByText("Session 1")).toBeInTheDocument();
+    expect(screen.getByText("Session 2")).toBeInTheDocument();
+    expect(screen.getByText("Session 3")).toBeInTheDocument();
+    expect(screen.getByText("Session 4")).toBeInTheDocument();
   });
 
   it("renders per-session task previews with waiting fallback", () => {
@@ -1464,7 +1521,7 @@ describe("AccountCard", () => {
     expect(screen.getByText("CLI session tasks")).toBeInTheDocument();
     expect(screen.getByText("sess-alpha-123456")).toBeInTheDocument();
     expect(screen.getByText("sess-beta-abcdef")).toBeInTheDocument();
-    expect(screen.getAllByText("Task finished").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Waiting for new task").length).toBeGreaterThanOrEqual(1);
   });
 
   it("shows last task context when a waiting live session exposes a fallback preview", () => {
@@ -1488,7 +1545,7 @@ describe("AccountCard", () => {
 
     render(<AccountCard account={account} />);
 
-    expect(screen.getAllByText("Task finished").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Waiting for new task").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("Last task:")).toBeInTheDocument();
     expect(
       screen.getByText("Investigate Zeus quota overlay mapping"),
@@ -1532,7 +1589,7 @@ describe("AccountCard", () => {
 
       expect(screen.queryByText("Current task")).not.toBeInTheDocument();
       expect(screen.queryByText("Investigate codexina rollout session mapping")).not.toBeInTheDocument();
-      expect(screen.getByText("Task finished")).toBeInTheDocument();
+      expect(screen.getAllByText("Waiting for new task").length).toBeGreaterThanOrEqual(1);
       expect(screen.queryByText(/leaves in/i)).not.toBeInTheDocument();
     } finally {
       vi.useRealTimers();
@@ -1554,7 +1611,7 @@ describe("AccountCard", () => {
     expect(screen.queryByText("working...")).not.toBeInTheDocument();
   });
 
-  it("shows task finished state when runtime session is live without a task preview", () => {
+  it("shows waiting state when runtime session is live without a task preview", () => {
     const nowIso = new Date().toISOString();
     const account = createAccountSummary({
       codexAuth: {
@@ -1571,7 +1628,7 @@ describe("AccountCard", () => {
     render(<AccountCard account={account} />);
 
     expect(screen.queryByText("working...")).not.toBeInTheDocument();
-    expect(screen.getAllByText("Task finished").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Waiting for new task").length).toBeGreaterThanOrEqual(1);
   });
 
   it("does not show working indicator when only diagnostic debug raw samples exist", () => {

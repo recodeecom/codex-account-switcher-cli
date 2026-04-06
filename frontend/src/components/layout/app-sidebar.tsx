@@ -48,11 +48,16 @@ function writeSidebarCollapsedPreference(collapsed: boolean): void {
     return;
   }
 
-  window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, collapsed ? "1" : "0");
+  window.localStorage.setItem(
+    SIDEBAR_COLLAPSED_STORAGE_KEY,
+    collapsed ? "1" : "0",
+  );
 }
 
 export function AppSidebar() {
-  const [collapsed, setCollapsed] = useState<boolean>(() => readSidebarCollapsedPreference());
+  const [collapsed, setCollapsed] = useState<boolean>(() =>
+    readSidebarCollapsedPreference(),
+  );
   const dashboardQuery = useDashboard();
 
   const accountCountLabel = useMemo(() => {
@@ -109,17 +114,24 @@ export function AppSidebar() {
               <div className="flex h-11 w-12 items-center justify-center rounded-2xl border border-white/15 bg-gradient-to-br from-primary/55 via-primary/28 to-primary/5 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.22)]">
                 <CodexLogo size={22} />
               </div>
-              <span className="sr-only">recodee.com Account switchboard</span>
+              <span className="sr-only">recodee.com Team switchboard</span>
             </div>
           </div>
         ) : (
           <div className="space-y-2.5">
             <div className="flex items-center justify-end gap-3">
-              <div className="w-full text-right">
-                <p className="text-xl font-semibold tracking-tight text-white">
-                  recodee.com
-                </p>
-                <p className="mt-1 text-[11px] uppercase tracking-[0.14em] text-slate-500">
+              <div className="w-full">
+                <div className="flex items-center justify-end gap-2.5">
+                  <CodexLogo
+                    size={56}
+                    className="opacity-95"
+                    title="recodee.com logo"
+                  />
+                  <p className="text-right text-xl font-semibold tracking-tight text-white">
+                    recodee.com
+                  </p>
+                </div>
+                <p className="mt-1 text-right text-[11px] uppercase tracking-[0.14em] text-slate-500">
                   Accounts ({accountCountLabel})
                 </p>
               </div>
@@ -144,14 +156,11 @@ export function AppSidebar() {
                     className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/45 to-transparent"
                   />
                   <div className="flex items-center gap-3">
-                    <div className="flex h-11 w-12 items-center justify-center rounded-2xl border border-white/15 bg-gradient-to-br from-primary/55 via-primary/28 to-primary/5 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]">
-                      <CodexLogo size={22} />
-                    </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-semibold tracking-tight text-white">
                         recodee.com
                       </p>
-                      <p className="truncate text-xs text-slate-400">Account switchboard</p>
+                      <p className="truncate text-xs text-slate-400">Team</p>
                     </div>
                     <span className="inline-flex h-5 items-center rounded-full border border-emerald-300/30 bg-emerald-300/10 px-1.5 text-[10px] font-medium text-emerald-200">
                       Live
@@ -165,18 +174,22 @@ export function AppSidebar() {
               </summary>
 
               <div className="mt-2 overflow-hidden rounded-2xl border border-white/[0.12] bg-gradient-to-b from-black/25 to-black/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
-                <p className="px-3 pt-3 pb-1 text-[11px] uppercase tracking-[0.14em] text-slate-400">Switchboards</p>
+                <p className="px-3 pt-3 pb-1 text-[11px] uppercase tracking-[0.14em] text-slate-400">
+                  Switchboards
+                </p>
                 <div className="px-2 pb-2">
                   <div className="flex items-center gap-3 rounded-xl border border-white/[0.12] bg-white/[0.04] px-2.5 py-2.5">
-                    <div className="flex h-10 w-11 items-center justify-center rounded-xl border border-white/10 bg-gradient-to-br from-primary/55 via-primary/28 to-primary/5 text-white">
-                      <CodexLogo size={19} />
-                    </div>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-white">recodee.com</p>
-                      <p className="truncate text-xs text-slate-400">Account switchboard</p>
+                      <p className="truncate text-sm font-semibold text-white">
+                        recodee.com
+                      </p>
+                      <p className="truncate text-xs text-slate-400">Team</p>
                     </div>
                     <span className="flex h-6 w-6 items-center justify-center rounded-full border border-emerald-300/40 bg-emerald-300/12">
-                      <Check className="h-3.5 w-3.5 text-emerald-200" aria-hidden="true" />
+                      <Check
+                        className="h-3.5 w-3.5 text-emerald-200"
+                        aria-hidden="true"
+                      />
                     </span>
                   </div>
                 </div>
@@ -202,7 +215,9 @@ export function AppSidebar() {
                   >
                     <span className="flex items-center gap-3">
                       <Icon className="h-4 w-4" aria-hidden="true" />
-                      <span className={collapsed ? "sr-only" : undefined}>{item.label}</span>
+                      <span className={collapsed ? "sr-only" : undefined}>
+                        {item.label}
+                      </span>
                     </span>
                     {item.isComingSoon && !collapsed ? (
                       <Badge
@@ -221,12 +236,17 @@ export function AppSidebar() {
 
         {collapsed ? (
           <div className="mt-auto flex items-center justify-center">
-            <span className="h-2 w-2 rounded-full bg-emerald-300/90" aria-hidden="true" />
+            <span
+              className="h-2 w-2 rounded-full bg-emerald-300/90"
+              aria-hidden="true"
+            />
             <span className="sr-only">Monitoring your Codex sessions</span>
           </div>
         ) : (
           <div className="mt-auto rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2.5">
-            <p className="text-xs text-slate-400">Monitoring your Codex sessions</p>
+            <p className="text-xs text-slate-400">
+              Monitoring your Codex sessions
+            </p>
           </div>
         )}
       </div>

@@ -59,6 +59,14 @@ def overlay_live_codex_task_previews(
         existing_session_task_previews = codex_session_task_previews_by_account.get(account.id, [])
         if snapshot_name:
             live_session_task_previews = process_session_task_previews_by_snapshot.get(snapshot_name, [])
+            if not live_session_task_previews:
+                live_session_task_previews = _resolve_session_task_previews_from_debug_sources(
+                    debug=live_quota_debug_by_account.get(account.id)
+                    if live_quota_debug_by_account is not None
+                    else None,
+                    previews_by_session_id=previews_by_session_id,
+                    snapshot_name=snapshot_name,
+                )
             if live_session_task_previews:
                 merged_session_task_previews: list[AccountSessionTaskPreview] = []
                 seen_session_keys: set[str] = set()
@@ -246,6 +254,63 @@ def _resolve_preview_from_debug_sources(
             return best_preview
 
     return None
+
+
+def _resolve_session_task_previews_from_debug_sources(
+    *,
+    debug: AccountLiveQuotaDebug | None,
+    previews_by_session_id: dict[str, LocalCodexTaskPreview],
+    snapshot_name: str | None,
+) -> list[AccountSessionTaskPreview]:
+    if debug is None or not debug.raw_samples:
+        return []
+
+    normalized_snapshot_name = _normalize_snapshot_name(snapshot_name)
+    previews_by_session: dict[str, AccountSessionTaskPreview] = {}
+
+    for allow_stale in (False, True):
+        for sample in debug.raw_samples:
+            if not allow_stale and sample.stale:
+                continue
+            if normalized_snapshot_name is not None:
+                sample_snapshot_name = _normalize_snapshot_name(sample.snapshot_name)
+                if sample_snapshot_name != normalized_snapshot_name:
+                    continue
+
+            source_name = sample.source.rsplit("/", 1)[-1]
+            source_match = _ROLLOUT_SESSION_FILE_RE.match(source_name)
+            if source_match is None:
+                continue
+            session_id = source_match.group("session")
+            if session_id in previews_by_session:
+                continue
+
+            preview = previews_by_session_id.get(session_id)
+            if preview is None:
+                continue
+            preview_text = preview.text.strip()
+            if not preview_text:
+                continue
+
+            previews_by_session[session_id] = AccountSessionTaskPreview(
+                session_key=session_id,
+                task_preview=preview_text,
+                task_updated_at=preview.recorded_at,
+            )
+
+        if previews_by_session:
+            break
+
+    return sorted(
+        previews_by_session.values(),
+        key=lambda preview: (
+            preview.task_updated_at.timestamp()
+            if preview.task_updated_at is not None
+            else float("-inf"),
+            preview.session_key,
+        ),
+        reverse=True,
+    )
 
 
 def _normalize_snapshot_name(value: str | None) -> str | None:

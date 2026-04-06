@@ -158,6 +158,23 @@ function TaskFinishedPill({ className }: { className?: string }) {
   );
 }
 
+function WaitingForTaskPill({ className }: { className?: string }) {
+  return (
+    <div
+      className={cn(
+        "inline-flex h-7 items-center gap-2 rounded-full bg-cyan-500/12 px-2.5 text-cyan-200",
+        className,
+      )}
+    >
+      <span className="sr-only">Waiting for new task</span>
+      <span className="h-1.5 w-1.5 rounded-full bg-current" />
+      <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-100/95">
+        waiting
+      </span>
+    </div>
+  );
+}
+
 function formatSessionKeyLabel(sessionKey: string): string {
   const normalized = sessionKey.trim();
   if (normalized.length <= 18) {
@@ -172,7 +189,7 @@ function resolveSessionTaskPreview(
   const normalized = taskPreview?.trim();
   return normalized && normalized.length > 0
     ? normalized
-    : TASK_FINISHED_LABEL;
+    : WAITING_FOR_NEW_TASK_LABEL;
 }
 
 function normalizeNearZeroQuotaPercent(value: number): number {
@@ -208,7 +225,6 @@ function QuotaBar({
 }) {
   const clamped = percent === null ? 0 : normalizeNearZeroQuotaPercent(percent);
   const hasPercent = percent !== null;
-  const liveTelemetryUnavailable = isLive && !deactivated && percent === null;
   const tone = deactivated
     ? "deactivated"
     : !hasPercent
@@ -288,15 +304,13 @@ function QuotaBar({
       </div>
       <div className="min-h-[16px]">
         {isLive && !deactivated ? (
-          usageLimitHit || telemetryPending || liveTelemetryUnavailable ? (
+          usageLimitHit || telemetryPending ? (
             <div className="flex items-center gap-1.5 text-[11px] font-medium text-cyan-700 dark:text-cyan-300">
               <Activity className="h-3 w-3" />
               <span>
                 {usageLimitHit
                   ? "Usage limit hit"
-                  : telemetryPending
-                    ? "Telemetry pending"
-                    : "Live session detected"}
+                  : "Telemetry pending"}
               </span>
             </div>
           ) : null
@@ -585,6 +599,10 @@ export function AccountCard(props: AccountCardProps) {
     account,
     "secondary",
   );
+  const hasLivePrimaryQuotaTelemetrySource =
+    mergedPrimaryRemainingPercent != null || deferredPrimaryQuotaFallback != null;
+  const hasLiveSecondaryQuotaTelemetrySource =
+    mergedSecondaryRemainingPercent != null || deferredSecondaryQuotaFallback != null;
   const freshDebugRawSampleCount = getFreshDebugRawSampleCount(account, nowMs);
   const blurred = usePrivacyStore((s) => s.blurred);
   const isActiveSnapshot = account.codexAuth?.isActiveSnapshot ?? false;
@@ -608,7 +626,7 @@ export function AccountCard(props: AccountCardProps) {
     isActiveSnapshot,
     hasLiveSession: hasActiveCliSession,
     hasRecentUsageSignal: recentUsageSignal,
-    allowDeactivatedOverride: false,
+    allowDeactivatedOverride: isWorkingNow,
   });
   const primaryRemainingRaw =
     mergedPrimaryRemainingPercent ??
@@ -668,7 +686,7 @@ export function AccountCard(props: AccountCardProps) {
     windowKey: "primary",
     remainingPercent: primaryRemainingRaw,
     resetAt: primaryResetAt,
-    hasLiveSession,
+    hasLiveSession: hasLiveSession && hasLivePrimaryQuotaTelemetrySource,
     lastRecordedAt: primaryLastRecordedAt,
     applyCycleFloor: mergedPrimaryRemainingPercent == null,
   });
@@ -677,7 +695,7 @@ export function AccountCard(props: AccountCardProps) {
     windowKey: "secondary",
     remainingPercent: secondaryRemainingRaw,
     resetAt: secondaryResetAt,
-    hasLiveSession,
+    hasLiveSession: hasLiveSession && hasLiveSecondaryQuotaTelemetrySource,
     lastRecordedAt: secondaryLastRecordedAt,
     applyCycleFloor: mergedSecondaryRemainingPercent == null,
   });
@@ -826,6 +844,10 @@ export function AccountCard(props: AccountCardProps) {
     account.codexAuth?.snapshotName,
   );
   const showCodexOnlyAccountSubtitle = isCodexOnlyPlanType(account.planType);
+  const codexOnlyEmailLabel = snapshotIsEmail
+    ? snapshotLabel
+    : (account.email?.trim() ?? null);
+  const codexOnlyEmailIsSensitive = isLikelyEmailValue(codexOnlyEmailLabel);
   const snapshotName = account.codexAuth?.snapshotName?.trim() ?? null;
   const hasResolvedSnapshot = Boolean(snapshotName);
   const showMissingSnapshotLockOverlay = !hasResolvedSnapshot;
@@ -884,13 +906,10 @@ export function AccountCard(props: AccountCardProps) {
     effectiveCurrentTaskPreview === WAITING_FOR_NEW_TASK_LABEL &&
     codexLastTaskPreview != null &&
     codexLastTaskPreview !== WAITING_FOR_NEW_TASK_LABEL;
-  const displayCurrentTaskPreview =
-    effectiveCurrentTaskPreview === WAITING_FOR_NEW_TASK_LABEL
-      ? TASK_FINISHED_LABEL
-      : effectiveCurrentTaskPreview;
+  const displayCurrentTaskPreview = effectiveCurrentTaskPreview;
   const showWorkingIndicator =
     isWorkingNow && effectiveCurrentTaskPreview !== WAITING_FOR_NEW_TASK_LABEL;
-  const showTaskFinishedIndicator =
+  const showWaitingForTaskIndicator =
     isWorkingNow && effectiveCurrentTaskPreview === WAITING_FOR_NEW_TASK_LABEL;
   const sessionTaskPreviews = useMemo(() => {
     const seenSessionKeys = new Set<string>();
@@ -909,7 +928,24 @@ export function AccountCard(props: AccountCardProps) {
       }));
     return normalized;
   }, [account.codexSessionTaskPreviews]);
-  const hasSessionTaskPreviews = sessionTaskPreviews.length > 0;
+  const sessionTaskRows = useMemo(() => {
+    const rows = sessionTaskPreviews.map((preview, index) => ({
+      ...preview,
+      ordinal: index + 1,
+      synthetic: false,
+    }));
+    const targetCount = Math.max(codexLiveSessionCount, rows.length);
+    for (let index = rows.length; index < targetCount; index += 1) {
+      rows.push({
+        sessionKey: `live-session-${index + 1}`,
+        taskPreview: WAITING_FOR_NEW_TASK_LABEL,
+        ordinal: index + 1,
+        synthetic: true,
+      });
+    }
+    return rows;
+  }, [codexLiveSessionCount, sessionTaskPreviews]);
+  const hasSessionTaskRows = sessionTaskRows.length > 0;
   const quotaDebugLogText = useMemo(
     () =>
       liveQuotaDebug
@@ -1028,8 +1064,8 @@ export function AccountCard(props: AccountCardProps) {
                     working...
                   </span>
                 </div>
-              ) : showTaskFinishedIndicator ? (
-                <TaskFinishedPill />
+              ) : showWaitingForTaskIndicator ? (
+                <WaitingForTaskPill />
               ) : null}
               {showWeeklyUsageLimitDetailBadge ? (
                 <Badge
@@ -1079,7 +1115,18 @@ export function AccountCard(props: AccountCardProps) {
               }
             >
               {showCodexOnlyAccountSubtitle ? (
-                "CODEX ONLY ACCOUNT"
+                codexOnlyEmailLabel ? (
+                  <>
+                    CODEX ONLY ACCOUNT ·{" "}
+                    {codexOnlyEmailIsSensitive && blurred ? (
+                      <span className="privacy-blur">{codexOnlyEmailLabel}</span>
+                    ) : (
+                      codexOnlyEmailLabel
+                    )}
+                  </>
+                ) : (
+                  "CODEX ONLY ACCOUNT"
+                )
               ) : snapshotIsEmail && blurred ? (
                 <>
                   {planLabel} ·{" "}
@@ -1196,36 +1243,39 @@ export function AccountCard(props: AccountCardProps) {
                   </div>
                 ) : null}
 
-                {hasSessionTaskPreviews ? (
-                  <div className="mt-1.5 rounded-lg border border-cyan-500/20 bg-cyan-500/[0.06] px-2.5 py-2">
-                    <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-700 dark:text-cyan-300">
+                {hasSessionTaskRows ? (
+                  <div className="mt-2 border-t border-white/10 pt-2">
+                    <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-400">
                       CLI session tasks
                     </p>
-                    <ul className="space-y-2">
-                      {sessionTaskPreviews.map((preview) => (
+                    <ul className="space-y-1.5">
+                      {sessionTaskRows.map((preview) => (
                         <li
-                          key={preview.sessionKey}
-                          className="rounded-md border border-cyan-500/20 bg-cyan-500/[0.05] p-1.5"
+                          key={`${preview.sessionKey}-${preview.ordinal}`}
+                          className="space-y-1 rounded-md border border-white/10 bg-black/20 px-2 py-1.5"
                         >
-                          <div className="space-y-1.5">
-                            <span className="inline-flex w-full items-center rounded border border-cyan-500/25 bg-cyan-500/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wide text-cyan-700 dark:text-cyan-300">
-                              {formatSessionKeyLabel(preview.sessionKey)}
-                            </span>
-                            <div
-                              className="rounded-lg border border-white/10 bg-black/25 px-2.5 py-2"
-                              title={preview.taskPreview}
-                            >
-                              {preview.taskPreview === TASK_FINISHED_LABEL ? (
-                                <TaskFinishedPill />
-                              ) : (
-                                <span className="inline-flex items-center gap-1.5 break-words whitespace-pre-wrap text-xs leading-relaxed text-zinc-100/95">
-                                  {hasNextTaskHint(preview.taskPreview) ? (
-                                    <NextTaskBadge />
-                                  ) : null}
-                                  <span>{preview.taskPreview}</span>
-                                </span>
-                              )}
-                            </div>
+                          <div className="flex items-center justify-between gap-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-400">
+                            <span>Session {preview.ordinal}</span>
+                            {!preview.synthetic ? (
+                              <span
+                                className="max-w-[62%] truncate font-mono text-zinc-500"
+                                title={preview.sessionKey}
+                              >
+                                {formatSessionKeyLabel(preview.sessionKey)}
+                              </span>
+                            ) : null}
+                          </div>
+                          <div title={preview.taskPreview}>
+                            {preview.taskPreview === TASK_FINISHED_LABEL ? (
+                              <TaskFinishedPill />
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5 break-words whitespace-pre-wrap text-xs leading-relaxed text-zinc-100/95">
+                                {hasNextTaskHint(preview.taskPreview) ? (
+                                  <NextTaskBadge />
+                                ) : null}
+                                <span>{preview.taskPreview}</span>
+                              </span>
+                            )}
                           </div>
                         </li>
                       ))}

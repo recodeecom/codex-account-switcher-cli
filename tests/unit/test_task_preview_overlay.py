@@ -392,6 +392,78 @@ def test_overlay_waiting_last_task_uses_matching_snapshot_debug_sample_only(monk
     )
 
 
+def test_overlay_populates_session_task_previews_from_debug_sources_when_process_mapping_missing(
+    monkeypatch,
+) -> None:
+    now = datetime(2026, 4, 6, tzinfo=timezone.utc)
+    account = _make_account("acc-zeus-runtime", "zeus@edixai.com")
+    codex_auth_by_account = {
+        account.id: AccountCodexAuthStatus(
+            has_snapshot=True,
+            snapshot_name="zeus@edixai.com",
+            active_snapshot_name="zeus@edixai.com",
+            is_active_snapshot=True,
+            has_live_session=True,
+        )
+    }
+    codex_current_task_preview_by_account: dict[str, str] = {}
+    codex_last_task_preview_by_account: dict[str, str] = {}
+    codex_session_task_previews_by_account: dict[str, list[AccountSessionTaskPreview]] = {}
+
+    session_id = "019d5a6a-4665-7873-9714-9efb95b24272"
+
+    monkeypatch.setattr(
+        "app.modules.accounts.task_preview_overlay.read_local_codex_task_previews_by_snapshot",
+        lambda *, now: {},
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.task_preview_overlay.read_local_codex_task_previews_by_session_id",
+        lambda *, now: {
+            session_id: LocalCodexTaskPreview(
+                text="Investigate Zeus session task attribution",
+                recorded_at=now,
+            )
+        },
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.task_preview_overlay.read_live_codex_process_session_attribution",
+        lambda: LocalCodexProcessSessionAttribution(
+            counts_by_snapshot={},
+            unattributed_session_pids=[],
+            mapped_session_pids_by_snapshot={},
+            task_preview_by_pid={},
+            task_previews_by_pid={},
+        ),
+    )
+
+    overlay_live_codex_task_previews(
+        accounts=[account],
+        codex_auth_by_account=codex_auth_by_account,
+        codex_current_task_preview_by_account=codex_current_task_preview_by_account,
+        codex_last_task_preview_by_account=codex_last_task_preview_by_account,
+        codex_session_task_previews_by_account=codex_session_task_previews_by_account,
+        live_quota_debug_by_account={
+            account.id: AccountLiveQuotaDebug(
+                snapshots_considered=["zeus@edixai.com"],
+                raw_samples=[
+                    AccountLiveQuotaDebugSample(
+                        source=f"/tmp/rollout-2026-04-06T10-00-00-{session_id}.jsonl",
+                        snapshot_name="zeus@edixai.com",
+                        recorded_at=now,
+                        stale=False,
+                    )
+                ],
+            )
+        },
+        now=now,
+    )
+
+    previews = codex_session_task_previews_by_account.get(account.id)
+    assert previews is not None
+    assert [preview.session_key for preview in previews] == [session_id]
+    assert previews[0].task_preview == "Investigate Zeus session task attribution"
+
+
 def test_overlay_suppresses_stale_snapshot_preview_after_recent_termination(monkeypatch) -> None:
     now = datetime(2026, 4, 5, tzinfo=timezone.utc)
     account = _make_account("acc-korona", "korona@nagyviktor.com")
