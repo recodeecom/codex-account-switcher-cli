@@ -84,4 +84,39 @@ describe("AccountDetail", () => {
     const snapshotValue = screen.getByText("snapshot@example.com");
     expect(snapshotValue.closest(".privacy-blur")).not.toBeNull();
   });
+
+  it("skips enter animation on the first selected account render", () => {
+    const account = createAccountSummary({
+      accountId: "acc-first",
+      email: "first@example.com",
+      displayName: "first@example.com",
+    });
+
+    const { container } = render(<AccountDetail {...baseProps} account={account} />);
+    const card = container.firstElementChild;
+
+    expect(card).not.toHaveClass("animate-fade-in-up");
+  });
+
+  it("plays enter animation when switching between selected accounts", () => {
+    const firstAccount = createAccountSummary({
+      accountId: "acc-first",
+      email: "first@example.com",
+      displayName: "first@example.com",
+    });
+    const secondAccount = createAccountSummary({
+      accountId: "acc-second",
+      email: "second@example.com",
+      displayName: "second@example.com",
+    });
+
+    const { container, rerender } = render(
+      <AccountDetail {...baseProps} account={firstAccount} />,
+    );
+
+    rerender(<AccountDetail {...baseProps} account={secondAccount} />);
+    const card = container.firstElementChild;
+
+    expect(card).toHaveClass("animate-fade-in-up");
+  });
 });

@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { User } from "lucide-react";
 
 import { isEmailLabel, isLikelyEmailValue } from "@/components/blur-email";
@@ -39,6 +40,18 @@ export function AccountDetail({
 }: AccountDetailProps) {
   const { data: trends } = useAccountTrends(account?.accountId ?? null);
   const blurred = usePrivacyStore((s) => s.blurred);
+  const previousAccountIdRef = useRef<string | null>(null);
+  const accountId = account?.accountId ?? null;
+  const shouldAnimateEntry =
+    accountId !== null &&
+    previousAccountIdRef.current !== null &&
+    previousAccountIdRef.current !== accountId;
+
+  useEffect(() => {
+    if (accountId !== null) {
+      previousAccountIdRef.current = accountId;
+    }
+  }, [accountId]);
 
   if (!account) {
     return (
@@ -64,7 +77,9 @@ export function AccountDetail({
   const snapshotNameIsEmail = isLikelyEmailValue(snapshotName);
 
   return (
-    <div key={account.accountId} className="animate-fade-in-up space-y-4 rounded-xl border bg-card p-5">
+    <div
+      className={`${shouldAnimateEntry ? "animate-fade-in-up " : ""}space-y-4 rounded-xl border bg-card p-5`}
+    >
       {/* Account header */}
       <div>
         <div className="flex flex-wrap items-center gap-2">

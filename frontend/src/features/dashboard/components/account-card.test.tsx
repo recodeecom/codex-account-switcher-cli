@@ -1491,6 +1491,8 @@ describe("AccountCard", () => {
     expect(screen.getByText("Session 2")).toBeInTheDocument();
     expect(screen.getByText("Session 3")).toBeInTheDocument();
     expect(screen.getByText("Session 4")).toBeInTheDocument();
+    expect(screen.getByText("0 assigned")).toBeInTheDocument();
+    expect(screen.getByText("4 waiting")).toBeInTheDocument();
   });
 
   it("renders per-session task previews with waiting fallback", () => {
@@ -1526,6 +1528,11 @@ describe("AccountCard", () => {
     expect(screen.getByText("sess-alpha-123456")).toBeInTheDocument();
     expect(screen.getByText("sess-beta-abcdef")).toBeInTheDocument();
     expect(screen.getAllByText("Waiting for new task").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("1 assigned")).toBeInTheDocument();
+    expect(screen.getByText("1 waiting")).toBeInTheDocument();
+    expect(
+      screen.getByText("No task assigned yet for this account."),
+    ).toBeInTheDocument();
   });
 
   it("shows per-session state pills for waiting, thinking, and finished tasks", () => {

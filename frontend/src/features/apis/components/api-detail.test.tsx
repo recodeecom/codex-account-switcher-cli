@@ -230,4 +230,39 @@ describe("ApiDetail", () => {
 		await user.click(screen.getByRole("switch"));
 		expect(screen.getByRole("switch")).toBeChecked();
 	});
+
+	it("skips enter animation on first selected key render and only animates when the key changes", () => {
+		const firstKey = createApiKey({ id: "key-first", name: "First key" });
+		const secondKey = createApiKey({ id: "key-second", name: "Second key" });
+
+		const { container, rerender } = renderWithProviders(
+			<ApiDetail
+				apiKey={firstKey}
+				trends={null}
+				usage7Day={null}
+				usage7DayLoading={false}
+				usage7DayError={null}
+				busy={false}
+				{...callbacks}
+			/>,
+		);
+
+		const initialCard = container.firstElementChild;
+		expect(initialCard).not.toHaveClass("animate-fade-in-up");
+
+		rerender(
+			<ApiDetail
+				apiKey={secondKey}
+				trends={null}
+				usage7Day={null}
+				usage7DayLoading={false}
+				usage7DayError={null}
+				busy={false}
+				{...callbacks}
+			/>,
+		);
+
+		const switchedCard = container.firstElementChild;
+		expect(switchedCard).toHaveClass("animate-fade-in-up");
+	});
 });

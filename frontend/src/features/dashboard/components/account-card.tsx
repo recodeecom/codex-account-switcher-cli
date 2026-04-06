@@ -165,12 +165,15 @@ function WaitingForTaskPill({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        "inline-flex h-7 items-center gap-2 rounded-full bg-cyan-500/12 px-2.5 text-cyan-200",
+        "inline-flex h-7 items-center gap-2 rounded-full border border-cyan-400/35 bg-cyan-500/12 px-2.5 text-cyan-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]",
         className,
       )}
     >
       <span className="sr-only">Waiting for new task</span>
-      <span className="h-1.5 w-1.5 rounded-full bg-current" />
+      <span className="relative inline-flex h-2 w-2" aria-hidden>
+        <span className="absolute inline-flex h-full w-full rounded-full bg-cyan-300/55 animate-ping [animation-duration:1.4s]" />
+        <span className="relative inline-flex h-2 w-2 rounded-full bg-cyan-200" />
+      </span>
       <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-100/95">
         waiting
       </span>
@@ -963,6 +966,8 @@ export function AccountCard(props: AccountCardProps) {
     codexLastTaskPreview != null &&
     codexLastTaskPreview !== WAITING_FOR_NEW_TASK_LABEL;
   const displayCurrentTaskPreview = effectiveCurrentTaskPreview;
+  const isCurrentTaskWaiting =
+    displayCurrentTaskPreview === WAITING_FOR_NEW_TASK_LABEL;
   const showWorkingIndicator =
     isWorkingNow && effectiveCurrentTaskPreview !== WAITING_FOR_NEW_TASK_LABEL;
   const showWaitingForTaskIndicator =
@@ -1002,6 +1007,25 @@ export function AccountCard(props: AccountCardProps) {
     return rows;
   }, [codexLiveSessionCount, sessionTaskPreviews]);
   const hasSessionTaskRows = sessionTaskRows.length > 0;
+  const sessionTaskSummary = useMemo(() => {
+    const waitingCount = sessionTaskRows.filter(
+      (row) => resolveSessionTaskState(row.taskPreview) === "waiting",
+    ).length;
+    const finishedCount = sessionTaskRows.filter(
+      (row) => resolveSessionTaskState(row.taskPreview) === "finished",
+    ).length;
+    const thinkingCount = Math.max(
+      sessionTaskRows.length - waitingCount - finishedCount,
+      0,
+    );
+    const assignedCount = Math.max(sessionTaskRows.length - waitingCount, 0);
+    return {
+      waitingCount,
+      finishedCount,
+      thinkingCount,
+      assignedCount,
+    };
+  }, [sessionTaskRows]);
   const quotaDebugLogText = useMemo(
     () =>
       liveQuotaDebug
@@ -1259,9 +1283,21 @@ export function AccountCard(props: AccountCardProps) {
               </div>
 
               <div className="space-y-1.5">
-                <div className="relative rounded-lg border border-white/10 bg-black/25 px-2.5 py-2">
+                <div
+                  className={cn(
+                    "relative rounded-lg border px-2.5 py-2 transition-all duration-200",
+                    isCurrentTaskWaiting
+                      ? "border-cyan-400/20 bg-black/55 hover:border-cyan-300/35 hover:bg-black/65 hover:shadow-[0_0_0_1px_rgba(34,211,238,0.14),0_8px_18px_rgba(0,0,0,0.35)]"
+                      : "border-white/10 bg-black/25 hover:border-white/20 hover:bg-black/35",
+                  )}
+                >
                   <div
-                    className="pointer-events-none absolute inset-0 -z-10 rounded-lg bg-[linear-gradient(90deg,rgba(34,211,238,0.08)_0%,rgba(34,211,238,0)_65%)] animate-pulse"
+                    className={cn(
+                      "pointer-events-none absolute inset-0 -z-10 rounded-lg",
+                      isCurrentTaskWaiting
+                        ? "bg-[linear-gradient(90deg,rgba(15,23,42,0.72)_0%,rgba(2,8,23,0.4)_100%)]"
+                        : "bg-[linear-gradient(90deg,rgba(34,211,238,0.08)_0%,rgba(34,211,238,0)_65%)] animate-pulse",
+                    )}
                     aria-hidden
                   />
                   <p
@@ -1301,59 +1337,87 @@ export function AccountCard(props: AccountCardProps) {
 
                 {hasSessionTaskRows ? (
                   <div className="mt-2 border-t border-white/10 pt-2">
-                    <button
-                      type="button"
-                      className="mb-1.5 inline-flex w-full items-center justify-between gap-2 rounded-md border border-white/10 bg-black/20 px-2 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-400 transition-colors hover:bg-black/30"
-                      aria-expanded={!sessionTasksCollapsed}
-                      onClick={() => setSessionTasksCollapsed((current) => !current)}
-                    >
-                      <span>CLI session tasks</span>
-                      <span className="inline-flex items-center gap-1 text-zinc-300">
-                        <span className="font-mono text-[10px]">
-                          {sessionTaskRows.length}
+                    <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+                      <button
+                        type="button"
+                        className="inline-flex min-w-[13rem] flex-1 items-center justify-between gap-2 rounded-md border border-white/10 bg-black/20 px-2 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-400 transition-colors hover:bg-black/30"
+                        aria-expanded={!sessionTasksCollapsed}
+                        onClick={() =>
+                          setSessionTasksCollapsed((current) => !current)
+                        }
+                      >
+                        <span>CLI session tasks</span>
+                        <span className="inline-flex items-center gap-1 text-zinc-300">
+                          <span className="font-mono text-[10px]">
+                            {sessionTaskRows.length}
+                          </span>
+                          <ChevronDown
+                            className={cn(
+                              "h-3.5 w-3.5 transition-transform duration-200",
+                              sessionTasksCollapsed && "-rotate-90",
+                            )}
+                          />
                         </span>
-                        <ChevronDown
-                          className={cn(
-                            "h-3.5 w-3.5 transition-transform duration-200",
-                            sessionTasksCollapsed && "-rotate-90",
-                          )}
-                        />
+                      </button>
+                      <span className="inline-flex h-6 items-center rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-emerald-200">
+                        {sessionTaskSummary.assignedCount} assigned
                       </span>
-                    </button>
+                      <span className="inline-flex h-6 items-center rounded-full border border-cyan-400/25 bg-cyan-500/10 px-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-cyan-200">
+                        {sessionTaskSummary.waitingCount} waiting
+                      </span>
+                    </div>
                     {!sessionTasksCollapsed ? (
                       <ul className="space-y-1.5">
-                        {sessionTaskRows.map((preview) => (
-                          <li
-                            key={`${preview.sessionKey}-${preview.ordinal}`}
-                            className="space-y-1 rounded-md border border-white/10 bg-black/20 px-2 py-1.5"
-                          >
-                            <div className="flex items-start justify-between gap-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-400">
-                              <span>Session {preview.ordinal}</span>
-                              <div className="flex min-w-0 flex-col items-end gap-1">
-                                {!preview.synthetic ? (
-                                  <span
-                                    className="max-w-[11rem] truncate font-mono text-zinc-500"
-                                    title={preview.sessionKey}
-                                  >
-                                    {formatSessionKeyLabel(preview.sessionKey)}
-                                  </span>
-                                ) : null}
-                                <SessionTaskStatePill
-                                  taskPreview={preview.taskPreview}
-                                  className="h-5 px-2 text-[9px]"
-                                />
+                        {sessionTaskRows.map((preview) => {
+                          const sessionTaskState = resolveSessionTaskState(
+                            preview.taskPreview,
+                          );
+                          return (
+                            <li
+                              key={`${preview.sessionKey}-${preview.ordinal}`}
+                              className={cn(
+                                "space-y-1 rounded-md border px-2 py-1.5 transition-all duration-200",
+                                sessionTaskState === "waiting" &&
+                                  "border-cyan-400/18 bg-black/45 hover:border-cyan-300/30 hover:bg-black/60",
+                                sessionTaskState === "thinking" &&
+                                  "border-indigo-400/20 bg-indigo-500/[0.08] hover:border-indigo-300/30",
+                                sessionTaskState === "finished" &&
+                                  "border-emerald-400/20 bg-emerald-500/[0.08] hover:border-emerald-300/30",
+                              )}
+                            >
+                              <div className="flex items-start justify-between gap-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-400">
+                                <span>Session {preview.ordinal}</span>
+                                <div className="flex min-w-0 flex-col items-end gap-1">
+                                  {!preview.synthetic ? (
+                                    <span
+                                      className="max-w-[11rem] truncate font-mono text-zinc-500"
+                                      title={preview.sessionKey}
+                                    >
+                                      {formatSessionKeyLabel(preview.sessionKey)}
+                                    </span>
+                                  ) : null}
+                                  <SessionTaskStatePill
+                                    taskPreview={preview.taskPreview}
+                                    className="h-5 px-2 text-[9px]"
+                                  />
+                                </div>
                               </div>
-                            </div>
-                            <div title={preview.taskPreview}>
-                              <span className="inline-flex items-center gap-1.5 break-words whitespace-pre-wrap text-xs leading-relaxed text-zinc-100/95">
-                                {hasNextTaskHint(preview.taskPreview) ? (
-                                  <NextTaskBadge />
+                              <div title={preview.taskPreview}>
+                                <span className="inline-flex items-center gap-1.5 break-words whitespace-pre-wrap text-xs leading-relaxed text-zinc-100/95">
+                                  {hasNextTaskHint(preview.taskPreview) ? (
+                                    <NextTaskBadge />
+                                  ) : null}
+                                  <span>{preview.taskPreview}</span>
+                                </span>
+                                {sessionTaskState === "waiting" ? (
+                                  <p className="mt-1 text-[10px] leading-relaxed text-cyan-200/85">
+                                    No task assigned yet for this account.
+                                  </p>
                                 ) : null}
-                                <span>{preview.taskPreview}</span>
-                              </span>
-                            </div>
-                          </li>
-                        ))}
+                              </div>
+                            </li>
+                          );
+                        })}
                       </ul>
                     ) : null}
                   </div>
