@@ -15,7 +15,7 @@ export function StoragePage() {
       <EmptyState
         icon={Archive}
         title="Storage is coming soon"
-        description="Codexina will add secure device storage and protected API env value storage in a future release."
+        description="recodee.com will add secure device storage and protected API env value storage in a future release."
       />
     </div>
   );

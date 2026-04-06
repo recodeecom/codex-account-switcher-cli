@@ -44,7 +44,8 @@ function SearchParamsProbe() {
 
 beforeEach(() => {
   window.history.replaceState({}, "", "/");
-  delete (window as Window & { __NEXT_DATA__?: unknown }).__NEXT_DATA__;
+  (window as unknown as { __NEXT_DATA__?: unknown }).__NEXT_DATA__ = undefined;
+  (window as unknown as { __next_f?: unknown }).__next_f = undefined;
 });
 
 describe("NavLink", () => {
@@ -114,7 +115,7 @@ describe("router-compat fallback hooks", () => {
 
   it("navigates without a Router context when Next runtime is detected", async () => {
     const user = userEvent.setup();
-    (window as Window & { __NEXT_DATA__?: unknown }).__NEXT_DATA__ = {};
+    (window as unknown as { __next_f?: unknown }).__next_f = [];
 
     render(<NavigateProbe />);
 
@@ -147,7 +148,7 @@ describe("router-compat fallback hooks", () => {
 
   it("updates query params without leaving the page when Next runtime is detected", async () => {
     const user = userEvent.setup();
-    (window as Window & { __NEXT_DATA__?: unknown }).__NEXT_DATA__ = {};
+    (window as unknown as { __next_f?: unknown }).__next_f = [];
 
     act(() => {
       window.history.replaceState({}, "", "/accounts?selected=account_1");

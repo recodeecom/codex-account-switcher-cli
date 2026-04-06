@@ -164,7 +164,7 @@ describe("AccountCard", () => {
     expect(screen.queryByText("5h")).not.toBeInTheDocument();
   });
 
-  it("keeps account title visible while blurring subtitle when privacy mode is enabled", () => {
+  it("keeps cardholder name visible in privacy mode", () => {
     act(() => {
       usePrivacyStore.setState({ blurred: true });
     });
@@ -173,18 +173,14 @@ describe("AccountCard", () => {
       email: "aws-account@example.com",
     });
 
-    const { container } = render(<AccountCard account={account} />);
+    render(<AccountCard account={account} />);
 
-    const title = screen.getByText("AWS Account MSP");
-    const email = screen.getByText("aws-account@example.com");
-
-    expect(title).toBeInTheDocument();
-    expect(title.closest(".privacy-blur")).toBeNull();
-    expect(email.closest(".privacy-blur")).not.toBeNull();
-    expect(container.querySelector(".privacy-blur")).not.toBeNull();
+    const cardholder = screen.getByText("AWS Account MSP");
+    expect(cardholder.closest(".privacy-blur")).toBeNull();
+    expect(screen.queryByText("aws-account@example.com")).not.toBeInTheDocument();
   });
 
-  it("blurs account title when it is an email in privacy mode", () => {
+  it("derives cardholder name from email local part when display name is an email", () => {
     act(() => {
       usePrivacyStore.setState({ blurred: true });
     });
@@ -193,12 +189,11 @@ describe("AccountCard", () => {
       email: "solo@example.com",
     });
 
-    const { container } = render(<AccountCard account={account} />);
+    render(<AccountCard account={account} />);
 
-    const title = screen.getByText("solo@example.com");
-
-    expect(title.closest(".privacy-blur")).not.toBeNull();
-    expect(container.querySelector(".privacy-blur")).not.toBeNull();
+    const cardholder = screen.getByText(/^solo$/i);
+    expect(cardholder.closest(".privacy-blur")).toBeNull();
+    expect(screen.queryByText("solo@example.com")).not.toBeInTheDocument();
   });
 
   it("blurs snapshot name when snapshot name is an email in privacy mode", () => {
@@ -1598,9 +1593,9 @@ describe("AccountCard", () => {
       },
     });
 
-    render(<AccountCard account={account} />);
+    const { container } = render(<AccountCard account={account} />);
 
-    const card = screen.getByText(account.email).closest(".card-hover");
+    const card = container.querySelector(".card-hover");
     expect(card).not.toBeNull();
     const sessionsLabel = within(card as HTMLElement).getByText("Codex CLI sessions");
     const sessionsValue = sessionsLabel.parentElement?.querySelector("p.mt-0\\.5.text-xs.font-semibold.tabular-nums");
@@ -1667,9 +1662,9 @@ describe("AccountCard", () => {
       },
     });
 
-    render(<AccountCard account={account} />);
+    const { container } = render(<AccountCard account={account} />);
 
-    const card = screen.getByText("working@example.com").closest(".card-hover");
+    const card = container.querySelector(".card-hover");
     expect(card).not.toBeNull();
     const sessionsLabel = within(card as HTMLElement).getByText("Codex CLI sessions");
     const sessionsValue = sessionsLabel.parentElement?.querySelector("p.mt-0\\.5.text-xs.font-semibold.tabular-nums");
@@ -1694,9 +1689,9 @@ describe("AccountCard", () => {
       lastUsageRecordedAtSecondary: nowIso,
     });
 
-    render(<AccountCard account={account} />);
+    const { container } = render(<AccountCard account={account} />);
 
-    const card = screen.getByText("runtime@example.com").closest(".card-hover");
+    const card = container.querySelector(".card-hover");
     expect(card).not.toBeNull();
     const sessionsLabel = within(card as HTMLElement).getByText("Codex CLI sessions");
     const sessionsValue = sessionsLabel.parentElement?.querySelector("p.mt-0\\.5.text-xs.font-semibold.tabular-nums");
@@ -1952,9 +1947,9 @@ describe("AccountCard", () => {
       },
     });
 
-    render(<AccountCard account={account} />);
+    const { container } = render(<AccountCard account={account} />);
 
-    const card = screen.getByText("idle@example.com").closest(".card-hover");
+    const card = container.querySelector(".card-hover");
     expect(card).not.toBeNull();
     const sessionsLabel = within(card as HTMLElement).getByText("Codex CLI sessions");
     const sessionsValue = sessionsLabel.parentElement?.querySelector("p.mt-0\\.5.text-xs.font-semibold.tabular-nums");

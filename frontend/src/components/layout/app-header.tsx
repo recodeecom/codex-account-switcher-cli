@@ -45,12 +45,12 @@ export function AppHeader({
       <div className="mx-auto flex w-full max-w-[1500px] items-center justify-between gap-4">
         {/* Brand */}
         <div className="flex min-w-0 flex-1 items-center gap-3.5">
-          <div className="flex h-11 w-14 items-center justify-center rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/20 via-primary/10 to-background shadow-[0_4px_16px_-10px_hsl(var(--primary))]">
+          <div className="flex h-11 w-14 items-center justify-center">
             <CodexLogo size={24} className="text-primary" />
           </div>
           <div className="min-w-0 space-y-0.5">
             <p className="truncate text-sm font-semibold tracking-tight">
-              Codexina
+              recodee.com
             </p>
             <p className="hidden truncate text-[11px] text-muted-foreground md:block">
               Live account switchboard. Medicine for you codex accounts.
@@ -124,10 +124,10 @@ export function AppHeader({
             <SheetContent side="right" className="w-72">
               <SheetHeader>
                 <SheetTitle className="flex items-center gap-3">
-                  <div className="flex h-8 w-10 items-center justify-center rounded-xl bg-primary/10">
+                  <div className="flex h-8 w-10 items-center justify-center">
                     <CodexLogo size={18} className="text-primary" />
                   </div>
-                  <span className="text-sm font-semibold">Codexina</span>
+                  <span className="text-sm font-semibold">recodee.com</span>
                 </SheetTitle>
               </SheetHeader>
               <nav className="flex flex-col gap-0.5 px-4 pt-2">

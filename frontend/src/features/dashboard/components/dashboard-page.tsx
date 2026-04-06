@@ -1,10 +1,9 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "@/lib/router-compat";
 import { useQueryClient } from "@tanstack/react-query";
 import { RefreshCw } from "lucide-react";
 
 import { AlertMessage } from "@/components/alert-message";
-import { CodexLogo } from "@/components/brand/codex-logo";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
 import { useDialogState } from "@/hooks/use-dialog-state";
@@ -30,9 +29,11 @@ const MODEL_OPTION_DELIMITER = ":::";
 export function DashboardPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [manualRefreshInFlight, setManualRefreshInFlight] = useState(false);
   const isDark = useThemeStore((s) => s.theme === "dark");
   const dashboardQuery = useDashboard();
-  const { filters, logsQuery, optionsQuery, usageSummaryQuery, updateFilters } = useRequestLogs();
+  const { filters, logsQuery, optionsQuery, usageSummaryQuery, updateFilters } =
+    useRequestLogs();
   const {
     deleteMutation,
     resumeMutation,
@@ -43,10 +44,23 @@ export function DashboardPage() {
   } = useAccountMutations();
   const deleteDialog = useDialogState<{ accountId: string; label: string }>();
 
-  const isRefreshing = dashboardQuery.isFetching || logsQuery.isFetching || usageSummaryQuery.isFetching;
+  const isRefreshing =
+    manualRefreshInFlight ||
+    dashboardQuery.isPending ||
+    logsQuery.isPending ||
+    usageSummaryQuery.isPending;
 
   const handleRefresh = useCallback(() => {
-    void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    const run = async () => {
+      setManualRefreshInFlight(true);
+      try {
+        await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      } finally {
+        setManualRefreshInFlight(false);
+      }
+    };
+
+    void run();
   }, [queryClient]);
 
   const handleAccountAction = useCallback(
@@ -74,7 +88,9 @@ export function DashboardPage() {
           openTerminalMutation.mutate(account.accountId);
           break;
         case "sessions":
-          navigate(`/sessions?accountId=${encodeURIComponent(account.accountId)}`);
+          navigate(
+            `/sessions?accountId=${encodeURIComponent(account.accountId)}`,
+          );
           break;
         case "delete":
           deleteDialog.show({
@@ -168,7 +184,8 @@ export function DashboardPage() {
     (dashboardQuery.error instanceof Error && dashboardQuery.error.message) ||
     (logsQuery.error instanceof Error && logsQuery.error.message) ||
     (optionsQuery.error instanceof Error && optionsQuery.error.message) ||
-    (usageSummaryQuery.error instanceof Error && usageSummaryQuery.error.message) ||
+    (usageSummaryQuery.error instanceof Error &&
+      usageSummaryQuery.error.message) ||
     null;
 
   return (
@@ -177,17 +194,14 @@ export function DashboardPage() {
       <div className="flex items-start justify-between">
         <div className="space-y-2">
           <div className="flex items-center gap-2">
-            <div className="flex h-9 w-12 items-center justify-center rounded-xl border border-primary/20 bg-gradient-to-br from-primary/20 via-primary/10 to-background">
-              <CodexLogo size={20} className="text-primary" />
-            </div>
             <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-            <Badge variant="secondary" className="border border-border/70 bg-muted/70 text-[11px]">
+            <Badge
+              variant="secondary"
+              className="border border-border/70 bg-muted/70 text-[11px]"
+            >
               Live
             </Badge>
           </div>
-          <p className="max-w-xl text-sm text-muted-foreground">
-            Overview, account health, and recent request logs in one place.
-          </p>
         </div>
         <button
           type="button"
@@ -196,29 +210,37 @@ export function DashboardPage() {
           className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
           title="Refresh dashboard"
         >
-          <RefreshCw className={`h-4 w-4${isRefreshing ? " animate-spin" : ""}`} />
+          <RefreshCw
+            className={`h-4 w-4${isRefreshing ? " animate-spin" : ""}`}
+          />
         </button>
       </div>
 
-      {errorMessage ? <AlertMessage variant="error">{errorMessage}</AlertMessage> : null}
+      {errorMessage ? (
+        <AlertMessage variant="error">{errorMessage}</AlertMessage>
+      ) : null}
 
       {!overview || !view ? (
         <DashboardSkeleton />
       ) : (
         <>
-            <UsageDonuts
-              primaryItems={view.primaryUsageItems}
-              secondaryItems={view.secondaryUsageItems}
-              primaryTotal={view.primaryTotal}
-              secondaryTotal={view.secondaryTotal}
-              primaryWindowMinutes={overview?.summary.primaryWindow.windowMinutes ?? null}
-              safeLinePrimary={view.safeLinePrimary}
-              safeLineSecondary={view.safeLineSecondary}
-            />
+          <UsageDonuts
+            primaryItems={view.primaryUsageItems}
+            secondaryItems={view.secondaryUsageItems}
+            primaryTotal={view.primaryTotal}
+            secondaryTotal={view.secondaryTotal}
+            primaryWindowMinutes={
+              overview?.summary.primaryWindow.windowMinutes ?? null
+            }
+            safeLinePrimary={view.safeLinePrimary}
+            safeLineSecondary={view.safeLineSecondary}
+          />
 
           <section className="space-y-4">
             <div className="flex items-center gap-3">
-              <h2 className="text-[13px] font-medium uppercase tracking-wider text-muted-foreground">Accounts</h2>
+              <h2 className="text-[13px] font-medium uppercase tracking-wider text-muted-foreground">
+                Accounts
+              </h2>
               <div className="h-px flex-1 bg-border" />
             </div>
             <AccountCards
@@ -233,14 +255,18 @@ export function DashboardPage() {
 
           <section className="space-y-4">
             <div className="flex items-center gap-3">
-              <h2 className="text-[13px] font-medium uppercase tracking-wider text-muted-foreground">Request Logs</h2>
+              <h2 className="text-[13px] font-medium uppercase tracking-wider text-muted-foreground">
+                Request Logs
+              </h2>
               <div className="h-px flex-1 bg-border" />
             </div>
             <RequestLogUsageDonuts
               accounts={overview?.accounts ?? []}
               usageSummary={mergedUsageSummary.usageSummary}
               fallback={mergedUsageSummary.fallback}
-              primaryWindowMinutes={overview?.summary.primaryWindow.windowMinutes ?? null}
+              primaryWindowMinutes={
+                overview?.summary.primaryWindow.windowMinutes ?? null
+              }
             />
             <RequestFilters
               filters={filters}
@@ -248,12 +274,18 @@ export function DashboardPage() {
               modelOptions={modelOptions}
               statusOptions={statusOptions}
               onSearchChange={(search) => updateFilters({ search, offset: 0 })}
-              onTimeframeChange={(timeframe) => updateFilters({ timeframe, offset: 0 })}
-              onAccountChange={(accountIds) => updateFilters({ accountIds, offset: 0 })}
+              onTimeframeChange={(timeframe) =>
+                updateFilters({ timeframe, offset: 0 })
+              }
+              onAccountChange={(accountIds) =>
+                updateFilters({ accountIds, offset: 0 })
+              }
               onModelChange={(modelOptionsSelected) =>
                 updateFilters({ modelOptions: modelOptionsSelected, offset: 0 })
               }
-              onStatusChange={(statuses) => updateFilters({ statuses, offset: 0 })}
+              onStatusChange={(statuses) =>
+                updateFilters({ statuses, offset: 0 })
+              }
               onReset={() =>
                 updateFilters({
                   search: "",
@@ -303,7 +335,6 @@ export function DashboardPage() {
           });
         }}
       />
-
     </div>
   );
 }

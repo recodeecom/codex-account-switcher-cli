@@ -5,7 +5,7 @@ import "../src/index.css";
 import { AppProviders } from "./providers";
 
 export const metadata: Metadata = {
-  title: "Codexina",
+  title: "recodee.com",
   description: "Live account switchboard",
 };
 

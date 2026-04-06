@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { Cell, Pie, PieChart } from "recharts";
 
@@ -85,6 +85,7 @@ const PIE_CY = 71;
 const INNER_R = 53;
 const OUTER_R = 71;
 const COLLAPSED_LEGEND_PREVIEW_COUNT = 4;
+const PIE_ENTRY_ANIMATION_MS = 600;
 
 export function DonutChart({
   items,
@@ -104,29 +105,58 @@ export function DonutChart({
   const blurred = usePrivacyStore((s) => s.blurred);
   const reducedMotion = useReducedMotion();
   const consumedColor = isDark ? "#404040" : "#d3d3d3";
-  const palette = buildDonutPalette(items.length, isDark);
-  const normalizedItems = items.map((item, index) => ({
-    ...item,
-    color: item.color ?? palette[index % palette.length],
-  }));
+  const [isPieEntryAnimationActive, setIsPieEntryAnimationActive] = useState(
+    () => !reducedMotion,
+  );
+  useEffect(() => {
+    if (!isPieEntryAnimationActive) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setIsPieEntryAnimationActive(false);
+    }, PIE_ENTRY_ANIMATION_MS + 40);
+    return () => window.clearTimeout(timer);
+  }, [isPieEntryAnimationActive]);
 
-  const usedSum = normalizedItems.reduce((acc, item) => acc + Math.max(0, item.value), 0);
-  const consumed = Math.max(0, total - usedSum);
+  const palette = useMemo(
+    () => buildDonutPalette(items.length, isDark),
+    [isDark, items.length],
+  );
+  const normalizedItems = useMemo(
+    () =>
+      items.map((item, index) => ({
+        ...item,
+        color: item.color ?? palette[index % palette.length],
+      })),
+    [items, palette],
+  );
+
+  const usedSum = useMemo(
+    () => normalizedItems.reduce((acc, item) => acc + Math.max(0, item.value), 0),
+    [normalizedItems],
+  );
+  const consumed = useMemo(() => Math.max(0, total - usedSum), [total, usedSum]);
   const safeTotal = Math.max(0, total);
   const centerPrimaryValue = centerValue ?? formatCompactNumber(safeTotal);
 
-  const chartData = [
-    ...normalizedItems.map((item) => ({
-      name: item.label,
-      value: Math.max(0, item.value),
-      fill: item.color,
-    })),
-    ...(consumed > 0
-      ? [{ name: "__consumed__", value: consumed, fill: consumedColor }]
-      : []),
-  ];
+  const chartData = useMemo(
+    () => [
+      ...normalizedItems.map((item) => ({
+        name: item.label,
+        value: Math.max(0, item.value),
+        fill: item.color,
+      })),
+      ...(consumed > 0
+        ? [{ name: "__consumed__", value: consumed, fill: consumedColor }]
+        : []),
+    ],
+    [consumed, consumedColor, normalizedItems],
+  );
 
   const hasData = chartData.some((d) => d.value > 0);
+  const renderedChartData = hasData
+    ? chartData
+    : [{ name: "__empty__", value: 1, fill: consumedColor }];
   const [legendCollapsed, setLegendCollapsed] = useState(
     legendCollapsible ? legendDefaultCollapsed : false,
   );
@@ -135,11 +165,6 @@ export function DonutChart({
     legendCollapsible && legendCollapsed ? collapsedLegendItems : normalizedItems;
   const hasCollapsedLegendOverflow =
     legendCollapsible && normalizedItems.length > COLLAPSED_LEGEND_PREVIEW_COUNT;
-
-  if (!hasData) {
-    chartData.length = 0;
-    chartData.push({ name: "__empty__", value: 1, fill: consumedColor });
-  }
 
   return (
     <div className="rounded-xl border bg-card p-5">
@@ -152,7 +177,7 @@ export function DonutChart({
         <div className="relative h-36 w-36 shrink-0 overflow-visible">
             <PieChart width={CHART_SIZE} height={CHART_SIZE} margin={{ top: CHART_MARGIN, right: CHART_MARGIN, bottom: CHART_MARGIN, left: CHART_MARGIN }}>
             <Pie
-              data={chartData}
+              data={renderedChartData}
               cx={PIE_CX}
               cy={PIE_CY}
               innerRadius={INNER_R}
@@ -161,11 +186,11 @@ export function DonutChart({
               endAngle={-270}
               dataKey="value"
               stroke="none"
-              isAnimationActive={!reducedMotion}
-              animationDuration={600}
+              isAnimationActive={isPieEntryAnimationActive && !reducedMotion}
+              animationDuration={PIE_ENTRY_ANIMATION_MS}
               animationEasing="ease-out"
             >
-              {chartData.map((entry, index) => (
+              {renderedChartData.map((entry, index) => (
                 <Cell key={index} fill={entry.fill} />
               ))}
             </Pie>

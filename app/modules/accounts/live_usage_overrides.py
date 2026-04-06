@@ -981,8 +981,8 @@ def _resolve_session_presence_snapshot_names_for_account(
     """Resolve session-presence snapshot candidates without cross-account leakage.
 
     Session visibility should primarily follow the selected snapshot. We still
-    allow same-account local-part aliases (e.g. ``codexina`` <->
-    ``codexinaedix``) so existing active-session hints keep working, but avoid
+    allow same-account local-part aliases (e.g. ``recodee`` <->
+    ``recodeeedix``) so existing active-session hints keep working, but avoid
     inheriting unrelated snapshots from stale index buckets.
     """
 

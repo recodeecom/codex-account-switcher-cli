@@ -84,30 +84,6 @@ function emitBrowserLocationChange() {
   window.dispatchEvent(event);
 }
 
-type WindowWithNextData = Window & {
-  __NEXT_DATA__?: unknown;
-};
-
-function isNextAppRuntime() {
-  if (typeof window === "undefined") {
-    return false;
-  }
-
-  const maybeNextWindow = window as WindowWithNextData;
-  if (typeof maybeNextWindow.__NEXT_DATA__ !== "undefined") {
-    return true;
-  }
-
-  return Boolean(document.getElementById("__NEXT_DATA__"));
-}
-
-function isJsdomRuntime() {
-  if (typeof navigator === "undefined") {
-    return false;
-  }
-  return /jsdom/i.test(navigator.userAgent);
-}
-
 function toHref(to: To): string {
   if (typeof to === "string") {
     return to;
@@ -131,24 +107,6 @@ function navigateWithBrowserHistory(to: To, options?: NavigateOptions) {
       window.location.assign(nextUrl.toString());
     }
     return;
-  }
-
-  const nextPathname = nextUrl.pathname;
-  const currentPathname = window.location.pathname;
-  const shouldDocumentNavigate =
-    isNextAppRuntime() && nextPathname !== currentPathname && !isJsdomRuntime();
-  if (shouldDocumentNavigate) {
-    try {
-      if (options?.replace) {
-        window.location.replace(nextUrl.toString());
-      } else {
-        window.location.assign(nextUrl.toString());
-      }
-      return;
-    } catch {
-      // jsdom and constrained runtimes may not implement full navigation.
-      // Fall back to history updates so tests and non-browser runtimes continue working.
-    }
   }
 
   const nextPath = `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`;

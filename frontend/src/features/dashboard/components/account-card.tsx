@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { isEmailLabel, isLikelyEmailValue } from "@/components/blur-email";
+import { isLikelyEmailValue } from "@/components/blur-email";
 import { CopyButton } from "@/components/copy-button";
 import { usePrivacyStore } from "@/hooks/use-privacy";
 import { Badge } from "@/components/ui/badge";
@@ -151,9 +151,18 @@ function resolveSessionTaskPreview(taskPreview: string | null | undefined): stri
 }
 
 function resolveCardholderName(account: AccountSummary, fallbackTitle: string): string {
+  const normalizeLabel = (value: string) =>
+    value
+      .trim()
+      .replace(/\s+/g, " ")
+      .split(" ")
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
+
   const displayName = account.displayName?.trim();
   if (displayName && !isLikelyEmailValue(displayName)) {
-    return displayName;
+    return normalizeLabel(displayName);
   }
 
   const email = account.email?.trim();
@@ -161,15 +170,15 @@ function resolveCardholderName(account: AccountSummary, fallbackTitle: string): 
     const [localPart] = email.split("@");
     const normalizedLocalPart = localPart?.replace(/[._-]+/g, " ").trim();
     if (normalizedLocalPart) {
-      return normalizedLocalPart;
+      return normalizeLabel(normalizedLocalPart);
     }
   }
 
   if (displayName) {
-    return displayName;
+    return normalizeLabel(displayName);
   }
 
-  return fallbackTitle;
+  return normalizeLabel(fallbackTitle);
 }
 
 function normalizeNearZeroQuotaPercent(value: number): number {
@@ -783,7 +792,6 @@ export function AccountCard(props: AccountCardProps) {
       : null;
 
   const title = account.displayName || account.email;
-  const titleIsEmail = isEmailLabel(title, account.email);
   const compactId = formatCompactAccountId(account.accountId);
   const planWithSnapshot = formatPlanWithSnapshot(
     account.planType,
@@ -890,10 +898,6 @@ export function AccountCard(props: AccountCardProps) {
       liveQuotaDebug,
     ],
   );
-  const emailSubtitle =
-    account.displayName && account.displayName !== account.email
-      ? account.email
-      : null;
   const cardholderName = resolveCardholderName(account, title);
   const cardholderBlurred = blurred && isLikelyEmailValue(cardholderName);
   const tokenCardPrimaryLine = tokenMetricValue;
@@ -922,17 +926,99 @@ export function AccountCard(props: AccountCardProps) {
             "blur-[1.5px] saturate-[0.82]",
         )}
       >
-      {/* Header */}
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold leading-tight">
-            {titleIsEmail && blurred ? (
-              <span className="privacy-blur">{title}</span>
-            ) : (
-              title
-            )}
-          </p>
-          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+      <div className="relative overflow-hidden rounded-[18px] border border-white/10 bg-[radial-gradient(120%_180%_at_0%_0%,rgba(255,255,255,0.08)_0%,rgba(255,255,255,0)_42%),linear-gradient(118deg,#17191f_0%,#101217_52%,#07080b_100%)] px-3.5 py-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_16px_34px_rgba(0,0,0,0.55)]">
+        <div
+          className="pointer-events-none absolute -left-6 top-0 h-full w-28 rotate-[18deg] bg-white/[0.04]"
+          aria-hidden
+        />
+        <div className="relative">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <Badge
+              variant="outline"
+              className="border-cyan-500/25 bg-cyan-500/10 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-700 dark:text-cyan-300"
+            >
+              {planLabel}
+            </Badge>
+            <div className="flex flex-wrap items-center justify-end gap-1.5">
+              <StatusBadge status={status} />
+              {deactivatedLastSeenDisplay ? (
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    "gap-1",
+                    deactivatedLastSeenDisplay.upToDate
+                      ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300"
+                      : "border-zinc-500/25 bg-zinc-500/10 text-zinc-600 dark:text-zinc-300",
+                  )}
+                  title={deactivatedLastSeenDisplay.label ?? undefined}
+                >
+                  <Clock className="h-3 w-3" />
+                  {deactivatedLastSeenDisplay.label}
+                </Badge>
+              ) : null}
+              {showUsageLimitHitBadge ? (
+                <Badge
+                  variant="outline"
+                  className="gap-1.5 border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-300"
+                >
+                  <span
+                    className="h-1.5 w-1.5 rounded-full bg-current"
+                    aria-hidden
+                  />
+                  Usage limit hit
+                  {usageLimitHit && usageLimitHitCountdownLabel ? (
+                    <span className="font-medium text-red-700 dark:text-red-300">
+                      · leaves in {usageLimitHitCountdownLabel}
+                    </span>
+                  ) : null}
+                </Badge>
+              ) : isWorkingNow ? (
+                <Badge
+                  variant="outline"
+                  className="gap-1.5 border-cyan-500/25 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300"
+                >
+                  <span
+                    className="h-1.5 w-1.5 rounded-full bg-current"
+                    aria-hidden
+                  />
+                  Working now
+                </Badge>
+              ) : null}
+              {showWeeklyUsageLimitDetailBadge ? (
+                <Badge
+                  variant="outline"
+                  className="gap-1.5 border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-300"
+                >
+                  <span
+                    className="h-1.5 w-1.5 rounded-full bg-current"
+                    aria-hidden
+                  />
+                  Weekly usage limit hit
+                </Badge>
+              ) : null}
+              {hasExpiredRefreshToken ? (
+                <Badge
+                  variant="outline"
+                  className="gap-1.5 border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                  title={
+                    account.deactivationReason ??
+                    "Re-login is required to refresh the account token."
+                  }
+                >
+                  <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden />
+                  Expired refresh token
+                </Badge>
+              ) : null}
+            </div>
+          </div>
+          <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-200/90">
+            <span>OpenAI</span>
+            <span>{hasLiveSession ? "Live token card" : "Token card"}</span>
+          </div>
+          <p
+            className="mt-1 truncate text-[10px] font-medium uppercase tracking-[0.16em] text-zinc-400"
+            title={showAccountId ? `Account ID ${account.accountId}` : undefined}
+          >
             {snapshotIsEmail && blurred ? (
               <>
                 {planLabel} · <span className="privacy-blur">{snapshotLabel}</span>
@@ -940,105 +1026,8 @@ export function AccountCard(props: AccountCardProps) {
             ) : (
               planWithSnapshot
             )}
-            {!emailSubtitle ? idSuffix : ""}
+            {idSuffix}
           </p>
-          {emailSubtitle ? (
-            <p
-              className="mt-0.5 truncate text-xs text-muted-foreground"
-              title={
-                showAccountId ? `Account ID ${account.accountId}` : undefined
-              }
-            >
-              <span className={blurred ? "privacy-blur" : undefined}>
-                {emailSubtitle}
-              </span>
-              {showAccountId ? ` | ID ${compactId}` : ""}
-            </p>
-          ) : null}
-        </div>
-        <div className="flex items-center gap-1.5">
-          <StatusBadge status={status} />
-          {deactivatedLastSeenDisplay ? (
-            <Badge
-              variant="outline"
-              className={cn(
-                "gap-1",
-                deactivatedLastSeenDisplay.upToDate
-                  ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300"
-                  : "border-zinc-500/25 bg-zinc-500/10 text-zinc-600 dark:text-zinc-300",
-              )}
-              title={deactivatedLastSeenDisplay.label ?? undefined}
-            >
-              <Clock className="h-3 w-3" />
-              {deactivatedLastSeenDisplay.label}
-            </Badge>
-          ) : null}
-          {showUsageLimitHitBadge ? (
-            <Badge
-              variant="outline"
-              className="gap-1.5 border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-300"
-            >
-              <span
-                className="h-1.5 w-1.5 rounded-full bg-current"
-                aria-hidden
-              />
-              Usage limit hit
-              {usageLimitHit && usageLimitHitCountdownLabel ? (
-                <span className="font-medium text-red-700 dark:text-red-300">
-                  · leaves in {usageLimitHitCountdownLabel}
-                </span>
-              ) : null}
-            </Badge>
-          ) : isWorkingNow ? (
-            <Badge
-              variant="outline"
-              className="gap-1.5 border-cyan-500/25 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300"
-            >
-              <span
-                className="h-1.5 w-1.5 rounded-full bg-current"
-                aria-hidden
-              />
-              Working now
-            </Badge>
-          ) : null}
-          {showWeeklyUsageLimitDetailBadge ? (
-            <Badge
-              variant="outline"
-              className="gap-1.5 border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-300"
-            >
-              <span
-                className="h-1.5 w-1.5 rounded-full bg-current"
-                aria-hidden
-              />
-              Weekly usage limit hit
-            </Badge>
-          ) : null}
-          {hasExpiredRefreshToken ? (
-            <Badge
-              variant="outline"
-              className="gap-1.5 border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300"
-              title={
-                account.deactivationReason ??
-                "Re-login is required to refresh the account token."
-              }
-            >
-              <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden />
-              Expired refresh token
-            </Badge>
-          ) : null}
-        </div>
-      </div>
-
-      <div className="relative mt-3 overflow-hidden rounded-[18px] border border-white/10 bg-[radial-gradient(120%_180%_at_0%_0%,rgba(255,255,255,0.08)_0%,rgba(255,255,255,0)_42%),linear-gradient(118deg,#17191f_0%,#101217_52%,#07080b_100%)] px-3.5 py-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_16px_34px_rgba(0,0,0,0.55)]">
-        <div
-          className="pointer-events-none absolute -left-6 top-0 h-full w-28 rotate-[18deg] bg-white/[0.04]"
-          aria-hidden
-        />
-        <div className="relative">
-          <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-200/90">
-            <span>OpenAI</span>
-            <span>{hasLiveSession ? "Live token card" : "Token card"}</span>
-          </div>
           <div className="mt-3 flex items-center gap-2 text-zinc-200/85">
             <div className="h-5 w-7 rounded-[4px] border border-amber-200/35 bg-[linear-gradient(145deg,#f2ca7d_0%,#d79a24_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.35)]" />
             <span className="text-xs tracking-[0.18em]">)))</span>
@@ -1055,19 +1044,24 @@ export function AccountCard(props: AccountCardProps) {
             <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-zinc-400">
               Cardholder name
             </p>
-            <div className="mt-2 flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
-              <span
-                className="h-2 w-2 shrink-0 rounded-full bg-cyan-300/80 shadow-[0_0_10px_rgba(34,211,238,0.6)]"
-                aria-hidden
-              />
-              <p
-                className={cn(
-                  "min-w-0 truncate font-mono text-sm uppercase tracking-[0.13em] text-zinc-100",
-                  cardholderBlurred && "privacy-blur",
-                )}
-              >
-                {cardholderName}
-              </p>
+            <div className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-white/12 bg-[linear-gradient(120deg,rgba(255,255,255,0.08)_0%,rgba(255,255,255,0.03)_45%,rgba(255,255,255,0)_100%)] px-2.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.07)]">
+              <div className="flex min-w-0 items-center gap-2">
+                <span
+                  className="h-2 w-2 shrink-0 rounded-full bg-cyan-300/80 shadow-[0_0_10px_rgba(34,211,238,0.6)]"
+                  aria-hidden
+                />
+                <p
+                  className={cn(
+                    "min-w-0 truncate font-mono text-sm tracking-[0.08em] text-zinc-100",
+                    cardholderBlurred && "privacy-blur",
+                  )}
+                >
+                  {cardholderName}
+                </p>
+              </div>
+              <span className="shrink-0 rounded-full border border-white/15 bg-black/25 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.12em] text-zinc-300">
+                Account
+              </span>
             </div>
           </div>
 
