@@ -315,7 +315,12 @@ class UsageUpdater:
         if payload is None:
             return AccountRefreshResult(usage_written=False, fetch_succeeded=False)
 
-        await self._sync_plan_type(account, payload)
+        downgraded_workspace_membership = await self._sync_plan_type(account, payload)
+        if downgraded_workspace_membership:
+            # Treat workspace downgrade-to-free as disconnected account state.
+            # Keep existing quota windows untouched instead of overwriting with
+            # unrelated free-tier usage after workspace removal.
+            return AccountRefreshResult(usage_written=False)
 
         now_epoch = _now_epoch()
         if self._additional_usage_repo is not None:
@@ -449,14 +454,31 @@ class UsageUpdater:
         _deactivation_failure_streak.pop(account.id, None)
         await self._deactivate_for_client_error(account, exc)
 
-    async def _sync_plan_type(self, account: Account, payload: UsagePayload) -> None:
+    async def _sync_plan_type(self, account: Account, payload: UsagePayload) -> bool:
         next_plan_type = coerce_account_plan_type(payload.plan_type, account.plan_type or "free")
+
+        if _is_workspace_membership_downgraded_to_free(
+            chatgpt_account_id=account.chatgpt_account_id,
+            current_plan_type=account.plan_type,
+            next_plan_type=next_plan_type,
+        ):
+            if self._auth_manager:
+                reason = "Usage API error: HTTP 403 - Workspace membership removed (plan downgraded to free)"
+                await self._auth_manager._repo.update_status(
+                    account.id,
+                    AccountStatus.DEACTIVATED,
+                    reason,
+                )
+                account.status = AccountStatus.DEACTIVATED
+                account.deactivation_reason = reason
+            return True
+
         if next_plan_type == account.plan_type:
-            return
+            return False
 
         account.plan_type = next_plan_type
         if not self._auth_manager:
-            return
+            return False
 
         await self._auth_manager._repo.update_tokens(
             account.id,
@@ -468,6 +490,7 @@ class UsageUpdater:
             email=account.email,
             chatgpt_account_id=account.chatgpt_account_id,
         )
+        return False
 
     async def _sync_account_from_repo(self, account: Account) -> None:
         if not self._accounts_repo:
@@ -767,6 +790,30 @@ def _reset_at(reset_at: int | None, reset_after_seconds: int | None, now_epoch: 
     if reset_after_seconds is None:
         return None
     return now_epoch + max(0, int(reset_after_seconds))
+
+
+def _is_workspace_membership_downgraded_to_free(
+    *,
+    chatgpt_account_id: str | None,
+    current_plan_type: str | None,
+    next_plan_type: str,
+) -> bool:
+    normalized_chatgpt_account_id = (chatgpt_account_id or "").strip().lower()
+    if not (
+        normalized_chatgpt_account_id.startswith("workspace_")
+        or normalized_chatgpt_account_id.startswith("workspace-")
+    ):
+        return False
+
+    normalized_next_plan_type = next_plan_type.strip().lower()
+    if normalized_next_plan_type != "free":
+        return False
+
+    normalized_current_plan_type = (current_plan_type or "").strip().lower()
+    if not normalized_current_plan_type:
+        return False
+
+    return normalized_current_plan_type != "free"
 
 
 # Treat usage 4xx signals that indicate account-level invalidity as

@@ -1,17 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 40 32" fill="none">
   <defs>
     <linearGradient id="leftLoop" x1="9" y1="16" x2="18" y2="16" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#FB4B7A" />
+      <stop offset="0%" stop-color="#F43F5E" />
       <stop offset="100%" stop-color="#F8FAFC" />
     </linearGradient>
     <linearGradient id="rightLoop" x1="22" y1="16" x2="31" y2="16" gradientUnits="userSpaceOnUse">
       <stop offset="0%" stop-color="#F8FAFC" />
-      <stop offset="100%" stop-color="#12C48B" />
+      <stop offset="100%" stop-color="#10B981" />
     </linearGradient>
     <linearGradient id="bridge" x1="14.8" y1="16" x2="25.2" y2="16" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#FB4B7A" />
+      <stop offset="0%" stop-color="#F43F5E" />
       <stop offset="50%" stop-color="#F8FAFC" />
-      <stop offset="100%" stop-color="#12C48B" />
+      <stop offset="100%" stop-color="#10B981" />
     </linearGradient>
   </defs>
 

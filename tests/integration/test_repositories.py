@@ -250,3 +250,51 @@ async def test_accounts_repository_lists_recent_codex_session_task_previews(db_s
         assert len(previews["acc_preview"]) == 1
         assert previews["acc_preview"][0].session_key == "repo-session-active"
         assert previews["acc_preview"][0].task_preview == "Investigate active preview row"
+
+
+@pytest.mark.asyncio
+async def test_accounts_repository_list_codex_session_task_previews_has_no_default_cap(db_setup):
+    now = utcnow().replace(microsecond=0)
+    active_since = now - timedelta(minutes=10)
+
+    async with SessionLocal() as session:
+        repo = AccountsRepository(session)
+        await repo.upsert(_make_account("acc_preview_unlimited", "preview-unlimited@example.com"))
+
+        for index in range(5):
+            timestamp = now - timedelta(minutes=index + 1)
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO sticky_sessions (
+                        key, account_id, kind, created_at, updated_at, task_preview, task_updated_at
+                    )
+                    VALUES (
+                        :key, :account_id, 'codex_session',
+                        :timestamp, :timestamp, :task_preview, :timestamp
+                    )
+                    """
+                ),
+                {
+                    "key": f"repo-session-active-{index + 1}",
+                    "account_id": "acc_preview_unlimited",
+                    "timestamp": timestamp,
+                    "task_preview": f"Task preview {index + 1}",
+                },
+            )
+        await session.commit()
+
+        previews = await repo.list_codex_session_task_previews_by_account(
+            ["acc_preview_unlimited"],
+            active_since=active_since,
+        )
+
+        assert list(previews.keys()) == ["acc_preview_unlimited"]
+        assert len(previews["acc_preview_unlimited"]) == 5
+        assert [item.session_key for item in previews["acc_preview_unlimited"]] == [
+            "repo-session-active-1",
+            "repo-session-active-2",
+            "repo-session-active-3",
+            "repo-session-active-4",
+            "repo-session-active-5",
+        ]

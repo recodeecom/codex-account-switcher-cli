@@ -186,7 +186,7 @@ class AccountsRepository:
         account_ids: list[str] | None = None,
         *,
         active_since: datetime | None = None,
-        limit_per_account: int | None = 4,
+        limit_per_account: int | None = None,
     ) -> dict[str, list[AccountSessionTaskPreview]]:
         normalized_limit = (
             max(1, int(limit_per_account)) if limit_per_account is not None else None

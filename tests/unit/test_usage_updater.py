@@ -739,6 +739,51 @@ async def test_usage_updater_syncs_plan_type_from_usage_payload(monkeypatch) -> 
 
 
 @pytest.mark.asyncio
+async def test_usage_updater_deactivates_workspace_account_when_usage_downgrades_to_free(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("CODEX_LB_USAGE_REFRESH_ENABLED", "true")
+    from app.core.config.settings import get_settings
+
+    get_settings.cache_clear()
+
+    async def stub_fetch_usage(**_: Any) -> UsagePayload:
+        return UsagePayload.model_validate(
+            {
+                "plan_type": "free",
+                "rate_limit": {
+                    "primary_window": {
+                        "used_percent": 2.0,
+                        "reset_at": 1735689600,
+                        "limit_window_seconds": 60,
+                    }
+                },
+            }
+        )
+
+    monkeypatch.setattr("app.modules.usage.updater.fetch_usage", stub_fetch_usage)
+
+    usage_repo = StubUsageRepository()
+    accounts_repo = StubAccountsRepository()
+    updater = UsageUpdater(usage_repo, accounts_repo=accounts_repo)
+    acc = _make_account("acc_workspace_removed", "workspace_team_removed", email="codexina@edixai.com")
+    acc.plan_type = "team"
+    accounts_repo.accounts_by_id[acc.id] = acc
+
+    await updater.refresh_accounts([acc], latest_usage={})
+
+    assert acc.status == AccountStatus.DEACTIVATED
+    assert acc.plan_type == "team"
+    assert usage_repo.entries == []
+    assert len(accounts_repo.status_updates) == 1
+    status_update = accounts_repo.status_updates[0]
+    assert status_update["account_id"] == "acc_workspace_removed"
+    assert status_update["status"] == AccountStatus.DEACTIVATED
+    assert isinstance(status_update["deactivation_reason"], str)
+    assert "workspace membership removed" in status_update["deactivation_reason"].lower()
+
+
+@pytest.mark.asyncio
 async def test_usage_updater_computes_reset_at_from_reset_after_seconds(monkeypatch) -> None:
     monkeypatch.setenv("CODEX_LB_USAGE_REFRESH_ENABLED", "true")
     from app.core.config.settings import get_settings

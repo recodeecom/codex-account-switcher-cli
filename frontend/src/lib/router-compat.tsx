@@ -91,7 +91,23 @@ function toHref(to: To): string {
   return createPath(to);
 }
 
-function navigateWithBrowserHistory(to: To, options?: NavigateOptions) {
+function isNextRuntimeDetected(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  const maybeNextData = window as unknown as {
+    __NEXT_DATA__?: unknown;
+    __next_f?: unknown;
+  };
+
+  return Boolean(maybeNextData.__NEXT_DATA__ || maybeNextData.__next_f);
+}
+
+function navigateWithBrowserHistory(
+  to: To,
+  options?: NavigateOptions & { hardNavigation?: boolean },
+) {
   if (typeof window === "undefined") {
     return;
   }
@@ -100,7 +116,7 @@ function navigateWithBrowserHistory(to: To, options?: NavigateOptions) {
   const nextUrl = new URL(href, window.location.href);
   const sameOrigin = nextUrl.origin === window.location.origin;
 
-  if (!sameOrigin) {
+  if (!sameOrigin || options?.hardNavigation) {
     if (options?.replace) {
       window.location.replace(nextUrl.toString());
     } else {
@@ -151,6 +167,29 @@ function normalizeSearchParams(input: SearchParamsInit): URLSearchParams {
   return params;
 }
 
+function navigateWithRouterNavigator(
+  navigationContext: NavigationContextValue | null,
+  to: To,
+  options?: NavigateOptions,
+): boolean {
+  if (!navigationContext) {
+    return false;
+  }
+
+  const navigator = navigationContext.navigator as Partial<RouterNavigator>;
+  const navigateFn = options?.replace ? navigator.replace : navigator.push;
+  if (typeof navigateFn !== "function") {
+    return false;
+  }
+
+  try {
+    navigateFn(to);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function useNavigate() {
   const inRouterContext = useInRouterContext();
   const navigationContext = useContext(UNSAFE_NavigationContext) as
@@ -158,16 +197,17 @@ export function useNavigate() {
     | null;
 
   return (to: To, options?: NavigateOptions) => {
-    if (inRouterContext && navigationContext) {
-      if (options?.replace) {
-        navigationContext.navigator.replace(to);
-      } else {
-        navigationContext.navigator.push(to);
-      }
+    if (
+      inRouterContext &&
+      navigateWithRouterNavigator(navigationContext, to, options)
+    ) {
       return;
     }
 
-    navigateWithBrowserHistory(to, options);
+    navigateWithBrowserHistory(to, {
+      ...options,
+      hardNavigation: isNextRuntimeDetected(),
+    });
   };
 }
 
@@ -193,20 +233,16 @@ export function useSearchParams(): [
     const nextSearchParams = normalizeSearchParams(next);
     const nextSearch = nextSearchParams.toString();
 
-    if (inRouterContext && navigationContext && locationContext) {
+    if (inRouterContext && locationContext) {
       const currentLocation = locationContext.location;
       const nextTo: To = {
         pathname: currentLocation.pathname,
         search: nextSearch ? `?${nextSearch}` : "",
         hash: currentLocation.hash,
       };
-
-      if (options?.replace) {
-        navigationContext.navigator.replace(nextTo);
-      } else {
-        navigationContext.navigator.push(nextTo);
+      if (navigateWithRouterNavigator(navigationContext, nextTo, options)) {
+        return;
       }
-      return;
     }
 
     if (typeof window === "undefined") {
@@ -286,12 +322,18 @@ export function NavLink({ to, className, children, onClick }: NavLinkProps) {
           return;
         }
 
-        event.preventDefault();
-        if (canUseRouterNavigation) {
-          routerNavigator!.push(to);
+        if (
+          canUseRouterNavigation &&
+          navigateWithRouterNavigator(navigationContext, to)
+        ) {
+          event.preventDefault();
           return;
         }
-        navigateWithBrowserHistory(to);
+
+        event.preventDefault();
+        navigateWithBrowserHistory(to, {
+          hardNavigation: isNextRuntimeDetected(),
+        });
       }}
     >
       {typeof children === "function"
