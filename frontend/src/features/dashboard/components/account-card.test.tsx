@@ -1284,10 +1284,11 @@ describe("AccountCard", () => {
 
     render(<AccountCard account={account} />);
 
-    expect(screen.getByText("Current task")).toBeInTheDocument();
+    expect(screen.queryByText("Current task")).not.toBeInTheDocument();
     expect(
       screen.getByText("Trace session-affinity fallback for codex websocket flow"),
     ).toBeInTheDocument();
+    expect(screen.getByText("Codex thinking")).toBeInTheDocument();
   });
 
   it("shows a Next.js badge when task previews mention next.js or turbopack", () => {
@@ -1334,10 +1335,11 @@ describe("AccountCard", () => {
 
     render(<AccountCard account={account} />);
 
-    expect(screen.getByText("Current task")).toBeInTheDocument();
+    expect(screen.queryByText("Current task")).not.toBeInTheDocument();
     expect(
       screen.getByText("Review sticky session cleanup edge-cases"),
     ).toBeInTheDocument();
+    expect(screen.queryByText("Codex thinking")).not.toBeInTheDocument();
   });
 
   it("shows a current task placeholder when no task preview is available", () => {
@@ -1347,7 +1349,7 @@ describe("AccountCard", () => {
 
     render(<AccountCard account={account} />);
 
-    expect(screen.getByText("Current task")).toBeInTheDocument();
+    expect(screen.queryByText("Current task")).not.toBeInTheDocument();
     expect(screen.getByText("No active task reported")).toBeInTheDocument();
   });
 
@@ -1371,8 +1373,9 @@ describe("AccountCard", () => {
 
     render(<AccountCard account={account} />);
 
-    expect(screen.getByText("Current task")).toBeInTheDocument();
+    expect(screen.queryByText("Current task")).not.toBeInTheDocument();
     expect(screen.getByText("Waiting for new task")).toBeInTheDocument();
+    expect(screen.getByText("Codex thinking")).toBeInTheDocument();
   });
 
   it("renders per-session task previews with waiting fallback", () => {
@@ -1473,7 +1476,7 @@ describe("AccountCard", () => {
         vi.advanceTimersByTime(61_000);
       });
 
-      expect(screen.getByText("Current task")).toBeInTheDocument();
+      expect(screen.queryByText("Current task")).not.toBeInTheDocument();
       expect(screen.queryByText("Investigate codexina rollout session mapping")).not.toBeInTheDocument();
       expect(screen.getByText("Waiting for new task")).toBeInTheDocument();
       expect(screen.queryByText(/leaves in/i)).not.toBeInTheDocument();

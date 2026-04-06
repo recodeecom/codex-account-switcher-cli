@@ -13,13 +13,15 @@ import {
   Settings2,
   Users,
 } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { NavLink } from "@/lib/router-compat";
 
 import { CodexLogo } from "@/components/brand/codex-logo";
+import { useDashboard } from "@/features/dashboard/hooks/use-dashboard";
 import { NAV_ITEMS } from "@/components/layout/nav-items";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { formatCompactNumber, formatWindowLabel } from "@/utils/formatters";
 import { cn } from "@/lib/utils";
 
 const NAV_ICONS: Record<string, LucideIcon> = {
@@ -50,8 +52,32 @@ function writeSidebarCollapsedPreference(collapsed: boolean): void {
   window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, collapsed ? "1" : "0");
 }
 
+function formatTokensFromCredits(value: number | null | undefined): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return "--";
+  }
+
+  return formatCompactNumber(Math.max(0, value) * 1000);
+}
+
 export function AppSidebar() {
   const [collapsed, setCollapsed] = useState<boolean>(() => readSidebarCollapsedPreference());
+  const dashboardQuery = useDashboard();
+
+  const primaryRemainingLabel = useMemo(() => {
+    const overview = dashboardQuery.data;
+    return formatWindowLabel("primary", overview?.summary.primaryWindow.windowMinutes ?? null);
+  }, [dashboardQuery.data]);
+
+  const primaryRemainingTokens = useMemo(() => {
+    const overview = dashboardQuery.data;
+    return formatTokensFromCredits(overview?.summary.primaryWindow.remainingCredits ?? null);
+  }, [dashboardQuery.data]);
+
+  const secondaryRemainingTokens = useMemo(() => {
+    const overview = dashboardQuery.data;
+    return formatTokensFromCredits(overview?.summary.secondaryWindow?.remainingCredits ?? null);
+  }, [dashboardQuery.data]);
 
   const toggleCollapsed = () => {
     setCollapsed((previous) => {
@@ -76,15 +102,44 @@ export function AppSidebar() {
         )}
       >
         {collapsed ? (
-          <div className="flex items-center justify-center rounded-2xl border border-white/[0.1] bg-gradient-to-br from-white/[0.08] via-white/[0.04] to-transparent px-2 py-2.5 shadow-[0_12px_28px_rgba(0,0,0,0.28)]">
-            <div className="flex h-11 w-12 items-center justify-center rounded-2xl border border-white/15 bg-gradient-to-br from-primary/55 via-primary/28 to-primary/5 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.22)]">
-              <CodexLogo size={22} />
+          <div className="space-y-2.5">
+            <div className="flex justify-center">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                onClick={toggleCollapsed}
+                className="h-11 w-11 shrink-0 rounded-2xl border border-white/[0.12] bg-gradient-to-b from-white/[0.08] to-white/[0.02] text-slate-300 shadow-[0_10px_26px_rgba(0,0,0,0.24)] hover:border-white/[0.22] hover:text-white"
+                aria-label="Expand navigation menu"
+                aria-pressed={collapsed}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
             </div>
-            <span className="sr-only">recodee.com Account switchboard</span>
+
+            <div className="relative flex items-center justify-center overflow-hidden rounded-2xl border border-white/[0.12] bg-gradient-to-br from-white/[0.08] via-white/[0.04] to-transparent px-2 py-2.5 shadow-[0_12px_28px_rgba(0,0,0,0.28)]">
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/40 to-transparent"
+              />
+              <div className="flex h-11 w-12 items-center justify-center rounded-2xl border border-white/15 bg-gradient-to-br from-primary/55 via-primary/28 to-primary/5 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.22)]">
+                <CodexLogo size={22} />
+              </div>
+              <span className="sr-only">recodee.com Account switchboard</span>
+            </div>
           </div>
         ) : (
           <div className="space-y-2.5">
-            <div className="flex justify-end">
+            <div className="flex items-center justify-end gap-3">
+              <p className="text-right text-[11px] leading-tight">
+                <span className="block font-medium tracking-wide text-slate-200">
+                  recodee.com
+                </span>
+                <span className="block text-slate-400">
+                  {primaryRemainingLabel}: {primaryRemainingTokens}
+                </span>
+                <span className="block text-slate-500">Weekly: {secondaryRemainingTokens}</span>
+              </p>
               <Button
                 type="button"
                 variant="ghost"
@@ -146,22 +201,6 @@ export function AppSidebar() {
             </details>
           </div>
         )}
-
-        {collapsed ? (
-          <div className="flex justify-center">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              onClick={toggleCollapsed}
-              className="h-8 w-8 rounded-lg border border-white/[0.08] bg-white/[0.03] text-slate-300 hover:bg-white/[0.08] hover:text-white"
-              aria-label="Expand navigation menu"
-              aria-pressed={collapsed}
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        ) : null}
 
         <nav aria-label="Sidebar" className="space-y-1.5">
           {NAV_ITEMS.map((item) => {

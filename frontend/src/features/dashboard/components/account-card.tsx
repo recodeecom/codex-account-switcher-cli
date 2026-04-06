@@ -17,7 +17,6 @@ import { CopyButton } from "@/components/copy-button";
 import { usePrivacyStore } from "@/hooks/use-privacy";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { StatusBadge } from "@/components/status-badge";
 import { cn } from "@/lib/utils";
 import type { AccountSummary } from "@/features/dashboard/schemas";
 import { formatCompactAccountId } from "@/utils/account-identifiers";
@@ -25,6 +24,7 @@ import {
   quotaBarTrack,
   resolveEffectiveAccountStatus,
 } from "@/utils/account-status";
+import { STATUS_LABELS } from "@/utils/constants";
 import {
   formatLastUsageLabel,
   formatQuotaResetLabel,
@@ -911,6 +911,21 @@ export function AccountCard(props: AccountCardProps) {
       ? String(codexLiveSessionCount)
       : `${codexLiveSessionCount} sessions`;
   const idSuffix = showAccountId ? ` | ID ${compactId}` : "";
+  const tokenCardStatusClass = cn(
+    "h-7 gap-1.5 rounded-full border px-3 text-[11px] font-semibold tracking-[0.02em] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]",
+    status === "active" &&
+      "border-emerald-500/35 bg-emerald-500/14 text-emerald-300",
+    status === "paused" &&
+      "border-amber-500/35 bg-amber-500/14 text-amber-200",
+    status === "limited" &&
+      "border-orange-500/35 bg-orange-500/14 text-orange-200",
+    status === "exceeded" &&
+      "border-red-500/35 bg-red-500/14 text-red-200",
+    status === "deactivated" &&
+      "border-zinc-500/35 bg-zinc-500/14 text-zinc-300",
+  );
+  const tokenCardWorkingNowClass =
+    "h-7 gap-1.5 rounded-full border border-cyan-500/35 bg-cyan-500/14 px-3 text-[11px] font-semibold tracking-[0.02em] text-cyan-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]";
 
   return (
     <div
@@ -926,21 +941,25 @@ export function AccountCard(props: AccountCardProps) {
             "blur-[1.5px] saturate-[0.82]",
         )}
       >
-      <div className="relative overflow-hidden rounded-[18px] border border-white/10 bg-[radial-gradient(120%_180%_at_0%_0%,rgba(255,255,255,0.08)_0%,rgba(255,255,255,0)_42%),linear-gradient(118deg,#17191f_0%,#101217_52%,#07080b_100%)] px-3.5 py-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_16px_34px_rgba(0,0,0,0.55)]">
+      <div
+        className={cn(
+          "relative overflow-hidden rounded-[18px] border border-white/10 bg-[radial-gradient(120%_180%_at_0%_0%,rgba(255,255,255,0.08)_0%,rgba(255,255,255,0)_42%),linear-gradient(118deg,#17191f_0%,#101217_52%,#07080b_100%)] px-3.5 py-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_16px_34px_rgba(0,0,0,0.55)]",
+          showLimitTint && "border-red-500/45",
+        )}
+      >
         <div
           className="pointer-events-none absolute -left-6 top-0 h-full w-28 rotate-[18deg] bg-white/[0.04]"
           aria-hidden
         />
         <div className="relative">
-          <div className="flex flex-wrap items-start justify-between gap-2">
-            <Badge
-              variant="outline"
-              className="border-cyan-500/25 bg-cyan-500/10 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-700 dark:text-cyan-300"
-            >
-              {planLabel}
-            </Badge>
-            <div className="flex flex-wrap items-center justify-end gap-1.5">
-              <StatusBadge status={status} />
+          <div className="mb-2 flex flex-wrap items-center justify-end gap-1.5">
+              <Badge variant="outline" className={tokenCardStatusClass}>
+                <span
+                  className="h-1.5 w-1.5 rounded-full bg-current"
+                  aria-hidden
+                />
+                {STATUS_LABELS[status] ?? status}
+              </Badge>
               {deactivatedLastSeenDisplay ? (
                 <Badge
                   variant="outline"
@@ -975,7 +994,7 @@ export function AccountCard(props: AccountCardProps) {
               ) : isWorkingNow ? (
                 <Badge
                   variant="outline"
-                  className="gap-1.5 border-cyan-500/25 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300"
+                  className={tokenCardWorkingNowClass}
                 >
                   <span
                     className="h-1.5 w-1.5 rounded-full bg-current"
@@ -1009,7 +1028,6 @@ export function AccountCard(props: AccountCardProps) {
                   Expired refresh token
                 </Badge>
               ) : null}
-            </div>
           </div>
           <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-200/90">
             <span>OpenAI</span>
@@ -1098,157 +1116,126 @@ export function AccountCard(props: AccountCardProps) {
               />
             </div>
           </div>
-        </div>
-      </div>
 
-      <div className="sr-only">
-        <div className="min-w-0 space-y-2">
-          <div className="min-w-0">
-            <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-              {tokenMetricLabel}
-            </p>
-            <p className="mt-0.5 flex items-center gap-1.5 text-xs font-semibold tabular-nums">
-              <span>{accessibleTokenMetricValue}</span>
-              {isWorkingNow ? (
-                <span className="inline-flex items-center gap-1 rounded-md border border-cyan-500/30 bg-cyan-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-cyan-700 dark:text-cyan-300">
-                  live
-                </span>
-              ) : null}
-            </p>
-          </div>
-          <div className="min-w-0">
-            <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-              Codex CLI sessions
-            </p>
-            <p className="mt-0.5 text-xs font-semibold tabular-nums">
-              {accessibleCodexSessionValue}
-            </p>
-            <p className="mt-0.5 text-[10px] text-muted-foreground">
-              Tracked: {codexTrackedSessionCount}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-3 min-w-0">
-          <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-            Current task
-          </p>
-          <div className="mt-0.5 space-y-1">
-            <p
-              className="break-words whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground"
-              title={effectiveCurrentTaskPreview ?? undefined}
-            >
-              <span className="inline-flex items-center gap-1.5">
-                {hasNextTaskHint(effectiveCurrentTaskPreview) ? <NextTaskBadge /> : null}
-                <span>{effectiveCurrentTaskPreview ?? "No active task reported"}</span>
-              </span>
-            </p>
-            {showLastTaskPreview ? (
-              <p
-                className="break-words whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground/80"
-                title={codexLastTaskPreview ?? undefined}
-              >
-                <span className="font-medium text-muted-foreground">Last task:</span>
-                <span className="ml-1 inline-flex items-center gap-1.5">
-                  {hasNextTaskHint(codexLastTaskPreview) ? <NextTaskBadge /> : null}
-                  <span>{codexLastTaskPreview}</span>
-                </span>
-              </p>
-            ) : null}
-            {hasSessionTaskPreviews ? (
-              <div className="mt-1.5 rounded-lg border border-cyan-500/20 bg-cyan-500/[0.06] px-2.5 py-2">
-                <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-700 dark:text-cyan-300">
-                  CLI session tasks
-                </p>
-                <ul className="space-y-1.5">
-                  {sessionTaskPreviews.map((preview) => (
-                    <li
-                      key={preview.sessionKey}
-                      className="grid grid-cols-[auto,1fr] items-start gap-2 text-xs"
-                    >
-                      <span className="inline-flex items-center rounded border border-cyan-500/25 bg-cyan-500/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wide text-cyan-700 dark:text-cyan-300">
-                        {formatSessionKeyLabel(preview.sessionKey)}
-                      </span>
-                      <span
-                        className="break-words whitespace-pre-wrap leading-relaxed text-muted-foreground"
-                        title={preview.taskPreview}
-                      >
-                        <span className="inline-flex items-center gap-1.5">
-                          {hasNextTaskHint(preview.taskPreview) ? <NextTaskBadge /> : null}
-                          <span>{preview.taskPreview}</span>
-                        </span>
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-          </div>
-      </div>
-
-      {liveQuotaDebug ? (
-        <div className="mt-2">
-          <button
-            type="button"
-            className="inline-flex items-center gap-1.5 rounded-md border border-cyan-500/25 bg-cyan-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-700/90 transition-colors hover:bg-cyan-500/15 hover:text-cyan-800 dark:text-cyan-200/90 dark:hover:text-cyan-100"
-            aria-expanded={showQuotaDebug}
-            aria-label="Debug"
-            onClick={() => setShowQuotaDebug((current) => !current)}
-          >
-            Debug
-            <ChevronDown
-              className={cn(
-                "h-3 w-3 transition-transform duration-200",
-                showQuotaDebug && "rotate-180",
-              )}
-            />
-          </button>
-
-          {showQuotaDebug ? (
-            <div className="mt-2 space-y-2 rounded-lg border border-cyan-500/25 bg-[#061325] px-2.5 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-300">
-                  CLI session logs
-                </p>
-                <div className="flex items-center gap-1.5 origin-right scale-90">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    className="h-7 gap-1.5 px-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-200 hover:bg-cyan-500/10 hover:text-cyan-100"
-                    onClick={() =>
-                      saveQuotaDebugLogToFile(account.accountId, quotaDebugLogText)
-                    }
-                  >
-                    <Download className="h-3 w-3" />
-                    Save log file
-                  </Button>
-                  <CopyButton value={quotaDebugLogText} label="Copy logs" />
-                </div>
-              </div>
-              <div className="rounded-md border border-cyan-500/20 bg-[#020812] p-1.5">
-                <ol className="max-h-56 overflow-y-auto font-mono text-[11px] leading-5 text-cyan-100">
-                  {quotaDebugLogText.split("\n").map((line, index) => (
-                    <li
-                      key={`${account.accountId}-debug-line-${index}`}
-                      className="grid grid-cols-[2.2rem_minmax(0,1fr)] gap-2 rounded-sm px-1.5 even:bg-cyan-500/[0.06]"
-                    >
-                      <span className="select-none text-right text-cyan-400/55">
-                        {String(index + 1).padStart(2, "0")}
-                      </span>
-                      <span className="break-all">{line}</span>
-                    </li>
-                  ))}
-                </ol>
-              </div>
+          <div className="relative mt-3.5 overflow-hidden">
+            <div className="pointer-events-none absolute inset-0 -z-10" aria-hidden>
+              <div className="absolute left-2 right-8 top-3 h-8 rounded-full bg-cyan-500/[0.09] blur-xl animate-pulse" />
+              <div className="absolute left-10 right-2 top-8 h-7 rounded-full bg-indigo-500/[0.07] blur-2xl animate-pulse [animation-delay:350ms]" />
             </div>
-          ) : null}
-        </div>
-      ) : null}
 
-      {/* Actions */}
-      <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t pt-3">
+            <div className="space-y-1.5">
+              <div className="relative rounded-lg border border-white/10 bg-black/25 px-2.5 py-2">
+                <div className="pointer-events-none absolute inset-0 -z-10 rounded-lg bg-[linear-gradient(90deg,rgba(34,211,238,0.08)_0%,rgba(34,211,238,0)_65%)] animate-pulse" aria-hidden />
+                <p
+                  className="break-words whitespace-pre-wrap text-sm leading-relaxed text-zinc-100/95"
+                  title={effectiveCurrentTaskPreview ?? undefined}
+                >
+                  <span className="inline-flex items-center gap-1.5">
+                    {hasNextTaskHint(effectiveCurrentTaskPreview) ? <NextTaskBadge /> : null}
+                    <span>{effectiveCurrentTaskPreview ?? "No active task reported"}</span>
+                    {isWorkingNow ? (
+                      <span
+                        className="inline-block h-3 w-[1.5px] rounded-full bg-cyan-300/85 align-middle animate-pulse"
+                        aria-hidden
+                      />
+                    ) : null}
+                  </span>
+                </p>
+              </div>
+
+              {showLastTaskPreview ? (
+                <div className="rounded-lg border border-white/10 bg-black/20 px-2.5 py-1.5">
+                  <p
+                    className="break-words whitespace-pre-wrap text-xs leading-relaxed text-zinc-300/90"
+                    title={codexLastTaskPreview ?? undefined}
+                  >
+                    <span className="font-medium text-zinc-200">Last task:</span>
+                    <span className="ml-1 inline-flex items-center gap-1.5">
+                      {hasNextTaskHint(codexLastTaskPreview) ? <NextTaskBadge /> : null}
+                      <span>{codexLastTaskPreview}</span>
+                    </span>
+                  </p>
+                </div>
+              ) : null}
+
+              {isWorkingNow ? (
+                <div className="inline-flex items-center gap-2 rounded-md border border-cyan-500/20 bg-cyan-500/[0.07] px-2 py-1">
+                  <span className="sr-only">Codex thinking</span>
+                  <span className="flex items-end gap-1" aria-hidden>
+                    <span className="h-2 w-1 rounded-full bg-cyan-300/90 animate-bounce [animation-duration:900ms]" />
+                    <span className="h-3 w-1 rounded-full bg-cyan-300/90 animate-bounce [animation-delay:140ms] [animation-duration:900ms]" />
+                    <span className="h-4 w-1 rounded-full bg-cyan-300/90 animate-bounce [animation-delay:280ms] [animation-duration:900ms]" />
+                    <span className="h-3 w-1 rounded-full bg-cyan-300/90 animate-bounce [animation-delay:420ms] [animation-duration:900ms]" />
+                  </span>
+                  <span className="text-[10px] font-medium uppercase tracking-[0.12em] text-cyan-200/90">
+                    thinking…
+                  </span>
+                </div>
+              ) : null}
+
+              {hasSessionTaskPreviews ? (
+                <div className="mt-1.5 rounded-lg border border-cyan-500/20 bg-cyan-500/[0.06] px-2.5 py-2">
+                  <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-700 dark:text-cyan-300">
+                    CLI session tasks
+                  </p>
+                  <ul className="space-y-1.5">
+                    {sessionTaskPreviews.map((preview) => (
+                      <li
+                        key={preview.sessionKey}
+                        className="grid grid-cols-[auto,1fr] items-start gap-2 text-xs"
+                      >
+                        <span className="inline-flex items-center rounded border border-cyan-500/25 bg-cyan-500/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wide text-cyan-700 dark:text-cyan-300">
+                          {formatSessionKeyLabel(preview.sessionKey)}
+                        </span>
+                        <span
+                          className="break-words whitespace-pre-wrap leading-relaxed text-zinc-200/90"
+                          title={preview.taskPreview}
+                        >
+                          <span className="inline-flex items-center gap-1.5">
+                            {hasNextTaskHint(preview.taskPreview) ? <NextTaskBadge /> : null}
+                            <span>{preview.taskPreview}</span>
+                          </span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+
+        <div className="sr-only">
+          <div className="min-w-0 space-y-2">
+            <div className="min-w-0">
+              <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                {tokenMetricLabel}
+              </p>
+              <p className="mt-0.5 flex items-center gap-1.5 text-xs font-semibold tabular-nums">
+                <span>{accessibleTokenMetricValue}</span>
+                {isWorkingNow ? (
+                  <span className="inline-flex items-center gap-1 rounded-md border border-cyan-500/30 bg-cyan-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-cyan-700 dark:text-cyan-300">
+                    live
+                  </span>
+                ) : null}
+              </p>
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                Codex CLI sessions
+              </p>
+              <p className="mt-0.5 text-xs font-semibold tabular-nums">
+                {accessibleCodexSessionValue}
+              </p>
+              <p className="mt-0.5 text-[10px] text-muted-foreground">
+                Tracked: {codexTrackedSessionCount}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="mt-3.5 flex flex-wrap items-center gap-1.5 border-t border-white/10 pt-3">
         <Button
           type="button"
           size="sm"
@@ -1356,6 +1343,67 @@ export function AccountCard(props: AccountCardProps) {
             Re-auth
           </Button>
         )}
+        </div>
+
+        {liveQuotaDebug ? (
+          <div className="mt-2.5">
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 rounded-md border border-cyan-500/25 bg-cyan-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-700/90 transition-colors hover:bg-cyan-500/15 hover:text-cyan-800 dark:text-cyan-200/90 dark:hover:text-cyan-100"
+              aria-expanded={showQuotaDebug}
+              aria-label="Debug"
+              onClick={() => setShowQuotaDebug((current) => !current)}
+            >
+              Debug
+              <ChevronDown
+                className={cn(
+                  "h-3 w-3 transition-transform duration-200",
+                  showQuotaDebug && "rotate-180",
+                )}
+              />
+            </button>
+
+            {showQuotaDebug ? (
+              <div className="mt-2 space-y-2 rounded-lg border border-cyan-500/25 bg-[#061325] px-2.5 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-300">
+                    CLI session logs
+                  </p>
+                  <div className="flex items-center gap-1.5 origin-right scale-90">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 gap-1.5 px-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-200 hover:bg-cyan-500/10 hover:text-cyan-100"
+                      onClick={() =>
+                        saveQuotaDebugLogToFile(account.accountId, quotaDebugLogText)
+                      }
+                    >
+                      <Download className="h-3 w-3" />
+                      Save log file
+                    </Button>
+                    <CopyButton value={quotaDebugLogText} label="Copy logs" />
+                  </div>
+                </div>
+                <div className="rounded-md border border-cyan-500/20 bg-[#020812] p-1.5">
+                  <ol className="max-h-56 overflow-y-auto font-mono text-[11px] leading-5 text-cyan-100">
+                    {quotaDebugLogText.split("\n").map((line, index) => (
+                      <li
+                        key={`${account.accountId}-debug-line-${index}`}
+                        className="grid grid-cols-[2.2rem_minmax(0,1fr)] gap-2 rounded-sm px-1.5 even:bg-cyan-500/[0.06]"
+                      >
+                        <span className="select-none text-right text-cyan-400/55">
+                          {String(index + 1).padStart(2, "0")}
+                        </span>
+                        <span className="break-all">{line}</span>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
       </div>
       {showUsageLimitGraceOverlay ? (

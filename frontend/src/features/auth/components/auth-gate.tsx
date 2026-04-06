@@ -48,8 +48,8 @@ export function AuthGate({ children }: PropsWithChildren) {
 
         <div className="relative w-full max-w-sm animate-fade-in-up">
           <div className="mb-8 flex flex-col items-center gap-3 text-center">
-            <div className="flex h-20 w-24 items-center justify-center rounded-[1.35rem] border border-primary/20 bg-gradient-to-br from-primary/20 via-primary/10 to-background shadow-sm ring-2 ring-primary/10 ring-offset-2 ring-offset-background">
-              <CodexLogo size={44} className="text-primary" />
+            <div className="flex h-24 w-28 items-center justify-center rounded-[1.5rem] border border-primary/20 bg-gradient-to-br from-primary/20 via-primary/10 to-background shadow-sm ring-2 ring-primary/10 ring-offset-2 ring-offset-background">
+              <CodexLogo size={56} className="text-primary" />
             </div>
             <div>
               <h1 className="text-xl font-semibold tracking-tight">

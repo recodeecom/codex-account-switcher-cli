@@ -663,13 +663,18 @@ async def test_accounts_list_active_auth_session_updates_existing_snapshot_file(
     expected_account_id = generate_unique_account_id("acc_tokio", "tokio@example.com")
     account = next(item for item in listed.json()["accounts"] if item["accountId"] == expected_account_id)
     assert account["codexAuth"]["hasSnapshot"] is True
-    assert account["codexAuth"]["snapshotName"] == "tokio"
-    assert account["codexAuth"]["activeSnapshotName"] == "tokio"
+    assert account["codexAuth"]["snapshotName"] == "tokio@example.com"
+    assert account["codexAuth"]["activeSnapshotName"] == "tokio@example.com"
     assert account["codexAuth"]["isActiveSnapshot"] is True
 
     persisted_snapshot = json.loads(existing_snapshot_path.read_text(encoding="utf-8"))
     assert persisted_snapshot["tokens"]["accessToken"] == "fresh_access"
     assert persisted_snapshot["tokens"]["refreshToken"] == "fresh_refresh"
+    canonical_snapshot_path = accounts_dir / "tokio@example.com.json"
+    assert canonical_snapshot_path.exists()
+    canonical_snapshot = json.loads(canonical_snapshot_path.read_text(encoding="utf-8"))
+    assert canonical_snapshot["tokens"]["accessToken"] == "fresh_access"
+    assert canonical_snapshot["tokens"]["refreshToken"] == "fresh_refresh"
 
 
 @pytest.mark.asyncio

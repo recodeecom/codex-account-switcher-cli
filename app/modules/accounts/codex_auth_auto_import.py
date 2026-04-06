@@ -263,26 +263,29 @@ def _select_snapshot_name_for_account(
     normalized_email = email.strip().lower()
     canonical_name = build_email_snapshot_name(normalized_email)
     snapshot_names_by_account_id = _snapshot_names_by_account_id(accounts_dir)
-    existing_names = snapshot_names_by_account_id.get(account_id, [])
+    snapshot_names_by_email = _snapshot_names_by_email(accounts_dir)
+    existing_names = set(snapshot_names_by_account_id.get(account_id, []))
+    existing_names.update(snapshot_names_by_email.get(normalized_email, []))
     canonical_snapshot_path = accounts_dir / f"{canonical_name}.json"
     if canonical_snapshot_path.exists():
         canonical_snapshot_owner_email = _snapshot_email(canonical_snapshot_path)
         if canonical_snapshot_owner_email in {None, normalized_email}:
             return canonical_name
-
-    snapshot_names_by_email = _snapshot_names_by_email(accounts_dir)
-    existing_email_names = snapshot_names_by_email.get(normalized_email, [])
-    if existing_email_names:
-        # Preserve existing mappings for this email; do not rewrite snapshot names.
-        return existing_email_names[0]
-
-    if existing_names:
-        # Preserve existing mappings for this account id; do not rewrite names.
-        return existing_names[0]
-    if canonical_snapshot_path.exists():
         # Canonical filename exists but belongs to another email identity.
-        # Preserve both snapshots by allocating a deterministic duplicate alias.
+        # Reuse any existing deterministic duplicate alias for this identity.
+        existing_duplicate_aliases = sorted(
+            (
+                name
+                for name in existing_names
+                if _is_email_snapshot_alias(name, base_name=canonical_name) and name != canonical_name
+            ),
+            key=lambda name: _email_snapshot_alias_sort_key(name=name, base_name=canonical_name),
+        )
+        if existing_duplicate_aliases:
+            return existing_duplicate_aliases[0]
+        # Otherwise allocate the next deterministic duplicate alias.
         return _next_available_email_snapshot_name(base_name=canonical_name, accounts_dir=accounts_dir)
+    # Converge legacy aliases toward canonical email snapshot names.
     return canonical_name
 
 
@@ -293,6 +296,16 @@ def _next_available_email_snapshot_name(*, base_name: str, accounts_dir: Path) -
         candidate = f"{base_name}--dup-{suffix}"
         suffix += 1
     return candidate
+
+
+def _email_snapshot_alias_sort_key(*, name: str, base_name: str) -> tuple[int, str]:
+    prefix = f"{base_name}--dup-"
+    if not name.startswith(prefix):
+        return (10_000, name)
+    suffix = name[len(prefix) :]
+    if suffix.isdigit():
+        return (int(suffix), name)
+    return (10_000, name)
 
 
 def _legacy_snapshot_alias_names_for_account(
