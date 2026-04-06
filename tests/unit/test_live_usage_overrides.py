@@ -2051,15 +2051,15 @@ def test_apply_local_live_usage_overrides_preserves_live_session_signal_for_alia
     )
 
     debug = debug_by_account[account.id]
-    assert debug.snapshots_considered == ["codexinaedix"]
-    assert debug.raw_samples == []
-    assert debug.merged is None
-    assert debug.override_applied is False
-    assert debug.override_reason == "missing_live_usage_payload"
+    assert debug.snapshots_considered == ["codexina"]
+    assert [sample.snapshot_name for sample in debug.raw_samples] == ["codexina"]
+    assert debug.merged is not None
+    assert debug.override_applied is True
+    assert debug.override_reason == "applied_live_usage_windows"
     assert codex_auth_by_account[account.id].has_live_session is True
     assert codex_session_counts_by_account[account.id] == 1
-    assert account.id not in primary_usage
-    assert account.id not in secondary_usage
+    assert primary_usage[account.id].used_percent == pytest.approx(88.0)
+    assert secondary_usage[account.id].used_percent == pytest.approx(49.0)
 
 
 def test_apply_local_live_usage_overrides_keeps_baseline_for_new_default_scope_sample_without_confident_ownership(

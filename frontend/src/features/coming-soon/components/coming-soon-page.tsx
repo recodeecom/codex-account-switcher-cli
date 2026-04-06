@@ -59,12 +59,14 @@ export function ComingSoonPage() {
         </form>
 
         <div className="mt-6 overflow-hidden rounded-xl border border-border/60 bg-muted/20">
-          <img
-            src="/commingsoon.jpg"
-            alt="Dashboard preview"
-            className="h-auto w-full object-cover"
-            loading="lazy"
-          />
+          <div className="aspect-[16/10] sm:aspect-[16/9]">
+            <img
+              src="/commingsoon.jpg"
+              alt="Dashboard preview"
+              className="h-full w-full object-cover object-top"
+              loading="lazy"
+            />
+          </div>
         </div>
 
         {submittedEmail ? (

@@ -219,6 +219,21 @@ def apply_local_live_usage_overrides(
             selected_snapshot_name=effective_selected_snapshot_name,
             runtime_live_session_counts_by_snapshot=runtime_live_session_counts_by_snapshot,
         )
+        if live_usage is None and (
+            live_process_session_count > 0 or live_runtime_session_count > 0
+        ):
+            fallback_live_usage, fallback_snapshot_name = (
+                _resolve_session_presence_live_usage_fallback_for_account(
+                    snapshot_names=session_presence_snapshot_names,
+                    selected_snapshot_name=effective_selected_snapshot_name,
+                    live_usage_by_snapshot=live_usage_by_snapshot,
+                    live_process_session_counts_by_snapshot=live_process_session_counts_by_snapshot,
+                    runtime_live_session_counts_by_snapshot=runtime_live_session_counts_by_snapshot,
+                )
+            )
+            if fallback_live_usage is not None and fallback_snapshot_name is not None:
+                live_usage = fallback_live_usage
+                snapshots_considered = [fallback_snapshot_name]
         active_snapshot_name = snapshot_index.active_snapshot_name
         if (
             active_snapshot_name
@@ -1515,6 +1530,48 @@ def _resolve_live_runtime_session_count_for_account(
     for snapshot_name in candidate_names:
         total += max(0, runtime_live_session_counts_by_snapshot.get(snapshot_name, 0))
     return total
+
+
+def _resolve_session_presence_live_usage_fallback_for_account(
+    *,
+    snapshot_names: list[str],
+    selected_snapshot_name: str | None,
+    live_usage_by_snapshot: dict[str, LocalCodexLiveUsage],
+    live_process_session_counts_by_snapshot: dict[str, int],
+    runtime_live_session_counts_by_snapshot: dict[str, int],
+) -> tuple[LocalCodexLiveUsage | None, str | None]:
+    candidate_names = _resolve_session_presence_snapshot_candidates(
+        snapshot_names=snapshot_names,
+        selected_snapshot_name=selected_snapshot_name,
+    )
+    resolved_candidates: list[tuple[int, datetime, str, LocalCodexLiveUsage]] = []
+    for snapshot_name in candidate_names:
+        usage = live_usage_by_snapshot.get(snapshot_name)
+        if usage is None:
+            continue
+        session_signal_count = max(0, live_process_session_counts_by_snapshot.get(snapshot_name, 0)) + max(
+            0, runtime_live_session_counts_by_snapshot.get(snapshot_name, 0)
+        )
+        if session_signal_count <= 0:
+            continue
+        resolved_candidates.append(
+            (
+                session_signal_count,
+                to_utc_naive(usage.recorded_at),
+                snapshot_name,
+                usage,
+            )
+        )
+
+    if not resolved_candidates:
+        return None, None
+
+    resolved_candidates.sort(
+        key=lambda candidate: (candidate[0], candidate[1], candidate[2]),
+        reverse=True,
+    )
+    _, _, snapshot_name, usage = resolved_candidates[0]
+    return usage, snapshot_name
 
 
 def _merge_live_usage(previous: LocalCodexLiveUsage | None, current: LocalCodexLiveUsage) -> LocalCodexLiveUsage:
