@@ -84,8 +84,18 @@ export function resetQuotaDisplayFloorCacheForAccount(
   if (!normalizedAccountKey) {
     return;
   }
-  quotaDisplayFloorCache.delete(`primary:${normalizedAccountKey}`);
-  quotaDisplayFloorCache.delete(`secondary:${normalizedAccountKey}`);
+
+  const clearWindowKeys = (windowKey: "primary" | "secondary") => {
+    const baseKey = `${windowKey}:${normalizedAccountKey}`;
+    for (const cacheKey of quotaDisplayFloorCache.keys()) {
+      if (cacheKey === baseKey || cacheKey.startsWith(`${baseKey}::`)) {
+        quotaDisplayFloorCache.delete(cacheKey);
+      }
+    }
+  };
+
+  clearWindowKeys("primary");
+  clearWindowKeys("secondary");
 }
 
 export function normalizeRemainingPercentForDisplay({

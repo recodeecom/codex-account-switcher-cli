@@ -247,4 +247,27 @@ describe("normalizeRemainingPercentForDisplay", () => {
     expect(first).toBe(10);
     expect(second).toBe(96);
   });
+
+  it("clears snapshot-scoped cache entries when resetting by account id", () => {
+    const first = normalizeRemainingPercentForDisplay({
+      accountKey: "acc-shared::snapshot:alpha",
+      windowKey: "primary",
+      remainingPercent: 0,
+      resetAt: "2026-01-01T05:00:00.000Z",
+      nowMs: new Date("2026-01-01T04:10:00.000Z").getTime(),
+    });
+
+    resetQuotaDisplayFloorCacheForAccount("acc-shared");
+
+    const second = normalizeRemainingPercentForDisplay({
+      accountKey: "acc-shared::snapshot:alpha",
+      windowKey: "primary",
+      remainingPercent: 96,
+      resetAt: "2026-01-01T05:00:00.000Z",
+      nowMs: new Date("2026-01-01T04:12:00.000Z").getTime(),
+    });
+
+    expect(first).toBe(0);
+    expect(second).toBe(96);
+  });
 });

@@ -417,6 +417,59 @@ describe("isAccountWorkingNow", () => {
     ).toBe(0);
   });
 
+  it("isolates usage-limit grace by snapshot when account ids are shared", () => {
+    const sharedAccountBase = createAccountSummary({
+      accountId: "acc-shared",
+      usage: {
+        primaryRemainingPercent: 0,
+        secondaryRemainingPercent: 88,
+      },
+      codexLiveSessionCount: 1,
+      codexTrackedSessionCount: 1,
+      codexSessionCount: 1,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "alpha",
+        activeSnapshotName: "alpha",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+      lastUsageRecordedAtPrimary: "2026-04-04T11:58:30.000Z",
+      lastUsageRecordedAtSecondary: "2026-04-04T11:58:30.000Z",
+    });
+
+    const firstNowMs = new Date("2026-04-04T11:59:00.000Z").getTime();
+    expect(
+      getWorkingNowUsageLimitHitCountdownMs(sharedAccountBase, firstNowMs),
+    ).toBeGreaterThan(0);
+
+    const afterFirstGraceMs = new Date("2026-04-04T12:00:10.000Z").getTime();
+    expect(
+      getWorkingNowUsageLimitHitCountdownMs(sharedAccountBase, afterFirstGraceMs),
+    ).toBe(0);
+
+    const secondSnapshotSameAccountId = {
+      ...sharedAccountBase,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "beta",
+        activeSnapshotName: "beta",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+      lastUsageRecordedAtPrimary: "2026-04-04T12:00:11.000Z",
+      lastUsageRecordedAtSecondary: "2026-04-04T12:00:11.000Z",
+    };
+    const secondNowMs = new Date("2026-04-04T12:00:11.000Z").getTime();
+
+    expect(
+      getWorkingNowUsageLimitHitCountdownMs(
+        secondSnapshotSameAccountId,
+        secondNowMs,
+      ),
+    ).toBeGreaterThan(0);
+  });
+
   it("drops working-now after grace expiry when only stale hasLiveSession remains", () => {
     const base = createAccountSummary({
       status: "active",

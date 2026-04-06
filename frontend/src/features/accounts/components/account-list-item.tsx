@@ -11,7 +11,10 @@ import {
   quotaBarTrack,
   resolveEffectiveAccountStatus,
 } from "@/utils/account-status";
-import { formatCompactAccountId } from "@/utils/account-identifiers";
+import {
+  buildQuotaDisplayAccountKey,
+  formatCompactAccountId,
+} from "@/utils/account-identifiers";
 import { formatPercentNullable, formatSlug } from "@/utils/formatters";
 import {
   getMergedQuotaRemainingPercent,
@@ -160,10 +163,11 @@ export function AccountListItem({
     : "";
   const mergedPrimaryRemainingPercent = getMergedQuotaRemainingPercent(account, "primary");
   const mergedSecondaryRemainingPercent = getMergedQuotaRemainingPercent(account, "secondary");
+  const quotaDisplayAccountKey = buildQuotaDisplayAccountKey(account);
   const primaryRawQuotaFallback = getRawQuotaWindowFallback(account, "primary");
   const secondaryRawQuotaFallback = getRawQuotaWindowFallback(account, "secondary");
   const secondary = normalizeRemainingPercentForDisplay({
-    accountKey: account.accountId,
+    accountKey: quotaDisplayAccountKey,
     windowKey: "secondary",
     remainingPercent:
       mergedSecondaryRemainingPercent ??
@@ -190,7 +194,7 @@ export function AccountListItem({
       baselineResetAt: account.resetAtPrimary,
     });
   const primaryRemaining = normalizeRemainingPercentForDisplay({
-    accountKey: account.accountId,
+    accountKey: quotaDisplayAccountKey,
     windowKey: "primary",
     remainingPercent: primaryRemainingRaw,
     resetAt: primaryRawQuotaFallback?.resetAt ?? account.resetAtPrimary ?? null,

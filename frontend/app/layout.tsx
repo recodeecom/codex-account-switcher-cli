@@ -4,6 +4,22 @@ import type { ReactNode } from "react";
 import "../src/index.css";
 import { AppProviders } from "./providers";
 
+const themeBootstrapScript = `
+(() => {
+  try {
+    const key = "codex-lb-theme";
+    const stored = window.localStorage.getItem(key);
+    const preference = stored === "light" || stored === "dark" || stored === "auto"
+      ? stored
+      : "auto";
+    const resolved = preference === "auto"
+      ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+      : preference;
+    document.documentElement.classList.toggle("dark", resolved === "dark");
+  } catch {}
+})();
+`;
+
 export const metadata: Metadata = {
   title: "recodee.com",
   description: "Live account switchboard",
@@ -19,6 +35,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeBootstrapScript }} />
+      </head>
       <body>
         <AppProviders>{children}</AppProviders>
       </body>

@@ -8,7 +8,11 @@ import {
   type AccountCardProps,
 } from "@/features/dashboard/components/account-card";
 import type { AccountSummary, UsageWindow } from "@/features/dashboard/schemas";
-import { buildDuplicateAccountIdSet } from "@/utils/account-identifiers";
+import {
+  buildAccountIdentityKey,
+  buildDuplicateAccountIdSet,
+  buildQuotaDisplayAccountKey,
+} from "@/utils/account-identifiers";
 import {
   getMergedQuotaRemainingPercent,
   getRawQuotaWindowFallback,
@@ -123,7 +127,7 @@ function resolveSortableRemainingPercent(
     deferredQuotaFallback?.recordedAt ?? baselineRecordedAt ?? null;
 
   return normalizeRemainingPercentForDisplay({
-    accountKey: account.accountId,
+    accountKey: buildQuotaDisplayAccountKey(account),
     windowKey,
     remainingPercent: remainingPercentRaw,
     resetAt: effectiveResetAt,
@@ -131,6 +135,10 @@ function resolveSortableRemainingPercent(
     lastRecordedAt: effectiveRecordedAt,
     applyCycleFloor: mergedRemainingPercent == null,
   });
+}
+
+function buildAccountEntryKey(account: AccountSummary): string {
+  return `${buildAccountIdentityKey(account)}::${buildQuotaDisplayAccountKey(account)}`;
 }
 
 function resolveSortableResetAtMs(
@@ -159,7 +167,7 @@ function sortAccountsByAvailableQuota(
   accounts: AccountSummary[],
   nowMs: number,
 ): AccountSummary[] {
-  const sortMetricsByAccountId = new Map(
+  const sortMetricsByAccount = new Map(
     accounts.map((account) => {
       const primaryRemaining = resolveSortableRemainingPercent(
         account,
@@ -172,7 +180,7 @@ function sortAccountsByAvailableQuota(
         nowMs,
       );
       return [
-        account.accountId,
+        account,
         {
           primaryRemaining,
           primarySortBucket: bucketizeQuotaPercent(primaryRemaining),
@@ -187,8 +195,8 @@ function sortAccountsByAvailableQuota(
   );
 
   return [...accounts].sort((left, right) => {
-    const leftMetrics = sortMetricsByAccountId.get(left.accountId);
-    const rightMetrics = sortMetricsByAccountId.get(right.accountId);
+    const leftMetrics = sortMetricsByAccount.get(left);
+    const rightMetrics = sortMetricsByAccount.get(right);
     if (!leftMetrics || !rightMetrics) {
       return left.accountId.localeCompare(right.accountId);
     }
@@ -239,8 +247,10 @@ function sortAccountsByStableOrder(
   stableOrder: Map<string, number>,
 ): AccountSummary[] {
   return [...accounts].sort((left, right) => {
-    const leftRank = stableOrder.get(left.accountId) ?? Number.MAX_SAFE_INTEGER;
-    const rightRank = stableOrder.get(right.accountId) ?? Number.MAX_SAFE_INTEGER;
+    const leftRank =
+      stableOrder.get(buildAccountEntryKey(left)) ?? Number.MAX_SAFE_INTEGER;
+    const rightRank =
+      stableOrder.get(buildAccountEntryKey(right)) ?? Number.MAX_SAFE_INTEGER;
     if (leftRank !== rightRank) {
       return leftRank - rightRank;
     }
@@ -443,7 +453,7 @@ export function AccountCards({
   const stableAccountOrder = useMemo(
     () =>
       new Map(
-        accounts.map((account, index) => [account.accountId, index] as const),
+        accounts.map((account, index) => [buildAccountEntryKey(account), index] as const),
       ),
     [accounts],
   );
@@ -526,7 +536,7 @@ export function AccountCards({
       avgPrimaryRemaining: roundAveragePercent(
         groupedAccounts.working.map((account) =>
           normalizeRemainingPercentForDisplay({
-            accountKey: account.accountId,
+            accountKey: buildQuotaDisplayAccountKey(account),
             windowKey: "primary",
             remainingPercent: account.usage?.primaryRemainingPercent ?? null,
             resetAt: account.resetAtPrimary ?? null,
@@ -538,7 +548,7 @@ export function AccountCards({
       avgSecondaryRemaining: roundAveragePercent(
         groupedAccounts.working.map((account) =>
           normalizeRemainingPercentForDisplay({
-            accountKey: account.accountId,
+            accountKey: buildQuotaDisplayAccountKey(account),
             windowKey: "secondary",
             remainingPercent: account.usage?.secondaryRemainingPercent ?? null,
             resetAt: account.resetAtSecondary ?? null,
@@ -564,7 +574,7 @@ export function AccountCards({
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-2 2xl:grid-cols-3">
       {items.map((account, index) => (
         <div
-          key={`${keyPrefix}-${account.accountId}`}
+          key={`${keyPrefix}-${buildAccountEntryKey(account)}-${index}`}
           className={
             keyPrefix === "working"
               ? "animate-working-account-enter"

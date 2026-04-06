@@ -545,6 +545,14 @@ function buildWorkingNowSessionFingerprint(account: WorkingNowAccount): string {
   ].join("::");
 }
 
+function buildWorkingNowLimitHitCacheKey(account: WorkingNowAccount): string {
+  const targetSnapshot =
+    normalizeSnapshotName(account.codexAuth?.expectedSnapshotName) ??
+    normalizeSnapshotName(account.codexAuth?.snapshotName) ??
+    "none";
+  return `${account.accountId}::${targetSnapshot}`;
+}
+
 function isDepletedPrimaryQuota(value: number | null | undefined): boolean {
   if (typeof value !== "number" || Number.isNaN(value)) {
     return false;
@@ -608,6 +616,7 @@ export function getWorkingNowUsageLimitHitCountdownMs(
   account: WorkingNowAccount,
   nowMs: number = Date.now(),
 ): number | null {
+  const cacheKey = buildWorkingNowLimitHitCacheKey(account);
   const hasActiveSessionCounterSignal =
     Math.max(
       account.codexLiveSessionCount ?? 0,
@@ -632,11 +641,11 @@ export function getWorkingNowUsageLimitHitCountdownMs(
     isDepletedPrimaryQuota(quotaState.mergedPrimaryRemaining) ||
     isDepletedPrimaryQuota(quotaState.primaryRemaining);
   if (!hasDepletedPrimaryQuota) {
-    usageLimitHitByAccount.delete(account.accountId);
+    usageLimitHitByAccount.delete(cacheKey);
     return null;
   }
 
-  const existing = usageLimitHitByAccount.get(account.accountId);
+  const existing = usageLimitHitByAccount.get(cacheKey);
   if (existing) {
     const existingElapsedMs = Math.max(0, nowMs - existing.startedAtMs);
     if (existingElapsedMs >= WORKING_NOW_LIMIT_HIT_GRACE_MS) {
@@ -650,7 +659,7 @@ export function getWorkingNowUsageLimitHitCountdownMs(
       ? existing.startedAtMs
       : nowMs;
   if (!existing || existing.fingerprint !== sessionFingerprint) {
-    usageLimitHitByAccount.set(account.accountId, {
+    usageLimitHitByAccount.set(cacheKey, {
       fingerprint: sessionFingerprint,
       startedAtMs,
     });

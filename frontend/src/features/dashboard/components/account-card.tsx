@@ -20,7 +20,10 @@ import { Button } from "@/components/ui/button";
 import { useNavigate } from "@/lib/router-compat";
 import { cn } from "@/lib/utils";
 import type { AccountSummary } from "@/features/dashboard/schemas";
-import { formatCompactAccountId } from "@/utils/account-identifiers";
+import {
+  buildQuotaDisplayAccountKey,
+  formatCompactAccountId,
+} from "@/utils/account-identifiers";
 import {
   quotaBarTrack,
   resolveEffectiveAccountStatus,
@@ -635,6 +638,7 @@ export function AccountCard(props: AccountCardProps) {
   const [sessionTasksCollapsed, setSessionTasksCollapsed] = useState(false);
   const navigate = useNavigate();
   const liveQuotaDebug = account.liveQuotaDebug ?? null;
+  const quotaDisplayAccountKey = buildQuotaDisplayAccountKey(account);
   const mergedPrimaryRemainingPercent = getMergedQuotaRemainingPercent(
     account,
     "primary",
@@ -734,7 +738,7 @@ export function AccountCard(props: AccountCardProps) {
     !secondaryTelemetryFresh &&
     secondaryRemainingRaw == null;
   const primaryRemaining = normalizeRemainingPercentForDisplay({
-    accountKey: account.accountId,
+    accountKey: quotaDisplayAccountKey,
     windowKey: "primary",
     remainingPercent: primaryRemainingRaw,
     resetAt: primaryResetAt,
@@ -743,7 +747,7 @@ export function AccountCard(props: AccountCardProps) {
     applyCycleFloor: mergedPrimaryRemainingPercent == null,
   });
   const secondaryRemaining = normalizeRemainingPercentForDisplay({
-    accountKey: account.accountId,
+    accountKey: quotaDisplayAccountKey,
     windowKey: "secondary",
     remainingPercent: secondaryRemainingRaw,
     resetAt: secondaryResetAt,

@@ -825,6 +825,129 @@ async def test_read_live_usage_task_previews_by_snapshot_uses_local_preview_with
 
 
 @pytest.mark.asyncio
+async def test_read_live_usage_snapshot_alias_map_uses_canonical_snapshot_candidates():
+    from app.modules.accounts.codex_auth_switcher import CodexAuthSnapshotIndex
+    from app.modules.health.api import _read_live_usage_snapshot_alias_map
+
+    account_a = SimpleNamespace(
+        id="legacy-a",
+        chatgpt_account_id="chatgpt-a",
+        email="a@example.com",
+    )
+    account_b = SimpleNamespace(
+        id="legacy-b",
+        chatgpt_account_id="chatgpt-b",
+        email="b@example.com",
+    )
+
+    repo = AsyncMock()
+    repo.list_accounts = AsyncMock(return_value=[account_a, account_b])
+
+    async def _fake_session():
+        yield AsyncMock()
+
+    def _resolve_candidates(*, account_id: str, **_kwargs):
+        if account_id == "legacy-a":
+            return ["a-main", "a-legacy-alias"]
+        if account_id == "legacy-b":
+            return ["b-main"]
+        return []
+
+    with (
+        patch("app.modules.health.api.AccountsRepository", return_value=repo),
+        patch("app.modules.health.api.get_session", return_value=_fake_session()),
+        patch(
+            "app.modules.health.api.build_snapshot_index",
+            return_value=CodexAuthSnapshotIndex(
+                snapshots_by_account_id={},
+                active_snapshot_name="a-main",
+            ),
+        ),
+        patch(
+            "app.modules.health.api.resolve_snapshot_name_candidates_for_account",
+            side_effect=_resolve_candidates,
+        ),
+        patch(
+            "app.modules.health.api.select_snapshot_name",
+            side_effect=lambda snapshot_candidates, *_args, **_kwargs: snapshot_candidates[0]
+            if snapshot_candidates
+            else None,
+        ),
+    ):
+        alias_map = await _read_live_usage_snapshot_alias_map()
+
+    assert alias_map == {
+        "a-main": "a-main",
+        "a-legacy-alias": "a-main",
+        "b-main": "b-main",
+    }
+
+
+@pytest.mark.asyncio
+async def test_read_live_usage_snapshot_alias_map_drops_ambiguous_alias_conflicts():
+    from app.modules.accounts.codex_auth_switcher import CodexAuthSnapshotIndex
+    from app.modules.health.api import _read_live_usage_snapshot_alias_map
+
+    account_a = SimpleNamespace(
+        id="legacy-a",
+        chatgpt_account_id="chatgpt-shared",
+        email="a@example.com",
+    )
+    account_b = SimpleNamespace(
+        id="legacy-b",
+        chatgpt_account_id="chatgpt-shared",
+        email="b@example.com",
+    )
+
+    repo = AsyncMock()
+    repo.list_accounts = AsyncMock(return_value=[account_a, account_b])
+
+    async def _fake_session():
+        yield AsyncMock()
+
+    def _resolve_candidates(*, account_id: str, **_kwargs):
+        if account_id == "legacy-a":
+            return ["shared-alias", "a-main"]
+        if account_id == "legacy-b":
+            return ["shared-alias", "b-main"]
+        return []
+
+    def _select_snapshot(snapshot_candidates: list[str], *_args, email: str, **_kwargs):
+        if email == "a@example.com":
+            return "a-main"
+        if email == "b@example.com":
+            return "b-main"
+        return snapshot_candidates[0] if snapshot_candidates else None
+
+    with (
+        patch("app.modules.health.api.AccountsRepository", return_value=repo),
+        patch("app.modules.health.api.get_session", return_value=_fake_session()),
+        patch(
+            "app.modules.health.api.build_snapshot_index",
+            return_value=CodexAuthSnapshotIndex(
+                snapshots_by_account_id={},
+                active_snapshot_name=None,
+            ),
+        ),
+        patch(
+            "app.modules.health.api.resolve_snapshot_name_candidates_for_account",
+            side_effect=_resolve_candidates,
+        ),
+        patch(
+            "app.modules.health.api.select_snapshot_name",
+            side_effect=_select_snapshot,
+        ),
+    ):
+        alias_map = await _read_live_usage_snapshot_alias_map()
+
+    assert alias_map == {
+        "a-main": "a-main",
+        "b-main": "b-main",
+    }
+    assert "shared-alias" not in alias_map
+
+
+@pytest.mark.asyncio
 async def test_live_usage_mapping_returns_xml_payload():
     from app.db.models import AccountStatus
     from app.modules.accounts.codex_auth_switcher import CodexAuthSnapshotIndex

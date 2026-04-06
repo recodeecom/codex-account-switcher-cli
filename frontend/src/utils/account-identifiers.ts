@@ -4,6 +4,16 @@ export type AccountIdentityLike = {
   displayName: string;
 };
 
+type AccountSnapshotLike = {
+  expectedSnapshotName?: string | null;
+  snapshotName?: string | null;
+};
+
+export type AccountQuotaIdentityLike = {
+  accountId: string;
+  codexAuth?: AccountSnapshotLike | null;
+};
+
 export function buildAccountIdentityKey(account: AccountIdentityLike): string {
   const email = account.email.trim().toLowerCase();
   if (email) {
@@ -39,4 +49,24 @@ export function formatCompactAccountId(accountId: string, headChars = 8, tailCha
     return accountId;
   }
   return `${accountId.slice(0, head)}...${accountId.slice(-tail)}`;
+}
+
+function normalizeSnapshotName(value: string | null | undefined): string | null {
+  const normalized = value?.trim().toLowerCase();
+  return normalized ? normalized : null;
+}
+
+export function buildQuotaDisplayAccountKey(
+  account: AccountQuotaIdentityLike,
+): string {
+  const normalizedAccountId = account.accountId.trim();
+  const snapshotName =
+    normalizeSnapshotName(account.codexAuth?.expectedSnapshotName) ??
+    normalizeSnapshotName(account.codexAuth?.snapshotName);
+
+  if (!snapshotName) {
+    return normalizedAccountId;
+  }
+
+  return `${normalizedAccountId}::snapshot:${snapshotName}`;
 }

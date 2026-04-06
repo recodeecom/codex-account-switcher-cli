@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { AccountTrendChart } from "@/features/accounts/components/account-trend-chart";
 import type { AccountSummary, AccountTrendsResponse } from "@/features/accounts/schemas";
 import { quotaBarColor, quotaBarTrack } from "@/utils/account-status";
+import { buildQuotaDisplayAccountKey } from "@/utils/account-identifiers";
 import {
   formatCompactNumber,
   formatCurrency,
@@ -134,12 +135,13 @@ function AdditionalQuotaRow({
 
 export function AccountUsagePanel({ account, trends }: AccountUsagePanelProps) {
   const hasLiveSession = account.codexAuth?.hasLiveSession ?? false;
+  const quotaDisplayAccountKey = buildQuotaDisplayAccountKey(account);
   const mergedPrimaryRemainingPercent = getMergedQuotaRemainingPercent(account, "primary");
   const mergedSecondaryRemainingPercent = getMergedQuotaRemainingPercent(account, "secondary");
   const primaryRawQuotaFallback = getRawQuotaWindowFallback(account, "primary");
   const secondaryRawQuotaFallback = getRawQuotaWindowFallback(account, "secondary");
   const primary = normalizeRemainingPercentForDisplay({
-    accountKey: account.accountId,
+    accountKey: quotaDisplayAccountKey,
     windowKey: "primary",
     remainingPercent:
       mergedPrimaryRemainingPercent ??
@@ -158,7 +160,7 @@ export function AccountUsagePanel({ account, trends }: AccountUsagePanelProps) {
     applyCycleFloor: mergedPrimaryRemainingPercent == null,
   });
   const secondary = normalizeRemainingPercentForDisplay({
-    accountKey: account.accountId,
+    accountKey: quotaDisplayAccountKey,
     windowKey: "secondary",
     remainingPercent:
       mergedSecondaryRemainingPercent ??

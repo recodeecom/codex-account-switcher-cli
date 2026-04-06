@@ -18,7 +18,10 @@ import {
   hasActiveCliSessionSignal,
   hasRecentUsageSignal,
 } from "@/utils/account-working";
-import { buildDuplicateAccountIdSet } from "@/utils/account-identifiers";
+import {
+  buildDuplicateAccountIdSet,
+  buildQuotaDisplayAccountKey,
+} from "@/utils/account-identifiers";
 import { formatSlug } from "@/utils/formatters";
 import { normalizeRemainingPercentForDisplay } from "@/utils/quota-display";
 import { canUseLocalAccount } from "@/utils/use-local-account";
@@ -32,7 +35,7 @@ function normalizeQuotaPercent(value: number | null | undefined): number {
 function resolvePrimaryRemainingForDisplay(account: AccountSummary): number | null {
   const mergedPrimaryRemainingPercent = getMergedQuotaRemainingPercent(account, "primary");
   return normalizeRemainingPercentForDisplay({
-    accountKey: account.accountId,
+    accountKey: buildQuotaDisplayAccountKey(account),
     windowKey: "primary",
     remainingPercent:
       mergedPrimaryRemainingPercent ?? account.usage?.primaryRemainingPercent ?? null,
@@ -85,7 +88,7 @@ function compareAccountsForSidebar(a: AccountSummary, b: AccountSummary): number
 
   const aSecondary = normalizeQuotaPercent(
     normalizeRemainingPercentForDisplay({
-      accountKey: a.accountId,
+      accountKey: buildQuotaDisplayAccountKey(a),
       windowKey: "secondary",
       remainingPercent:
         getMergedQuotaRemainingPercent(a, "secondary") ?? a.usage?.secondaryRemainingPercent ?? null,
@@ -97,7 +100,7 @@ function compareAccountsForSidebar(a: AccountSummary, b: AccountSummary): number
   );
   const bSecondary = normalizeQuotaPercent(
     normalizeRemainingPercentForDisplay({
-      accountKey: b.accountId,
+      accountKey: buildQuotaDisplayAccountKey(b),
       windowKey: "secondary",
       remainingPercent:
         getMergedQuotaRemainingPercent(b, "secondary") ?? b.usage?.secondaryRemainingPercent ?? null,

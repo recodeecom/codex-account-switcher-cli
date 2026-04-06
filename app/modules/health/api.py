@@ -17,6 +17,7 @@ from app.db.models import BridgeRingMember
 from app.modules.accounts.codex_auth_switcher import (
     build_email_snapshot_name,
     build_snapshot_index,
+    resolve_snapshot_name_candidates_for_account,
     resolve_snapshot_names_for_account,
     select_snapshot_name,
 )
@@ -733,8 +734,14 @@ async def _read_live_usage_snapshot_alias_map() -> dict[str, str]:
                 return {}
 
             alias_to_selected: dict[str, str] = {}
+            ambiguous_aliases: set[str] = set()
             for account in accounts:
-                snapshot_candidates = snapshot_index.snapshots_by_account_id.get(account.id, [])
+                snapshot_candidates = resolve_snapshot_name_candidates_for_account(
+                    snapshot_index=snapshot_index,
+                    account_id=account.id,
+                    chatgpt_account_id=account.chatgpt_account_id,
+                    email=account.email,
+                )
                 if not snapshot_candidates:
                     continue
 
@@ -747,7 +754,21 @@ async def _read_live_usage_snapshot_alias_map() -> dict[str, str]:
                     continue
 
                 for snapshot_name in snapshot_candidates:
-                    alias_to_selected[snapshot_name] = selected_snapshot_name
+                    if snapshot_name in ambiguous_aliases:
+                        continue
+
+                    existing_target = alias_to_selected.get(snapshot_name)
+                    if existing_target is None:
+                        alias_to_selected[snapshot_name] = selected_snapshot_name
+                        continue
+
+                    if existing_target != selected_snapshot_name:
+                        # Preserve attribution safety: if two accounts disagree
+                        # about the target snapshot for the same alias, drop
+                        # the alias remap entirely instead of silently forcing
+                        # sessions/tasks into the wrong account snapshot.
+                        alias_to_selected.pop(snapshot_name, None)
+                        ambiguous_aliases.add(snapshot_name)
 
             return alias_to_selected
     except Exception:
