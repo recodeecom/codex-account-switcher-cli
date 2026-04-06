@@ -1,70 +1,163 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter, useLocation } from "react-router-dom";
+import { beforeEach, describe, expect, it } from "vitest";
 
-import { NavLink } from "@/lib/router-compat";
+import { NavLink, useNavigate, useSearchParams } from "@/lib/router-compat";
 
-function clearNextRuntimeFlag() {
-  Reflect.deleteProperty(window as unknown as Record<string, unknown>, "__NEXT_DATA__");
+function LocationProbe() {
+  const location = useLocation();
+  return (
+    <output data-testid="location">
+      {location.pathname}
+      {location.search}
+    </output>
+  );
 }
 
-function setNextRuntimeFlag() {
-  Object.defineProperty(window, "__NEXT_DATA__", {
-    configurable: true,
-    writable: true,
-    value: {
-      props: {},
-      page: "/",
-      query: {},
-      buildId: "test-build",
-    },
-  });
+function NavigateProbe() {
+  const navigate = useNavigate();
+  return (
+    <button type="button" onClick={() => navigate("/sessions?selected=session_2")}>
+      Go
+    </button>
+  );
 }
+
+function SearchParamsProbe() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  return (
+    <>
+      <output data-testid="search-value">{searchParams.get("selected") ?? ""}</output>
+      <button
+        type="button"
+        onClick={() => setSearchParams({ selected: "account_2", page: 1 })}
+      >
+        Set
+      </button>
+      <button type="button" onClick={() => setSearchParams({}, { replace: true })}>
+        Clear
+      </button>
+    </>
+  );
+}
+
+beforeEach(() => {
+  window.history.replaceState({}, "", "/");
+  delete (window as Window & { __NEXT_DATA__?: unknown }).__NEXT_DATA__;
+});
 
 describe("NavLink", () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-    clearNextRuntimeFlag();
-  });
-
-  it("uses history pushState for same-origin navigation in non-Next runtime", async () => {
+  it("navigates with React Router without full-page navigation", async () => {
     const user = userEvent.setup();
-    window.history.pushState({}, "", "/apis");
-    const pushStateSpy = vi.spyOn(window.history, "pushState");
 
-    render(<NavLink to="/accounts">Accounts</NavLink>);
+    render(
+      <MemoryRouter initialEntries={["/dashboard"]}>
+        <NavLink to="/accounts">Accounts</NavLink>
+        <LocationProbe />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByTestId("location")).toHaveTextContent("/dashboard");
+
     await user.click(screen.getByRole("link", { name: "Accounts" }));
 
-    expect(pushStateSpy).toHaveBeenCalled();
-    expect(window.location.pathname).toBe("/accounts");
+    expect(screen.getByTestId("location")).toHaveTextContent("/accounts");
   });
 
-  it("uses history pushState when running in Next runtime", async () => {
+  it("supports query-string navigation", async () => {
     const user = userEvent.setup();
-    window.history.pushState({}, "", "/apis");
-    setNextRuntimeFlag();
 
-    const pushStateSpy = vi.spyOn(window.history, "pushState");
+    render(
+      <MemoryRouter initialEntries={["/apis"]}>
+        <NavLink to="/apis?selected=key_1">Key 1</NavLink>
+        <LocationProbe />
+      </MemoryRouter>,
+    );
 
-    render(<NavLink to="/accounts">Accounts</NavLink>);
-    await user.click(screen.getByRole("link", { name: "Accounts" }));
-
-    expect(pushStateSpy).toHaveBeenCalled();
-    expect(window.location.pathname).toBe("/accounts");
-  });
-
-  it("uses history pushState for query links in Next runtime", async () => {
-    const user = userEvent.setup();
-    window.history.pushState({}, "", "/apis");
-    setNextRuntimeFlag();
-
-    const pushStateSpy = vi.spyOn(window.history, "pushState");
-
-    render(<NavLink to="/apis?selected=key_1">Key 1</NavLink>);
     await user.click(screen.getByRole("link", { name: "Key 1" }));
 
-    expect(pushStateSpy).toHaveBeenCalled();
-    expect(window.location.pathname).toBe("/apis");
-    expect(window.location.search).toBe("?selected=key_1");
+    expect(screen.getByTestId("location")).toHaveTextContent("/apis?selected=key_1");
+  });
+
+  it("renders outside a Router context without throwing", async () => {
+    act(() => {
+      window.history.replaceState({}, "", "/dashboard");
+    });
+
+    render(
+      <NavLink
+        to="/dashboard"
+        className={({ isActive }) => (isActive ? "active" : "inactive")}
+      >
+        {({ isActive }) => (isActive ? "Dashboard active" : "Dashboard")}
+      </NavLink>,
+    );
+
+    const link = await screen.findByRole("link", { name: "Dashboard active" });
+    expect(link).toHaveClass("active");
+    expect(link).toHaveAttribute("href", "/dashboard");
+  });
+});
+
+describe("router-compat fallback hooks", () => {
+  it("navigates without a Router context", async () => {
+    const user = userEvent.setup();
+
+    render(<NavigateProbe />);
+
+    await user.click(screen.getByRole("button", { name: "Go" }));
+
+    expect(window.location.pathname).toBe("/sessions");
+    expect(window.location.search).toBe("?selected=session_2");
+  });
+
+  it("navigates without a Router context when Next runtime is detected", async () => {
+    const user = userEvent.setup();
+    (window as Window & { __NEXT_DATA__?: unknown }).__NEXT_DATA__ = {};
+
+    render(<NavigateProbe />);
+
+    await user.click(screen.getByRole("button", { name: "Go" }));
+
+    expect(window.location.pathname).toBe("/sessions");
+    expect(window.location.search).toBe("?selected=session_2");
+  });
+
+  it("reads and updates search params without a Router context", async () => {
+    const user = userEvent.setup();
+
+    act(() => {
+      window.history.replaceState({}, "", "/accounts?selected=account_1");
+    });
+
+    render(<SearchParamsProbe />);
+
+    expect(screen.getByTestId("search-value")).toHaveTextContent("account_1");
+
+    await user.click(screen.getByRole("button", { name: "Set" }));
+    expect(screen.getByTestId("search-value")).toHaveTextContent("account_2");
+    expect(window.location.search).toContain("selected=account_2");
+    expect(window.location.search).toContain("page=1");
+
+    await user.click(screen.getByRole("button", { name: "Clear" }));
+    expect(screen.getByTestId("search-value")).toHaveTextContent("");
+    expect(window.location.search).toBe("");
+  });
+
+  it("updates query params without leaving the page when Next runtime is detected", async () => {
+    const user = userEvent.setup();
+    (window as Window & { __NEXT_DATA__?: unknown }).__NEXT_DATA__ = {};
+
+    act(() => {
+      window.history.replaceState({}, "", "/accounts?selected=account_1");
+    });
+
+    render(<SearchParamsProbe />);
+
+    await user.click(screen.getByRole("button", { name: "Set" }));
+    expect(window.location.pathname).toBe("/accounts");
+    expect(window.location.search).toContain("selected=account_2");
+    expect(window.location.search).toContain("page=1");
   });
 });

@@ -8,6 +8,7 @@ import {
   Play,
   RotateCcw,
   SquareTerminal,
+  Trash2,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -57,6 +58,7 @@ type AccountAction =
   | "terminal"
   | "useLocal"
   | "sessions"
+  | "delete"
   | "terminateCliSessions"
   | "repairSnapshotReadd"
   | "repairSnapshotRename";
@@ -68,6 +70,7 @@ export type AccountCardProps = {
   showTokensRemaining?: boolean;
   showAccountId?: boolean;
   useLocalBusy?: boolean;
+  deleteBusy?: boolean;
   onAction?: (account: AccountSummary, action: AccountAction) => void;
 };
 
@@ -147,6 +150,28 @@ function resolveSessionTaskPreview(taskPreview: string | null | undefined): stri
     : WAITING_FOR_NEW_TASK_LABEL;
 }
 
+function resolveCardholderName(account: AccountSummary, fallbackTitle: string): string {
+  const displayName = account.displayName?.trim();
+  if (displayName && !isLikelyEmailValue(displayName)) {
+    return displayName;
+  }
+
+  const email = account.email?.trim();
+  if (email) {
+    const [localPart] = email.split("@");
+    const normalizedLocalPart = localPart?.replace(/[._-]+/g, " ").trim();
+    if (normalizedLocalPart) {
+      return normalizedLocalPart;
+    }
+  }
+
+  if (displayName) {
+    return displayName;
+  }
+
+  return fallbackTitle;
+}
+
 function normalizeNearZeroQuotaPercent(value: number): number {
   const clamped = Math.max(0, Math.min(100, value));
   if (clamped > 0 && clamped < NEAR_ZERO_QUOTA_PERCENT) {
@@ -165,6 +190,7 @@ function QuotaBar({
   isLive = false,
   telemetryPending = false,
   usageLimitHit = false,
+  inTokenCard = false,
 }: {
   label: string;
   percent: number | null;
@@ -175,6 +201,7 @@ function QuotaBar({
   isLive?: boolean;
   telemetryPending?: boolean;
   usageLimitHit?: boolean;
+  inTokenCard?: boolean;
 }) {
   const clamped =
     percent === null ? 0 : normalizeNearZeroQuotaPercent(percent);
@@ -224,6 +251,7 @@ function QuotaBar({
     <div
       className={cn(
         "space-y-2 rounded-lg border border-border/55 bg-background/20 px-2.5 py-2.5",
+        inTokenCard && "border-white/10 bg-black/25",
       )}
     >
       <div className="flex items-center justify-between gap-2 text-xs">
@@ -517,6 +545,7 @@ export function AccountCard(props: AccountCardProps) {
     showTokensRemaining = false,
     showAccountId = false,
     useLocalBusy = false,
+    deleteBusy = false,
     onAction,
   } = props;
   const tokensRemaining = props.tokensRemaining ?? null;
@@ -865,8 +894,7 @@ export function AccountCard(props: AccountCardProps) {
     account.displayName && account.displayName !== account.email
       ? account.email
       : null;
-  const cardholderName = account.email?.trim() || title;
-  const cardholderLine = `Gmail · ${cardholderName}`;
+  const cardholderName = resolveCardholderName(account, title);
   const cardholderBlurred = blurred && isLikelyEmailValue(cardholderName);
   const tokenCardPrimaryLine = tokenMetricValue;
   const tokenCardSecondaryLine = String(codexLiveSessionCount);
@@ -1027,14 +1055,54 @@ export function AccountCard(props: AccountCardProps) {
             <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-zinc-400">
               Cardholder name
             </p>
-            <p
+            <div className="mt-2 flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+              <span
+                className="h-2 w-2 shrink-0 rounded-full bg-cyan-300/80 shadow-[0_0_10px_rgba(34,211,238,0.6)]"
+                aria-hidden
+              />
+              <p
+                className={cn(
+                  "min-w-0 truncate font-mono text-sm uppercase tracking-[0.13em] text-zinc-100",
+                  cardholderBlurred && "privacy-blur",
+                )}
+              >
+                {cardholderName}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-3.5 border-t border-white/10 pt-3">
+            <div
               className={cn(
-                "mt-1 truncate font-mono text-sm uppercase tracking-[0.15em] text-zinc-100",
-                cardholderBlurred && "privacy-blur",
+                "grid gap-2.5",
+                weeklyOnly ? "grid-cols-1" : "grid-cols-2",
               )}
             >
-              {cardholderLine}
-            </p>
+              {!weeklyOnly && (
+                <QuotaBar
+                  label={primaryWindowLabel}
+                  percent={primaryRemaining}
+                  resetLabel={primaryReset}
+                  lastSeenLabel={stalePrimaryLastSeen.label}
+                  lastSeenUpToDate={stalePrimaryLastSeen.upToDate}
+                  deactivated={isDeactivated}
+                  isLive={hasLiveSession}
+                  telemetryPending={primaryTelemetryPending}
+                  usageLimitHit={usageLimitHit}
+                  inTokenCard
+                />
+              )}
+              <QuotaBar
+                label="Weekly"
+                percent={secondaryRemaining}
+                resetLabel={secondaryReset}
+                lastSeenLabel={staleSecondaryLastSeen.label}
+                lastSeenUpToDate={staleSecondaryLastSeen.upToDate}
+                isLive={hasLiveSession}
+                telemetryPending={secondaryTelemetryPending}
+                inTokenCard
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -1125,36 +1193,6 @@ export function AccountCard(props: AccountCardProps) {
           </div>
       </div>
 
-      {/* Quota bars */}
-      <div
-        className={cn(
-          "mt-3.5 grid gap-2.5",
-          weeklyOnly ? "grid-cols-1" : "grid-cols-2",
-        )}
-      >
-        {!weeklyOnly && (
-          <QuotaBar
-            label={primaryWindowLabel}
-            percent={primaryRemaining}
-            resetLabel={primaryReset}
-            lastSeenLabel={stalePrimaryLastSeen.label}
-            lastSeenUpToDate={stalePrimaryLastSeen.upToDate}
-            deactivated={isDeactivated}
-            isLive={hasLiveSession}
-            telemetryPending={primaryTelemetryPending}
-            usageLimitHit={usageLimitHit}
-          />
-        )}
-        <QuotaBar
-          label="Weekly"
-          percent={secondaryRemaining}
-          resetLabel={secondaryReset}
-          lastSeenLabel={staleSecondaryLastSeen.label}
-          lastSeenUpToDate={staleSecondaryLastSeen.upToDate}
-          isLive={hasLiveSession}
-          telemetryPending={secondaryTelemetryPending}
-        />
-      </div>
       {liveQuotaDebug ? (
         <div className="mt-2">
           <button
@@ -1288,6 +1326,17 @@ export function AccountCard(props: AccountCardProps) {
         >
           <ExternalLink className="h-3 w-3" />
           Sessions
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className="h-7 gap-1.5 rounded-lg text-xs text-red-600 hover:bg-red-500/10 hover:text-red-700 disabled:pointer-events-none disabled:text-muted-foreground dark:text-red-400 dark:hover:text-red-300"
+          disabled={deleteBusy}
+          onClick={() => onAction?.(account, "delete")}
+        >
+          <Trash2 className="h-3 w-3" />
+          Delete
         </Button>
         {status === "paused" && (
           <Button

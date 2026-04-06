@@ -35,8 +35,8 @@ export function AppSidebar() {
         <details className="group">
           <summary className="list-none cursor-pointer [&::-webkit-details-marker]:hidden">
             <div className="flex items-center gap-3 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2.5 transition-colors group-open:bg-white/[0.05]">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary/45 via-primary/30 to-primary/5 text-white">
-                <CodexLogo size={18} />
+              <div className="flex h-11 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/45 via-primary/30 to-primary/5 text-white">
+                <CodexLogo size={22} />
               </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold tracking-tight text-white">
@@ -52,8 +52,8 @@ export function AppSidebar() {
             <p className="px-3 pt-3 pb-1 text-xs text-slate-400">Switchboards</p>
             <div className="px-2 pb-2">
               <div className="flex items-center gap-3 rounded-lg border border-white/[0.08] bg-white/[0.04] px-2.5 py-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-primary/45 via-primary/30 to-primary/5 text-white">
-                  <CodexLogo size={16} />
+                <div className="flex h-10 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-primary/45 via-primary/30 to-primary/5 text-white">
+                  <CodexLogo size={19} />
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-white">Codexina</p>

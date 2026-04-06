@@ -289,6 +289,7 @@ export type AccountCardsProps = {
   primaryWindow: UsageWindow | null;
   secondaryWindow: UsageWindow | null;
   useLocalBusy?: boolean;
+  deleteBusy?: boolean;
   onAction?: AccountCardProps["onAction"];
 };
 
@@ -339,6 +340,7 @@ export function AccountCards({
   primaryWindow,
   secondaryWindow,
   useLocalBusy = false,
+  deleteBusy = false,
   onAction,
 }: AccountCardsProps) {
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
@@ -481,6 +483,7 @@ export function AccountCards({
             showTokensRemaining
             showAccountId={duplicateAccountIds.has(account.accountId)}
             useLocalBusy={useLocalBusy}
+            deleteBusy={deleteBusy}
             onAction={onAction}
           />
         </div>

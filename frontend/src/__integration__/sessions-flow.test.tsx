@@ -169,7 +169,7 @@ describe("sessions flow integration", () => {
 
     expect(await screen.findByRole("heading", { name: "Sessions" })).toBeInTheDocument();
     expect(await screen.findByText("Session activity")).toBeInTheDocument();
-    expect(screen.getByText("zeus@example.com")).toBeInTheDocument();
+    expect(screen.getAllByText("zeus@example.com").length).toBeGreaterThan(0);
     expect(screen.getByText("Dashboard overview")).toBeInTheDocument();
     expect(screen.getByText("Idle")).toBeInTheDocument();
     expect(screen.getByText("Prepare release checklist for Zeus account")).toBeInTheDocument();
@@ -268,7 +268,7 @@ describe("sessions flow integration", () => {
 
     expect(await screen.findByRole("heading", { name: "Sessions" })).toBeInTheDocument();
     expect(await screen.findByText("Session activity")).toBeInTheDocument();
-    expect(screen.getByText("runtime@example.com")).toBeInTheDocument();
+    expect(screen.getAllByText("runtime@example.com").length).toBeGreaterThan(0);
     expect(screen.getByText("Live")).toBeInTheDocument();
     expect(screen.getByText("Up to date")).toBeInTheDocument();
     expect(screen.getByText("1 tracked session")).toBeInTheDocument();

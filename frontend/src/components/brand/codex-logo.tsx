@@ -1,69 +1,93 @@
-import { useId } from "react";
-
 import { cn } from "@/lib/utils";
+import { useId } from "react";
 
 export type CodexLogoProps = {
   className?: string;
   size?: number;
+  title?: string;
 };
 
-export function CodexLogo({ className, size = 32 }: CodexLogoProps) {
-  const gradientId = useId();
+export function CodexLogo({
+  className,
+  size = 32,
+  title = "Codex infinite logo",
+}: CodexLogoProps) {
+  const viewBoxWidth = 48;
+  const viewBoxHeight = 40;
+  const id = useId();
+  const gradientId = `${id}-gradient`;
+  const glowId = `${id}-glow`;
 
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
       width={size}
-      height={size}
+      height={(size * viewBoxHeight) / viewBoxWidth}
+      viewBox="-4 -4 48 40"
       fill="none"
-      viewBox="0 0 32 32"
       className={cn("shrink-0", className)}
       role="img"
-      aria-label="Codexina logo"
+      aria-label={title}
     >
+      <title>{title}</title>
+
       <defs>
-        <linearGradient id={gradientId} x1="2" y1="2" x2="30" y2="30" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#1C4ED8" />
-          <stop offset="1" stopColor="#0A1F4A" />
+        <linearGradient
+          id={gradientId}
+          x1="4"
+          y1="16"
+          x2="36"
+          y2="16"
+          gradientUnits="userSpaceOnUse"
+        >
+          <stop offset="0%" stopColor="#F43F5E" />
+          <stop offset="50%" stopColor="#FFFFFF" />
+          <stop offset="100%" stopColor="#10B981" />
         </linearGradient>
+
+        <filter id={glowId} x="-30%" y="-40%" width="160%" height="180%">
+          <feGaussianBlur stdDeviation="1.8" result="blur" />
+          <feMerge>
+            <feMergeNode in="blur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
       </defs>
-      <rect
-        x="2"
-        y="2"
-        width="28"
-        height="28"
-        rx="9"
-        fill={`url(#${gradientId})`}
-      />
+
+      {/* Soft glow */}
       <path
-        d="M13 10.25c-1.86-1.86-4.89-1.86-6.75 0-1.87 1.86-1.87 4.89 0 6.75 1.86 1.87 4.89 1.87 6.75 0"
-        stroke="#fff"
-        strokeWidth="2.75"
+        d="M8.2 16c0-4.7 3.1-8 7.4-8 2.7 0 4.9 1.3 7 4.3L24 14l1.4-1.7c2.1-3 4.3-4.3 7-4.3 4.3 0 7.4 3.3 7.4 8s-3.1 8-7.4 8c-2.7 0-4.9-1.3-7-4.3L24 18l-1.4 1.7c-2.1 3-4.3 4.3-7 4.3-4.3 0-7.4-3.3-7.4-8Z"
+        stroke="url(#${gradientId})"
+        strokeWidth="6.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        opacity="0.18"
+        filter={`url(#${glowId})`}
+      />
+
+      {/* Main infinity stroke */}
+      <path
+        d="M8.2 16c0-4.7 3.1-8 7.4-8 2.7 0 4.9 1.3 7 4.3L24 14l1.4-1.7c2.1-3 4.3-4.3 7-4.3 4.3 0 7.4 3.3 7.4 8s-3.1 8-7.4 8c-2.7 0-4.9-1.3-7-4.3L24 18l-1.4 1.7c-2.1 3-4.3 4.3-7 4.3-4.3 0-7.4-3.3-7.4-8Z"
+        stroke={`url(#${gradientId})`}
+        strokeWidth="4.8"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
+
+      {/* Center weave highlight */}
       <path
-        d="M19 14.25c1.86 1.87 4.89 1.87 6.75 0 1.87-1.86 1.87-4.89 0-6.75-1.86-1.87-4.89-1.87-6.75 0"
-        stroke="#fff"
-        strokeWidth="2.75"
+        d="M18.7 12.8 24 19.2"
+        stroke="#ffffff"
+        strokeWidth="1.4"
         strokeLinecap="round"
-        strokeLinejoin="round"
+        opacity="0.95"
       />
       <path
-        d="m10 11.2 12 9.6"
-        stroke="#fff"
-        strokeWidth="2.75"
+        d="M22 12.8 16.8 19.2"
+        stroke="#0F172A"
+        strokeWidth="1.1"
         strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <rect
-        x="2"
-        y="2"
-        width="28"
-        height="28"
-        rx="9"
-        stroke="rgba(255,255,255,0.18)"
-        strokeWidth="1.5"
+        opacity="0.22"
       />
     </svg>
   );

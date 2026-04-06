@@ -34,7 +34,7 @@ import type { AccountSummary } from "@/features/accounts/schemas";
 import { getDashboardOverview } from "@/features/dashboard/api";
 import { usePrivacyStore } from "@/hooks/use-privacy";
 import { useThemeStore } from "@/hooks/use-theme";
-import { NavLink } from "@/lib/router-compat";
+import { useNavigate } from "@/lib/router-compat";
 import { cn } from "@/lib/utils";
 import { hasActiveCliSessionSignal } from "@/utils/account-working";
 
@@ -89,6 +89,7 @@ export function AccountMenu({
 }: AccountMenuProps) {
   const theme = useThemeStore((state) => state.theme);
   const setTheme = useThemeStore((state) => state.setTheme);
+  const navigate = useNavigate();
   const blurred = usePrivacyStore((state) => state.blurred);
   const togglePrivacy = usePrivacyStore((state) => state.toggle);
 
@@ -155,11 +156,13 @@ export function AccountMenu({
         {NAV_ITEMS.map((item) => {
           const Icon = NAV_ICONS[item.to] ?? Home;
           return (
-            <DropdownMenuItem key={item.to} asChild>
-              <NavLink
-                to={item.to}
-                className="flex w-full items-center gap-2"
-              >
+            <DropdownMenuItem
+              key={item.to}
+              className="flex w-full items-center gap-2"
+              onSelect={() => {
+                navigate(item.to);
+              }}
+            >
                 <Icon className="h-4 w-4" aria-hidden="true" />
                 <span>{item.label}</span>
                 {item.isComingSoon ? (
@@ -170,7 +173,6 @@ export function AccountMenu({
                     Soon
                   </Badge>
                 ) : null}
-              </NavLink>
             </DropdownMenuItem>
           );
         })}

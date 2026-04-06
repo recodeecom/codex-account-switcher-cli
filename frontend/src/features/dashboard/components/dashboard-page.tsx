@@ -5,7 +5,9 @@ import { RefreshCw } from "lucide-react";
 
 import { AlertMessage } from "@/components/alert-message";
 import { CodexLogo } from "@/components/brand/codex-logo";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
+import { useDialogState } from "@/hooks/use-dialog-state";
 import { useAccountMutations } from "@/features/accounts/hooks/use-accounts";
 import { AccountCards } from "@/features/dashboard/components/account-cards";
 import { DashboardSkeleton } from "@/features/dashboard/components/dashboard-skeleton";
@@ -32,12 +34,14 @@ export function DashboardPage() {
   const dashboardQuery = useDashboard();
   const { filters, logsQuery, optionsQuery, usageSummaryQuery, updateFilters } = useRequestLogs();
   const {
+    deleteMutation,
     resumeMutation,
     useLocalMutation,
     openTerminalMutation,
     terminateCliSessionsMutation,
     repairSnapshotMutation,
   } = useAccountMutations();
+  const deleteDialog = useDialogState<{ accountId: string; label: string }>();
 
   const isRefreshing = dashboardQuery.isFetching || logsQuery.isFetching || usageSummaryQuery.isFetching;
 
@@ -72,6 +76,12 @@ export function DashboardPage() {
         case "sessions":
           navigate(`/sessions?accountId=${encodeURIComponent(account.accountId)}`);
           break;
+        case "delete":
+          deleteDialog.show({
+            accountId: account.accountId,
+            label: account.displayName || account.email || account.accountId,
+          });
+          break;
         case "terminateCliSessions":
           terminateCliSessionsMutation.mutate(account.accountId);
           break;
@@ -91,6 +101,7 @@ export function DashboardPage() {
     },
     [
       navigate,
+      deleteDialog,
       openTerminalMutation,
       repairSnapshotMutation,
       resumeMutation,
@@ -166,8 +177,8 @@ export function DashboardPage() {
       <div className="flex items-start justify-between">
         <div className="space-y-2">
           <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-primary/20 bg-gradient-to-br from-primary/20 via-primary/10 to-background">
-              <CodexLogo size={18} className="text-primary" />
+            <div className="flex h-9 w-12 items-center justify-center rounded-xl border border-primary/20 bg-gradient-to-br from-primary/20 via-primary/10 to-background">
+              <CodexLogo size={20} className="text-primary" />
             </div>
             <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
             <Badge variant="secondary" className="border border-border/70 bg-muted/70 text-[11px]">
@@ -215,6 +226,7 @@ export function DashboardPage() {
               primaryWindow={overview?.windows.primary ?? null}
               secondaryWindow={overview?.windows.secondary ?? null}
               useLocalBusy={useLocalMutation.isPending}
+              deleteBusy={deleteMutation.isPending}
               onAction={handleAccountAction}
             />
           </section>
@@ -268,6 +280,29 @@ export function DashboardPage() {
           </section>
         </>
       )}
+
+      <ConfirmDialog
+        open={deleteDialog.open}
+        title="Delete account"
+        description={
+          deleteDialog.data
+            ? `Remove ${deleteDialog.data.label} from the load balancer configuration.`
+            : "This action removes the account from the load balancer configuration."
+        }
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        onOpenChange={deleteDialog.onOpenChange}
+        onConfirm={() => {
+          if (!deleteDialog.data) {
+            return;
+          }
+          deleteMutation.mutate(deleteDialog.data.accountId, {
+            onSettled: () => {
+              deleteDialog.hide();
+            },
+          });
+        }}
+      />
 
     </div>
   );

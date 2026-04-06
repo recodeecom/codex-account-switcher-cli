@@ -50,6 +50,42 @@ describe("AccountCard", () => {
     expect(screen.getByRole("button", { name: "Sessions" })).toBeInTheDocument();
   });
 
+  it("renders quota bars inside the OpenAI token card container", () => {
+    const account = createAccountSummary({
+      codexLiveSessionCount: 2,
+      codexSessionCount: 2,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+    });
+
+    render(<AccountCard account={account} />);
+
+    const tokenCardHeader = screen.getByText("OpenAI");
+    const tokenCardBody = tokenCardHeader.closest("div.relative");
+
+    expect(tokenCardBody).not.toBeNull();
+    expect(within(tokenCardBody as HTMLElement).getByText("5h")).toBeInTheDocument();
+    expect(within(tokenCardBody as HTMLElement).getByText("Weekly")).toBeInTheDocument();
+  });
+
+  it("shows only the account name in cardholder row without provider prefix", () => {
+    const account = createAccountSummary({
+      displayName: "admin@recodee.com",
+      email: "admin@recodee.com",
+    });
+
+    render(<AccountCard account={account} />);
+
+    expect(screen.getByText("Cardholder name")).toBeInTheDocument();
+    expect(screen.getByText(/^admin$/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Gmail\s*·/i)).not.toBeInTheDocument();
+  });
+
   it("hides 5h quota bar for weekly-only accounts", () => {
     const account = createAccountSummary({
       planType: "free",
@@ -622,6 +658,18 @@ describe("AccountCard", () => {
     await user.click(screen.getByRole("button", { name: "Sessions" }));
 
     expect(onAction).toHaveBeenCalledWith(account, "sessions");
+  });
+
+  it("calls delete action when delete button is clicked", async () => {
+    const user = userEvent.setup({ delay: null });
+    const account = createAccountSummary();
+    const onAction = vi.fn();
+
+    render(<AccountCard account={account} onAction={onAction} />);
+
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+
+    expect(onAction).toHaveBeenCalledWith(account, "delete");
   });
 
   it("shows snapshot repair actions for mismatched snapshot names", async () => {

@@ -378,6 +378,29 @@ describe("dashboard flow integration", () => {
     expect(window.location.search).toContain("accountId=acc_with_sessions");
   });
 
+  it("deletes an account from the dashboard card actions", async () => {
+    const user = userEvent.setup({ delay: null });
+
+    window.history.pushState({}, "", "/dashboard");
+    renderWithProviders(<App />);
+
+    expect(await screen.findByRole("heading", { name: "Dashboard" })).toBeInTheDocument();
+
+    const initialDeleteButtons = await screen.findAllByRole("button", { name: "Delete" });
+    const initialCount = initialDeleteButtons.length;
+    expect(initialCount).toBeGreaterThan(0);
+
+    await user.click(initialDeleteButtons[0]);
+
+    const dialog = await screen.findByRole("alertdialog");
+    await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+
+    expect(await screen.findByText(/Account deleted/i)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getAllByRole("button", { name: "Delete" })).toHaveLength(initialCount - 1);
+    });
+  });
+
   it("opens a host terminal by calling the launch endpoint", async () => {
     const user = userEvent.setup({ delay: null });
     let openTerminalEndpointCalls = 0;
