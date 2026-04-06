@@ -786,6 +786,18 @@ def _resolve_ambiguous_uncached_unlabeled_default_scope_pids(
         ):
             continue
 
+        if (
+            _is_recent_default_scope_switch_with_previous_snapshot(
+                default_current_path=process_default_current_path,
+            )
+            and _is_post_switch_unlabeled_default_scope_process(
+                pid=pid,
+                default_current_path=process_default_current_path,
+            )
+        ):
+            ambiguous_uncached_pids.append(pid)
+            continue
+
         if not _is_unlabeled_default_scope_fallback_ambiguous_for_pid(
             pid=pid,
             default_current_path=process_default_current_path,
@@ -798,6 +810,60 @@ def _resolve_ambiguous_uncached_unlabeled_default_scope_pids(
     if len(ambiguous_uncached_pids) > 1:
         return set(ambiguous_uncached_pids)
     return set()
+
+
+def _is_recent_default_scope_switch_with_previous_snapshot(
+    *,
+    default_current_path: Path,
+) -> bool:
+    current_snapshot_name = _read_current_snapshot_name(default_current_path)
+    if not current_snapshot_name:
+        return False
+
+    payload = _read_registry_payload()
+    if payload is None:
+        return False
+
+    active_snapshot_name = payload.get("activeAccountName")
+    if not isinstance(active_snapshot_name, str):
+        return False
+    normalized_active_snapshot_name = active_snapshot_name.strip()
+    if not normalized_active_snapshot_name or normalized_active_snapshot_name != current_snapshot_name:
+        return False
+
+    previous_snapshot_name = payload.get("previousActiveAccountName")
+    if not isinstance(previous_snapshot_name, str):
+        return False
+    normalized_previous_snapshot_name = previous_snapshot_name.strip()
+    if not normalized_previous_snapshot_name or normalized_previous_snapshot_name == current_snapshot_name:
+        return False
+
+    selection_changed_at = _safe_mtime(default_current_path)
+    if selection_changed_at <= 0:
+        return False
+
+    return (time.time() - selection_changed_at) <= float(_switch_process_fallback_seconds())
+
+
+def _is_post_switch_unlabeled_default_scope_process(
+    *,
+    pid: int,
+    default_current_path: Path,
+) -> bool:
+    selection_changed_at = _safe_mtime(default_current_path)
+    if selection_changed_at <= 0:
+        return False
+
+    started_at = _read_process_started_at(pid)
+    rollout_started_at = _resolve_process_session_started_at(pid)
+    if rollout_started_at is not None and (started_at is None or rollout_started_at < started_at):
+        started_at = rollout_started_at
+
+    if started_at is None:
+        return True
+
+    tolerance_seconds = float(_unlabeled_process_start_tolerance_seconds())
+    return (started_at + tolerance_seconds) >= selection_changed_at
 
 
 def _is_unlabeled_default_scope_fallback_ambiguous_for_pid(

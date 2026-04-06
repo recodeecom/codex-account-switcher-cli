@@ -1175,4 +1175,45 @@ describe("AccountCards", () => {
     expect(card).not.toBeNull();
     expect(within(card as HTMLElement).getByText("--")).toBeInTheDocument();
   });
+
+  it("shows syncing token state when live-session token remaining is unknown", () => {
+    const account = createAccountSummary({
+      accountId: "acc_live_unknown",
+      email: "live-unknown@example.com",
+      displayName: "live-unknown@example.com",
+      codexLiveSessionCount: 4,
+      codexSessionCount: 4,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "live-unknown",
+        activeSnapshotName: "live-unknown",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+      requestUsage: {
+        requestCount: 0,
+        totalTokens: 777,
+        cachedInputTokens: 0,
+        totalCostUsd: 0,
+      },
+      windowMinutesPrimary: 300,
+      windowMinutesSecondary: 10080,
+    });
+
+    render(
+      <AccountCards
+        accounts={[account]}
+        primaryWindow={buildWindow("primary", "acc_live_unknown", 1000, 0, null)}
+        secondaryWindow={null}
+      />,
+    );
+
+    const syncingValues = screen.getAllByText("syncing…");
+    expect(syncingValues.length).toBeGreaterThanOrEqual(1);
+    expect(
+      syncingValues.some(
+        (node) => node.tagName.toLowerCase() === "p",
+      ),
+    ).toBe(true);
+  });
 });

@@ -122,6 +122,7 @@ function isCodexOnlyPlanType(planType: string): boolean {
 const NEAR_ZERO_QUOTA_PERCENT = 5;
 const WAITING_FOR_NEW_TASK_LABEL = "Waiting for new task";
 const TASK_FINISHED_LABEL = "Task finished";
+const UNKNOWN_TOKENS_SYNC_LABEL = "syncing…";
 const NEXT_TASK_PREVIEW_PATTERN = /\bnext(?:\.?js)?\b|\bturbopack\b/i;
 
 function hasNextTaskHint(taskPreview: string | null | undefined): boolean {
@@ -923,8 +924,12 @@ export function AccountCard(props: AccountCardProps) {
   const tokenMetricValueRaw = showTokensRemaining
     ? remainingTokensValue
     : (tokensUsed ?? account.requestUsage?.totalTokens ?? 0);
+  const hasFreshQuotaTelemetryHint =
+    freshDebugRawSampleCount > 0 || primaryTelemetryFresh || secondaryTelemetryFresh;
   const tokenMetricValue = hasExplicitUnknownTokensRemaining
-    ? "--"
+    ? hasLiveSession && hasFreshQuotaTelemetryHint
+      ? UNKNOWN_TOKENS_SYNC_LABEL
+      : "--"
     : isWorkingNow
       ? formatTokenUsagePrecise(tokenMetricValueRaw)
       : formatTokenUsageCompact(tokenMetricValueRaw);
@@ -1059,8 +1064,11 @@ export function AccountCard(props: AccountCardProps) {
     blurred && isLikelyEmailValue(lockedAccountIdentity);
   const tokenCardPrimaryLine = tokenMetricValue;
   const tokenCardSecondaryLine = String(codexLiveSessionCount);
+  const tokenMetricLooksNumeric = /^[\d,.]+(?:[kmbt])?$/i.test(tokenMetricValue);
   const accessibleTokenMetricValue =
-    tokenMetricValue === "0" ? tokenMetricValue : `${tokenMetricValue} tokens`;
+    tokenMetricLooksNumeric && tokenMetricValue !== "0"
+      ? `${tokenMetricValue} tokens`
+      : tokenMetricValue;
   const accessibleCodexSessionValue =
     codexLiveSessionCount <= 1
       ? String(codexLiveSessionCount)
