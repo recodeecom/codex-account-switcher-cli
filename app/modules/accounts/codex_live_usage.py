@@ -112,6 +112,12 @@ class _UnlabeledDefaultScopeProcessOwner:
 
 
 @dataclass(frozen=True)
+class _UnlabeledDefaultScopeSessionOwner:
+    snapshot_name: str
+    observed_at: float
+
+
+@dataclass(frozen=True)
 class LocalCodexProcessSessionAttribution:
     counts_by_snapshot: dict[str, int]
     unattributed_session_pids: list[int]
@@ -130,6 +136,9 @@ class _DefaultScopeLiveProcessRolloutState:
 _UNLABELED_DEFAULT_SCOPE_PROCESS_OWNER_CACHE_TTL_SECONDS = 6 * 60 * 60
 _UNLABELED_DEFAULT_SCOPE_PROCESS_OWNER_CACHE_MAX_ENTRIES = 2048
 _unlabeled_default_scope_process_owner_cache: dict[int, _UnlabeledDefaultScopeProcessOwner] = {}
+_UNLABELED_DEFAULT_SCOPE_SESSION_OWNER_CACHE_TTL_SECONDS = 6 * 60 * 60
+_UNLABELED_DEFAULT_SCOPE_SESSION_OWNER_CACHE_MAX_ENTRIES = 4096
+_unlabeled_default_scope_session_owner_cache: dict[str, _UnlabeledDefaultScopeSessionOwner] = {}
 
 
 def read_local_codex_live_usage(*, now: datetime | None = None) -> LocalCodexLiveUsage | None:
@@ -326,6 +335,7 @@ def _read_default_scope_rollout_paths_by_snapshot_from_live_processes() -> _Defa
     for pid, _command in _iter_running_codex_commands(proc_root):
         processes.append((pid, _read_process_env(pid) or {}))
     _prune_unlabeled_default_scope_process_owner_cache(active_pids={pid for pid, _env in processes})
+    _prune_unlabeled_default_scope_session_owner_cache()
     ambiguous_uncached_unlabeled_default_scope_pids = (
         _resolve_ambiguous_uncached_unlabeled_default_scope_pids(
             processes=processes,
@@ -475,6 +485,7 @@ def read_live_codex_process_session_attribution() -> LocalCodexProcessSessionAtt
     for pid, _command in _iter_running_codex_commands(proc_root):
         processes.append((pid, _read_process_env(pid) or {}))
     _prune_unlabeled_default_scope_process_owner_cache(active_pids={pid for pid, _env in processes})
+    _prune_unlabeled_default_scope_session_owner_cache()
     ambiguous_uncached_unlabeled_default_scope_pids = (
         _resolve_ambiguous_uncached_unlabeled_default_scope_pids(
             processes=processes,
@@ -680,6 +691,7 @@ def terminate_live_codex_processes_for_snapshot(snapshot_name: str) -> int:
     for pid, _command in _iter_running_codex_commands(proc_root):
         processes.append((pid, _read_process_env(pid) or {}))
     _prune_unlabeled_default_scope_process_owner_cache(active_pids={pid for pid, _env in processes})
+    _prune_unlabeled_default_scope_session_owner_cache()
     ambiguous_uncached_unlabeled_default_scope_pids = (
         _resolve_ambiguous_uncached_unlabeled_default_scope_pids(
             processes=processes,
@@ -731,11 +743,19 @@ def _resolve_process_snapshot_name_for_accounting(
         allow_unlabeled_default_scope_mapping=False,
     )
     if snapshot_name:
+        _remember_unlabeled_default_scope_snapshot_name(pid, snapshot_name)
+        _remember_unlabeled_default_scope_session_snapshot_name(pid, snapshot_name)
         return snapshot_name
 
     resolved_from_cache = _resolve_cached_unlabeled_default_scope_snapshot_name(pid)
     if resolved_from_cache:
+        _remember_unlabeled_default_scope_session_snapshot_name(pid, resolved_from_cache)
         return resolved_from_cache
+
+    resolved_from_session_cache = _resolve_cached_unlabeled_default_scope_session_snapshot_name(pid)
+    if resolved_from_session_cache:
+        _remember_unlabeled_default_scope_snapshot_name(pid, resolved_from_session_cache)
+        return resolved_from_session_cache
 
     if not _is_eligible_unlabeled_default_scope_process(
         pid=pid,
@@ -757,6 +777,7 @@ def _resolve_process_snapshot_name_for_accounting(
     )
     if fallback_snapshot:
         _remember_unlabeled_default_scope_snapshot_name(pid, fallback_snapshot)
+        _remember_unlabeled_default_scope_session_snapshot_name(pid, fallback_snapshot)
     return fallback_snapshot
 
 
@@ -776,6 +797,9 @@ def _resolve_ambiguous_uncached_unlabeled_default_scope_pids(
         )
 
         if _resolve_cached_unlabeled_default_scope_snapshot_name(pid):
+            continue
+
+        if _resolve_cached_unlabeled_default_scope_session_snapshot_name(pid):
             continue
 
         if not _is_eligible_unlabeled_default_scope_process(
@@ -934,6 +958,31 @@ def _resolve_cached_unlabeled_default_scope_snapshot_name(pid: int) -> str | Non
     return owner.snapshot_name
 
 
+def _resolve_cached_unlabeled_default_scope_session_snapshot_name(pid: int) -> str | None:
+    session_id = _resolve_process_rollout_session_id(pid)
+    if session_id is None:
+        return None
+
+    owner = _unlabeled_default_scope_session_owner_cache.get(session_id)
+    if owner is None:
+        return None
+
+    now_ts = time.time()
+    if owner.observed_at < (
+        now_ts - _UNLABELED_DEFAULT_SCOPE_SESSION_OWNER_CACHE_TTL_SECONDS
+    ):
+        _unlabeled_default_scope_session_owner_cache.pop(session_id, None)
+        return None
+
+    _unlabeled_default_scope_session_owner_cache[session_id] = (
+        _UnlabeledDefaultScopeSessionOwner(
+            snapshot_name=owner.snapshot_name,
+            observed_at=now_ts,
+        )
+    )
+    return owner.snapshot_name
+
+
 def _remember_unlabeled_default_scope_snapshot_name(pid: int, snapshot_name: str) -> None:
     started_at = _read_process_started_at(pid)
     if started_at is None:
@@ -945,6 +994,30 @@ def _remember_unlabeled_default_scope_snapshot_name(pid: int, snapshot_name: str
         observed_at=time.time(),
     )
     _prune_unlabeled_default_scope_process_owner_cache()
+
+
+def _remember_unlabeled_default_scope_session_snapshot_name(
+    pid: int,
+    snapshot_name: str,
+) -> None:
+    session_id = _resolve_process_rollout_session_id(pid)
+    if session_id is None:
+        return
+
+    _unlabeled_default_scope_session_owner_cache[session_id] = (
+        _UnlabeledDefaultScopeSessionOwner(
+            snapshot_name=snapshot_name,
+            observed_at=time.time(),
+        )
+    )
+    _prune_unlabeled_default_scope_session_owner_cache()
+
+
+def _resolve_process_rollout_session_id(pid: int) -> str | None:
+    rollout_path = _resolve_process_rollout_path(pid)
+    if rollout_path is None:
+        return None
+    return _rollout_session_id_from_path(rollout_path)
 
 
 def _prune_unlabeled_default_scope_process_owner_cache(*, active_pids: set[int] | None = None) -> None:
@@ -971,6 +1044,38 @@ def _prune_unlabeled_default_scope_process_owner_cache(*, active_pids: set[int] 
     )
     for pid in stale_pids[:overflow]:
         _unlabeled_default_scope_process_owner_cache.pop(pid, None)
+
+
+def _prune_unlabeled_default_scope_session_owner_cache() -> None:
+    if not _unlabeled_default_scope_session_owner_cache:
+        return
+
+    now_ts = time.time()
+    ttl_cutoff = now_ts - _UNLABELED_DEFAULT_SCOPE_SESSION_OWNER_CACHE_TTL_SECONDS
+
+    stale_session_ids = [
+        session_id
+        for session_id, owner in _unlabeled_default_scope_session_owner_cache.items()
+        if owner.observed_at < ttl_cutoff
+    ]
+    for session_id in stale_session_ids:
+        _unlabeled_default_scope_session_owner_cache.pop(session_id, None)
+
+    overflow = (
+        len(_unlabeled_default_scope_session_owner_cache)
+        - _UNLABELED_DEFAULT_SCOPE_SESSION_OWNER_CACHE_MAX_ENTRIES
+    )
+    if overflow <= 0:
+        return
+
+    stale_session_ids = sorted(
+        _unlabeled_default_scope_session_owner_cache,
+        key=lambda session_id: _unlabeled_default_scope_session_owner_cache[
+            session_id
+        ].observed_at,
+    )
+    for session_id in stale_session_ids[:overflow]:
+        _unlabeled_default_scope_session_owner_cache.pop(session_id, None)
 
 
 def read_runtime_live_session_counts_by_snapshot(*, now: datetime | None = None) -> dict[str, int]:
@@ -2123,7 +2228,7 @@ def _iter_running_codex_commands(proc_root: Path) -> list[tuple[int, list[str]]]
         command = _read_process_cmdline(pid)
         if not command:
             continue
-        if _is_codex_session_command(command):
+        if _is_codex_session_command(command, pid=pid):
             running.append((pid, command))
 
     # The node launcher process and the native codex process can represent the
@@ -2186,7 +2291,7 @@ def _read_process_cmdline(pid: int) -> list[str]:
     return [part for part in parts if part]
 
 
-def _is_codex_session_command(command: list[str]) -> bool:
+def _is_codex_session_command(command: list[str], *, pid: int | None = None) -> bool:
     if not command:
         return False
 
@@ -2194,7 +2299,39 @@ def _is_codex_session_command(command: list[str]) -> bool:
     if not has_codex_binary:
         return False
 
-    return any("model_instructions_file=" in part for part in command)
+    # OMX-managed sessions always include model_instructions_file marker.
+    if any("model_instructions_file=" in part for part in command):
+        return True
+
+    # Keep known service processes (for example VSCode extension app-server)
+    # out of dashboard "working now" accounting.
+    if _is_non_session_codex_command(command):
+        return False
+
+    # Plain Codex terminal sessions may omit model_instructions_file.
+    # If the process currently holds a rollout file descriptor, treat it as
+    # an active CLI session.
+    if pid is None:
+        return False
+    return _resolve_process_rollout_path(pid) is not None
+
+
+def _is_non_session_codex_command(command: list[str]) -> bool:
+    codex_index: int | None = None
+    for index, part in enumerate(command[:3]):
+        if Path(part).name == "codex":
+            codex_index = index
+            break
+    if codex_index is None:
+        return False
+
+    trailing = command[codex_index + 1 :]
+    for arg in trailing:
+        normalized = arg.strip().lower()
+        if not normalized or normalized.startswith("-"):
+            continue
+        return normalized in {"app-server"}
+    return False
 
 
 def _is_non_default_auth_scope_process(

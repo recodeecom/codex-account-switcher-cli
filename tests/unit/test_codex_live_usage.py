@@ -29,8 +29,10 @@ from app.modules.accounts.codex_live_usage import (
 @pytest.fixture(autouse=True)
 def _reset_unlabeled_process_owner_cache() -> None:
     codex_live_usage_module._unlabeled_default_scope_process_owner_cache.clear()
+    codex_live_usage_module._unlabeled_default_scope_session_owner_cache.clear()
     yield
     codex_live_usage_module._unlabeled_default_scope_process_owner_cache.clear()
+    codex_live_usage_module._unlabeled_default_scope_session_owner_cache.clear()
 
 
 def _sessions_day_dir(root: Path, now: datetime) -> Path:
@@ -2060,6 +2062,95 @@ def test_read_live_codex_process_session_counts_by_snapshot_keeps_cached_unlabel
     assert counts_after_switch == {"tokio": 1}
 
 
+def test_read_live_codex_process_session_counts_by_snapshot_preserves_rollout_session_owner_across_pid_switch_and_maps_new_sessions(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    current_path = tmp_path / "default" / "current"
+    current_path.parent.mkdir(parents=True, exist_ok=True)
+    current_path.write_text("perzeus@recodee.com", encoding="utf-8")
+    os.utime(current_path, (1_000.0, 1_000.0))
+    monkeypatch.setenv("CODEX_AUTH_CURRENT_PATH", str(current_path))
+    monkeypatch.setenv("CODEX_LB_UNLABELED_PROCESS_START_TOLERANCE_SECONDS", "0")
+
+    old_rollout_path = (
+        tmp_path
+        / "sessions"
+        / "2026"
+        / "04"
+        / "06"
+        / "rollout-2026-04-06T12-00-00-11111111-1111-1111-1111-111111111111.jsonl"
+    )
+    old_rollout_path.parent.mkdir(parents=True, exist_ok=True)
+    old_rollout_path.write_text('{"type":"event_msg"}\n', encoding="utf-8")
+    new_rollout_path = (
+        tmp_path
+        / "sessions"
+        / "2026"
+        / "04"
+        / "06"
+        / "rollout-2026-04-06T12-05-00-22222222-2222-2222-2222-222222222222.jsonl"
+    )
+    new_rollout_path.write_text('{"type":"event_msg"}\n', encoding="utf-8")
+
+    phase = {"value": 1}
+    start_times = {
+        9_101: 1_010.0,  # old account session before switch
+        9_102: 2_010.0,  # same rollout session, new pid after switch
+        9_103: 2_015.0,  # brand new rollout session after switch
+    }
+    rollout_paths_by_pid = {
+        9_101: old_rollout_path,
+        9_102: old_rollout_path,
+        9_103: new_rollout_path,
+    }
+
+    def iter_processes(_proc_root: Path) -> list[tuple[int, list[str]]]:
+        if phase["value"] == 1:
+            return [(9_101, ["/usr/bin/codex", "model_instructions_file=agents"])]
+        if phase["value"] == 2:
+            return [(9_102, ["/usr/bin/codex", "model_instructions_file=agents"])]
+        return [
+            (9_102, ["/usr/bin/codex", "model_instructions_file=agents"]),
+            (9_103, ["/usr/bin/codex", "model_instructions_file=agents"]),
+        ]
+
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._iter_running_codex_commands",
+        iter_processes,
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._read_process_env",
+        lambda _pid: {},
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._process_belongs_to_current_user",
+        lambda _pid: True,
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._read_process_started_at",
+        lambda pid: start_times.get(pid),
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._resolve_process_rollout_path",
+        lambda pid: rollout_paths_by_pid.get(pid),
+    )
+
+    counts_before_switch = read_live_codex_process_session_counts_by_snapshot()
+    assert counts_before_switch == {"perzeus@recodee.com": 1}
+
+    current_path.write_text("odin@recodee.com", encoding="utf-8")
+    os.utime(current_path, (2_000.0, 2_000.0))
+    phase["value"] = 2
+
+    counts_after_pid_switch = read_live_codex_process_session_counts_by_snapshot()
+    assert counts_after_pid_switch == {"perzeus@recodee.com": 1}
+
+    phase["value"] = 3
+    counts_with_new_session = read_live_codex_process_session_counts_by_snapshot()
+    assert counts_with_new_session == {"perzeus@recodee.com": 1, "odin@recodee.com": 1}
+
+
 def test_read_live_codex_process_session_counts_by_snapshot_skips_uncached_unlabeled_processes_started_before_switch(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -2976,3 +3067,43 @@ def test_read_local_codex_task_previews_by_session_id_does_not_fallback_to_old_t
 
     previews = read_local_codex_task_previews_by_session_id(now=now)
     assert session_id not in previews
+
+
+def test_iter_running_codex_commands_includes_plain_codex_terminal_session_via_rollout_fd(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    proc_root = tmp_path / "proc"
+    for pid in (101, 102, 103):
+        (proc_root / str(pid)).mkdir(parents=True, exist_ok=True)
+
+    command_by_pid = {
+        101: ["/usr/bin/codex", "app-server", "--analytics-default-enabled"],
+        102: ["/usr/bin/codex", "--dangerously-bypass-approvals-and-sandbox"],
+        103: ["/usr/bin/codex", "-c", "model_instructions_file=agents"],
+    }
+    rollout_path = (
+        tmp_path
+        / "sessions"
+        / "rollout-2026-04-07T01-00-00-019d6513-fa60-7411-9cf7-3fa19d152d68.jsonl"
+    )
+    rollout_path.parent.mkdir(parents=True, exist_ok=True)
+    rollout_path.write_text("", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._read_process_cmdline",
+        lambda pid: command_by_pid.get(pid, []),
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._resolve_process_rollout_path",
+        lambda pid: rollout_path if pid == 102 else None,
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.codex_live_usage._read_process_ppid",
+        lambda _pid: None,
+    )
+
+    running = codex_live_usage_module._iter_running_codex_commands(proc_root)
+    running_pids = [pid for pid, _command in running]
+
+    assert sorted(running_pids) == [102, 103]

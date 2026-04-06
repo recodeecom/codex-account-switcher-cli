@@ -58,6 +58,7 @@ export function AppSidebar() {
   const [collapsed, setCollapsed] = useState<boolean>(() =>
     readSidebarCollapsedPreference(),
   );
+  const [switchboardOpen, setSwitchboardOpen] = useState(false);
   const dashboardQuery = useDashboard();
 
   const accountCountLabel = useMemo(() => {
@@ -72,8 +73,17 @@ export function AppSidebar() {
     setCollapsed((previous) => {
       const next = !previous;
       writeSidebarCollapsedPreference(next);
+      if (next) {
+        setSwitchboardOpen(false);
+      }
       return next;
     });
+  };
+
+  const openSwitchboardFromCollapsedLogo = () => {
+    writeSidebarCollapsedPreference(false);
+    setCollapsed(false);
+    setSwitchboardOpen(true);
   };
 
   return (
@@ -106,16 +116,19 @@ export function AppSidebar() {
               </Button>
             </div>
 
-            <div className="relative flex items-center justify-center overflow-hidden rounded-2xl border border-white/[0.12] bg-gradient-to-br from-white/[0.08] via-white/[0.04] to-transparent px-2 py-2.5 shadow-[0_12px_28px_rgba(0,0,0,0.28)]">
-              <span
-                aria-hidden="true"
-                className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/40 to-transparent"
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={openSwitchboardFromCollapsedLogo}
+              aria-label="Open team switchboard"
+              className="mx-auto h-14 w-14 rounded-full text-slate-200 hover:bg-white/[0.06] hover:text-white"
+            >
+              <CodexLogo
+                className="block size-10 opacity-95"
+                title="recodee.com logo"
               />
-              <div className="flex h-11 w-12 items-center justify-center rounded-2xl border border-white/15 bg-gradient-to-br from-primary/55 via-primary/28 to-primary/5 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.22)]">
-                <CodexLogo size={22} />
-              </div>
-              <span className="sr-only">recodee.com Team switchboard</span>
-            </div>
+            </Button>
           </div>
         ) : (
           <div className="space-y-2.5">
@@ -148,7 +161,13 @@ export function AppSidebar() {
               </Button>
             </div>
 
-            <details className="group min-w-0 w-full">
+            <details
+              className="group min-w-0 w-full"
+              open={switchboardOpen}
+              onToggle={(event) => {
+                setSwitchboardOpen(event.currentTarget.open);
+              }}
+            >
               <summary className="list-none cursor-pointer [&::-webkit-details-marker]:hidden">
                 <div className="relative overflow-hidden rounded-2xl border border-white/[0.12] bg-gradient-to-br from-white/[0.08] via-white/[0.03] to-transparent px-3 py-3 shadow-[0_12px_30px_rgba(0,0,0,0.28)] transition-all duration-200 group-hover:border-white/[0.2] group-open:from-white/[0.1] group-open:via-white/[0.05]">
                   <span

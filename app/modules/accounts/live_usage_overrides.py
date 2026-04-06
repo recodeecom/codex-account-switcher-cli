@@ -11,7 +11,10 @@ from typing import Literal
 from app.core.utils.time import to_utc_naive
 from app.db.models import Account, AccountStatus, UsageHistory
 from app.modules.accounts.codex_auth_switcher import CodexAuthSnapshotIndex
-from app.modules.accounts.codex_auth_switcher import resolve_snapshot_name_candidates_for_account
+from app.modules.accounts.codex_auth_switcher import (
+    build_email_snapshot_name,
+    resolve_snapshot_name_candidates_for_account,
+)
 from app.modules.accounts.codex_live_usage import (
     LocalCodexLiveUsage,
     LocalCodexLiveUsageSample,
@@ -1008,10 +1011,16 @@ def _resolve_session_presence_snapshot_names_for_account(
     """
 
     if not snapshot_names_from_index:
-        return fallback_snapshot_names
+        return _augment_session_presence_snapshot_names_with_email_aliases(
+            account_email=account_email,
+            snapshot_names=fallback_snapshot_names,
+        )
 
     if not selected_snapshot_name:
-        return snapshot_names_from_index
+        return _augment_session_presence_snapshot_names_with_email_aliases(
+            account_email=account_email,
+            snapshot_names=snapshot_names_from_index,
+        )
 
     selected = _normalize_snapshot_name(selected_snapshot_name)
     account_local_part = _normalize_snapshot_local_part(account_email)
@@ -1052,9 +1061,68 @@ def _resolve_session_presence_snapshot_names_for_account(
             seen.add(normalized_snapshot)
 
     if scoped_names:
-        return scoped_names
+        return _augment_session_presence_snapshot_names_with_email_aliases(
+            account_email=account_email,
+            snapshot_names=scoped_names,
+        )
 
-    return fallback_snapshot_names
+    return _augment_session_presence_snapshot_names_with_email_aliases(
+        account_email=account_email,
+        snapshot_names=fallback_snapshot_names,
+    )
+
+
+def _augment_session_presence_snapshot_names_with_email_aliases(
+    *,
+    account_email: str,
+    snapshot_names: list[str],
+) -> list[str]:
+    normalized_email = (account_email or "").strip()
+    if not normalized_email:
+        return _dedupe_snapshot_names(snapshot_names)
+
+    expanded = list(snapshot_names)
+    expected_snapshot_name = build_email_snapshot_name(normalized_email)
+    if expected_snapshot_name:
+        expanded.append(expected_snapshot_name)
+
+    return _dedupe_snapshot_names(expanded)
+
+
+def _dedupe_snapshot_names(snapshot_names: list[str]) -> list[str]:
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for snapshot_name in snapshot_names:
+        normalized = _normalize_snapshot_name(snapshot_name)
+        if normalized is None or normalized in seen:
+            continue
+        deduped.append(snapshot_name)
+        seen.add(normalized)
+    return deduped
+
+
+def _build_normalized_snapshot_count_index(counts_by_snapshot: dict[str, int]) -> dict[str, int]:
+    normalized_index: dict[str, int] = {}
+    for snapshot_name, count in counts_by_snapshot.items():
+        normalized = _normalize_snapshot_name(snapshot_name)
+        if normalized is None:
+            continue
+        normalized_index[normalized] = max(
+            normalized_index.get(normalized, 0),
+            max(0, count),
+        )
+    return normalized_index
+
+
+def _resolve_snapshot_count(
+    *,
+    snapshot_name: str,
+    normalized_counts_by_snapshot: dict[str, int],
+) -> int:
+    normalized = _normalize_snapshot_name(snapshot_name)
+    if normalized is None:
+        return 0
+    return max(0, normalized_counts_by_snapshot.get(normalized, 0))
 
 
 def _account_matches_active_snapshot(
@@ -1491,9 +1559,18 @@ def _resolve_live_usage_for_account(
         snapshot_names=snapshot_names,
         selected_snapshot_name=selected_snapshot_name,
     )
+    normalized_usage_by_snapshot: dict[str, LocalCodexLiveUsage] = {}
+    for snapshot_name, usage in live_usage_by_snapshot.items():
+        normalized = _normalize_snapshot_name(snapshot_name)
+        if normalized is None:
+            continue
+        existing = normalized_usage_by_snapshot.get(normalized)
+        if existing is None or to_utc_naive(usage.recorded_at) >= to_utc_naive(existing.recorded_at):
+            normalized_usage_by_snapshot[normalized] = usage
+
     merged: LocalCodexLiveUsage | None = None
     for snapshot_name in candidate_names:
-        usage = live_usage_by_snapshot.get(snapshot_name)
+        usage = normalized_usage_by_snapshot.get(_normalize_snapshot_name(snapshot_name) or "")
         if usage is None:
             continue
         merged = _merge_live_usage(merged, usage)
@@ -1510,9 +1587,15 @@ def _resolve_live_process_session_count_for_account(
         snapshot_names=snapshot_names,
         selected_snapshot_name=selected_snapshot_name,
     )
+    normalized_counts_by_snapshot = _build_normalized_snapshot_count_index(
+        live_process_session_counts_by_snapshot
+    )
     total = 0
     for snapshot_name in candidate_names:
-        total += max(0, live_process_session_counts_by_snapshot.get(snapshot_name, 0))
+        total += _resolve_snapshot_count(
+            snapshot_name=snapshot_name,
+            normalized_counts_by_snapshot=normalized_counts_by_snapshot,
+        )
     return total
 
 
@@ -1526,9 +1609,15 @@ def _resolve_live_runtime_session_count_for_account(
         snapshot_names=snapshot_names,
         selected_snapshot_name=selected_snapshot_name,
     )
+    normalized_counts_by_snapshot = _build_normalized_snapshot_count_index(
+        runtime_live_session_counts_by_snapshot
+    )
     total = 0
     for snapshot_name in candidate_names:
-        total += max(0, runtime_live_session_counts_by_snapshot.get(snapshot_name, 0))
+        total += _resolve_snapshot_count(
+            snapshot_name=snapshot_name,
+            normalized_counts_by_snapshot=normalized_counts_by_snapshot,
+        )
     return total
 
 
@@ -1544,13 +1633,36 @@ def _resolve_session_presence_live_usage_fallback_for_account(
         snapshot_names=snapshot_names,
         selected_snapshot_name=selected_snapshot_name,
     )
+    normalized_process_counts_by_snapshot = _build_normalized_snapshot_count_index(
+        live_process_session_counts_by_snapshot
+    )
+    normalized_runtime_counts_by_snapshot = _build_normalized_snapshot_count_index(
+        runtime_live_session_counts_by_snapshot
+    )
+    normalized_usage_by_snapshot: dict[str, tuple[str, LocalCodexLiveUsage]] = {}
+    for snapshot_name, usage in live_usage_by_snapshot.items():
+        normalized = _normalize_snapshot_name(snapshot_name)
+        if normalized is None:
+            continue
+        existing = normalized_usage_by_snapshot.get(normalized)
+        if existing is None or to_utc_naive(usage.recorded_at) >= to_utc_naive(existing[1].recorded_at):
+            normalized_usage_by_snapshot[normalized] = (snapshot_name, usage)
+
     resolved_candidates: list[tuple[int, datetime, str, LocalCodexLiveUsage]] = []
     for snapshot_name in candidate_names:
-        usage = live_usage_by_snapshot.get(snapshot_name)
-        if usage is None:
+        normalized_snapshot_name = _normalize_snapshot_name(snapshot_name)
+        if normalized_snapshot_name is None:
             continue
-        session_signal_count = max(0, live_process_session_counts_by_snapshot.get(snapshot_name, 0)) + max(
-            0, runtime_live_session_counts_by_snapshot.get(snapshot_name, 0)
+        resolved_usage = normalized_usage_by_snapshot.get(normalized_snapshot_name)
+        if resolved_usage is None:
+            continue
+        resolved_snapshot_name, usage = resolved_usage
+        session_signal_count = _resolve_snapshot_count(
+            snapshot_name=snapshot_name,
+            normalized_counts_by_snapshot=normalized_process_counts_by_snapshot,
+        ) + _resolve_snapshot_count(
+            snapshot_name=snapshot_name,
+            normalized_counts_by_snapshot=normalized_runtime_counts_by_snapshot,
         )
         if session_signal_count <= 0:
             continue
@@ -1558,7 +1670,7 @@ def _resolve_session_presence_live_usage_fallback_for_account(
             (
                 session_signal_count,
                 to_utc_naive(usage.recorded_at),
-                snapshot_name,
+                resolved_snapshot_name,
                 usage,
             )
         )

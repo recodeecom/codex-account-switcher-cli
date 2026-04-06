@@ -251,6 +251,104 @@ def test_apply_local_live_usage_overrides_ignores_process_sessions_from_legacy_i
     assert codex_session_counts_by_account[account.id] == 0
 
 
+def test_apply_local_live_usage_overrides_matches_session_presence_with_expected_email_snapshot_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    account = _make_account("acc-a", "csoves@edixai.com")
+    snapshot_index = CodexAuthSnapshotIndex(
+        snapshots_by_account_id={account.id: ["admin@recodee.com"]},
+        active_snapshot_name="admin@recodee.com",
+    )
+    codex_auth_by_account = {
+        account.id: AccountCodexAuthStatus(
+            has_snapshot=True,
+            snapshot_name="admin@recodee.com",
+            active_snapshot_name="admin@recodee.com",
+            is_active_snapshot=True,
+            has_live_session=False,
+        )
+    }
+    codex_session_counts_by_account = {account.id: 0}
+
+    monkeypatch.setattr(
+        "app.modules.accounts.live_usage_overrides.read_local_codex_live_usage_by_snapshot",
+        lambda: {},
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.live_usage_overrides.read_local_codex_live_usage_samples_by_snapshot",
+        lambda: {},
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.live_usage_overrides.read_live_codex_process_session_counts_by_snapshot",
+        lambda: {"csoves@edixai.com": 1},
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.live_usage_overrides.read_runtime_live_session_counts_by_snapshot",
+        lambda: {},
+    )
+
+    apply_local_live_usage_overrides(
+        accounts=[account],
+        snapshot_index=snapshot_index,
+        codex_auth_by_account=codex_auth_by_account,
+        primary_usage={},
+        secondary_usage={},
+        codex_live_session_counts_by_account=codex_session_counts_by_account,
+    )
+
+    assert codex_auth_by_account[account.id].has_live_session is True
+    assert codex_session_counts_by_account[account.id] == 1
+
+
+def test_apply_local_live_usage_overrides_matches_process_sessions_case_insensitively(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    account = _make_account("acc-a", "csoves@edixai.com")
+    snapshot_index = CodexAuthSnapshotIndex(
+        snapshots_by_account_id={account.id: ["Csoves@Edixai.com"]},
+        active_snapshot_name="Csoves@Edixai.com",
+    )
+    codex_auth_by_account = {
+        account.id: AccountCodexAuthStatus(
+            has_snapshot=True,
+            snapshot_name="Csoves@Edixai.com",
+            active_snapshot_name="Csoves@Edixai.com",
+            is_active_snapshot=True,
+            has_live_session=False,
+        )
+    }
+    codex_session_counts_by_account = {account.id: 0}
+
+    monkeypatch.setattr(
+        "app.modules.accounts.live_usage_overrides.read_local_codex_live_usage_by_snapshot",
+        lambda: {},
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.live_usage_overrides.read_local_codex_live_usage_samples_by_snapshot",
+        lambda: {},
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.live_usage_overrides.read_live_codex_process_session_counts_by_snapshot",
+        lambda: {"csoves@edixai.com": 1},
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.live_usage_overrides.read_runtime_live_session_counts_by_snapshot",
+        lambda: {},
+    )
+
+    apply_local_live_usage_overrides(
+        accounts=[account],
+        snapshot_index=snapshot_index,
+        codex_auth_by_account=codex_auth_by_account,
+        primary_usage={},
+        secondary_usage={},
+        codex_live_session_counts_by_account=codex_session_counts_by_account,
+    )
+
+    assert codex_auth_by_account[account.id].has_live_session is True
+    assert codex_session_counts_by_account[account.id] == 1
+
+
 def test_apply_local_live_usage_overrides_preserves_runtime_session_count_without_process_visibility(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -11,10 +11,12 @@ describe("storage flow integration", () => {
     renderWithProviders(<App />);
 
     expect(await screen.findByRole("heading", { name: "Storage" })).toBeInTheDocument();
-    expect(
-      screen.getByText("Secure storage for devices and API environment values is coming soon."),
-    ).toBeInTheDocument();
-    expect(screen.getByText("Storage is coming soon")).toBeInTheDocument();
+    expect(screen.getByText("What the dashboard currently does")).toBeInTheDocument();
+    expect(screen.getByText("Why this improves daily work")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open dashboard" })).toHaveAttribute(
+      "href",
+      "/dashboard",
+    );
   });
 
   it("navigates to storage from header tab", async () => {

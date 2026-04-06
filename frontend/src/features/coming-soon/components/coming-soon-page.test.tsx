@@ -10,11 +10,20 @@ describe("ComingSoonPage", () => {
 
     expect(screen.getByText("recodee.com")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Coming Soon" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "What the dashboard currently does" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("TEAM · demo@demo.com")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Use this account" })).toBeDisabled();
     expect(screen.getByLabelText("Email address")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Submit" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open dashboard" })).toHaveAttribute(
       "href",
       "/dashboard",
+    );
+    expect(screen.getByRole("link", { name: "Open accounts" })).toHaveAttribute(
+      "href",
+      "/accounts",
     );
     expect(screen.getByAltText("Dashboard preview")).toBeInTheDocument();
   });
