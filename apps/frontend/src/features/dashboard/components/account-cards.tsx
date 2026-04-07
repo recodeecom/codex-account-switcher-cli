@@ -32,6 +32,8 @@ const WEEKLY_DEPLETED_SORT_THRESHOLD_PERCENT = 5;
 const QUOTA_SORT_BUCKET_PERCENT = 5;
 const ACCOUNT_CARDS_CLOCK_TICK_MS = 5_000;
 const EMAIL_AUTOCORRECT_MAX_DISTANCE = 3;
+const STATUS_ONLY_TASK_PREVIEW_RE =
+  /^(?:task\s+)?(?:is\s+)?(?:already\s+)?(?:done|complete(?:d)?|finished)(?:\s+already)?[.!]?$/i;
 
 type OtherAccountsSortMode =
   | "available-first"
@@ -50,6 +52,30 @@ function matchesOtherAccountEmailQuery(
     return true;
   }
   return normalizeEmailSearchValue(account.email).includes(normalizedQuery);
+}
+
+function hasMeaningfulTaskPreview(taskPreview: string | null | undefined): boolean {
+  const normalized = taskPreview?.trim().replace(/\s+/g, " ") ?? "";
+  if (!normalized) {
+    return false;
+  }
+  if (/^warning\b/i.test(normalized)) {
+    return false;
+  }
+  if (STATUS_ONLY_TASK_PREVIEW_RE.test(normalized)) {
+    return false;
+  }
+  return true;
+}
+
+function hasAssignedTaskSignal(account: AccountSummary): boolean {
+  if (hasMeaningfulTaskPreview(account.codexCurrentTaskPreview)) {
+    return true;
+  }
+  const sessionTaskPreviews = account.codexSessionTaskPreviews ?? [];
+  return sessionTaskPreviews.some((preview) =>
+    hasMeaningfulTaskPreview(preview.taskPreview),
+  );
 }
 
 function computeLevenshteinDistance(source: string, target: string): number {
@@ -588,7 +614,9 @@ export function AccountCards({
         allowDeactivatedOverride: false,
       });
 
-      if (isAccountWorkingNow(account, nowMs)) {
+      const hasWorkingNowSignal = isAccountWorkingNow(account, nowMs);
+      const hasTaskSignal = hasAssignedTaskSignal(account);
+      if (hasWorkingNowSignal || hasTaskSignal) {
         working.push(account);
         continue;
       }

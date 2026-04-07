@@ -199,6 +199,57 @@ describe("AccountCards", () => {
     expect(within(cards[1] as HTMLElement).getByText("idle@example.com")).toBeInTheDocument();
   });
 
+  it("keeps accounts with active CLI task signals in working-now even if status is deactivated", () => {
+    const taskingDeactivated = createAccountSummary({
+      accountId: "acc_tasking_deactivated",
+      email: "tasking-deactivated@example.com",
+      displayName: "tasking-deactivated@example.com",
+      status: "deactivated",
+      codexCurrentTaskPreview: "Investigate session handoff mismatch",
+      codexLiveSessionCount: 0,
+      codexTrackedSessionCount: 0,
+      codexSessionCount: 0,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "tasking",
+        activeSnapshotName: "different",
+        isActiveSnapshot: false,
+        hasLiveSession: false,
+      },
+    });
+    const idle = createAccountSummary({
+      accountId: "acc_idle_tasking",
+      email: "idle-tasking@example.com",
+      displayName: "idle-tasking@example.com",
+      codexCurrentTaskPreview: null,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "idle",
+        activeSnapshotName: "different",
+        isActiveSnapshot: false,
+        hasLiveSession: false,
+      },
+    });
+
+    const { container } = render(
+      <AccountCards
+        accounts={[idle, taskingDeactivated]}
+        primaryWindow={null}
+        secondaryWindow={null}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: "Working now" })).toBeInTheDocument();
+    const cards = Array.from(container.querySelectorAll(".card-hover"));
+    expect(cards).toHaveLength(2);
+    expect(
+      within(cards[0] as HTMLElement).getByText("tasking-deactivated@example.com"),
+    ).toBeInTheDocument();
+    expect(
+      within(cards[0] as HTMLElement).getByText("Investigate session handoff mismatch"),
+    ).toBeInTheDocument();
+  });
+
   it("uses primary window remaining for regular-account token balance", () => {
     const account = createAccountSummary({
       accountId: "acc_regular",
