@@ -1,4 +1,5 @@
 import { screen } from "@testing-library/react";
+import { within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
@@ -74,6 +75,51 @@ describe("sessions flow integration", () => {
     const betaAccount = screen.getByText("beta@example.com");
     expect(alphaAccount.compareDocumentPosition(betaAccount) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(requestUrl).toContain("activeOnly=false");
+  });
+
+  it("opens prompt dialog from a session row action", async () => {
+    const user = userEvent.setup({ delay: null });
+
+    server.use(
+      http.get("/api/sticky-sessions", ({ request }) => {
+        const url = new URL(request.url);
+        if (url.searchParams.get("kind") !== "codex_session") {
+          return HttpResponse.json({ entries: [], stalePromptCacheCount: 0, total: 0, hasMore: false });
+        }
+        return HttpResponse.json({
+          entries: [
+            {
+              key: "session-alpha",
+              accountId: "acc_alpha",
+              displayName: "alpha@example.com",
+              kind: "codex_session",
+              createdAt: "2026-03-10T12:00:00Z",
+              updatedAt: "2026-03-10T12:05:00Z",
+              taskPreview: "Investigate alpha session stream retry bug",
+              taskUpdatedAt: "2026-03-10T12:05:00Z",
+              isActive: true,
+              expiresAt: null,
+              isStale: false,
+            },
+          ],
+          stalePromptCacheCount: 0,
+          total: 1,
+          hasMore: false,
+        });
+      }),
+    );
+
+    window.history.pushState({}, "", "/sessions");
+    renderWithProviders(<App />);
+
+    expect(await screen.findByRole("heading", { name: "Sessions" })).toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "Prompt" }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toBeInTheDocument();
+    expect(within(dialog).getByText("Send prompt to CLI")).toBeInTheDocument();
+    expect(within(dialog).getByText("alpha@example.com")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Send prompt" })).toBeDisabled();
   });
 
   it("highlights and announces a focused session when sessionKey query is present", async () => {
@@ -175,6 +221,32 @@ describe("sessions flow integration", () => {
           }),
         ),
       ),
+      http.get("/api/sticky-sessions/session-events", () =>
+        HttpResponse.json({
+          sessionKey: "session-watch-logs",
+          resolvedSessionId: "session-watch-logs",
+          sourceFile: "/tmp/rollout-session-watch-logs.jsonl",
+          truncated: false,
+          events: [
+            {
+              timestamp: nowIso,
+              kind: "prompt",
+              title: "Prompt",
+              text: "Collect per-session watch logs",
+              role: "user",
+              rawType: "response_item:message:user",
+            },
+            {
+              timestamp: nowIso,
+              kind: "answer",
+              title: "Assistant answer",
+              text: "Loaded session logs and summarized active quotas.",
+              role: "assistant",
+              rawType: "response_item:message:assistant",
+            },
+          ],
+        }),
+      ),
     );
 
     window.history.pushState(
@@ -186,10 +258,82 @@ describe("sessions flow integration", () => {
 
     expect(await screen.findByRole("heading", { name: "Sessions" })).toBeInTheDocument();
     expect(await screen.findByText("Session watch logs")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Prompt this session" })).toBeInTheDocument();
     expect(screen.getAllByText("5h").length).toBeGreaterThan(0);
     expect(screen.getByText("Weekly")).toBeInTheDocument();
-    expect(screen.getByText("Collect per-session watch logs")).toBeInTheDocument();
+    expect(screen.getAllByText("Collect per-session watch logs").length).toBeGreaterThan(0);
+    expect(screen.getByText("AI timeline")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Loaded session logs and summarized active quotas."),
+    ).toBeInTheDocument();
     expect(screen.getByText(/\$ session=session-watch-logs/i)).toBeInTheDocument();
+  });
+
+  it("keeps watch timeline graceful when fallback sessions have no sticky mapping", async () => {
+    let sessionEventsRequests = 0;
+
+    server.use(
+      http.get("/api/sticky-sessions", () =>
+        HttpResponse.json({
+          entries: [],
+          stalePromptCacheCount: 0,
+          total: 0,
+          hasMore: false,
+        }),
+      ),
+      http.get("/api/dashboard/overview", () =>
+        HttpResponse.json(
+          createDashboardOverview({
+            accounts: [
+              createAccountSummary({
+                accountId: "acc_watch_fallback",
+                email: "watch-fallback@example.com",
+                displayName: "watch-fallback@example.com",
+                codexLiveSessionCount: 1,
+                codexTrackedSessionCount: 1,
+                codexSessionCount: 0,
+                codexCurrentTaskPreview: "Waiting for new task",
+                codexAuth: {
+                  hasSnapshot: true,
+                  snapshotName: "watch-fallback",
+                  activeSnapshotName: "watch-fallback",
+                  isActiveSnapshot: true,
+                  hasLiveSession: true,
+                },
+              }),
+            ],
+          }),
+        ),
+      ),
+      http.get("/api/sticky-sessions/session-events", () => {
+        sessionEventsRequests += 1;
+        return HttpResponse.json(
+          {
+            error: {
+              code: "sticky_session_not_found",
+              message: "Sticky session not found",
+            },
+          },
+          { status: 404 },
+        );
+      }),
+    );
+
+    window.history.pushState(
+      {},
+      "",
+      "/sessions?accountId=acc_watch_fallback&sessionKey=pid%3A2716527&view=watch",
+    );
+    renderWithProviders(<App />);
+
+    expect(await screen.findByRole("heading", { name: "Sessions" })).toBeInTheDocument();
+    expect(await screen.findByText("Session watch logs")).toBeInTheDocument();
+    expect(screen.getByText("AI timeline")).toBeInTheDocument();
+    expect(screen.queryByText(/Failed to load session timeline:/i)).not.toBeInTheDocument();
+    expect(
+      screen.getByText("No prompt/answer timeline was captured for this session yet."),
+    ).toBeInTheDocument();
+    expect(sessionEventsRequests).toBe(0);
   });
 
   it("navigates to sessions from header tab", async () => {

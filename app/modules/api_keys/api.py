@@ -29,6 +29,11 @@ router = APIRouter(
     tags=["dashboard"],
     dependencies=[Depends(validate_dashboard_session), Depends(set_dashboard_error_format)],
 )
+legacy_router = APIRouter(
+    prefix="/api/keys",
+    tags=["dashboard"],
+    dependencies=[Depends(validate_dashboard_session), Depends(set_dashboard_error_format)],
+)
 
 
 def _to_response(row: ApiKeyData) -> ApiKeyResponse:
@@ -99,6 +104,7 @@ def _build_limit_inputs(payload: ApiKeyCreateRequest | ApiKeyUpdateRequest) -> l
     return limit_inputs
 
 
+@legacy_router.post("/", response_model=ApiKeyCreateResponse, include_in_schema=False)
 @router.post("/", response_model=ApiKeyCreateResponse)
 async def create_api_key(
     request: Request,
@@ -133,6 +139,7 @@ async def create_api_key(
     )
 
 
+@legacy_router.get("/", response_model=list[ApiKeyResponse], include_in_schema=False)
 @router.get("/", response_model=list[ApiKeyResponse])
 async def list_api_keys(
     context: ApiKeysContext = Depends(get_api_keys_context),
@@ -141,6 +148,7 @@ async def list_api_keys(
     return [_to_response(row) for row in rows]
 
 
+@legacy_router.patch("/{key_id}", response_model=ApiKeyResponse, include_in_schema=False)
 @router.patch("/{key_id}", response_model=ApiKeyResponse)
 async def update_api_key(
     request: Request,
@@ -187,6 +195,7 @@ async def update_api_key(
     return _to_response(row)
 
 
+@legacy_router.delete("/{key_id}", include_in_schema=False)
 @router.delete("/{key_id}")
 async def delete_api_key(
     request: Request,
@@ -205,6 +214,11 @@ async def delete_api_key(
     return Response(status_code=204)
 
 
+@legacy_router.post(
+    "/{key_id}/regenerate",
+    response_model=ApiKeyCreateResponse,
+    include_in_schema=False,
+)
 @router.post("/{key_id}/regenerate", response_model=ApiKeyCreateResponse)
 async def regenerate_api_key(
     key_id: str,
@@ -221,6 +235,11 @@ async def regenerate_api_key(
     )
 
 
+@legacy_router.get(
+    "/{key_id}/trends",
+    response_model=ApiKeyTrendsResponse,
+    include_in_schema=False,
+)
 @router.get("/{key_id}/trends", response_model=ApiKeyTrendsResponse)
 async def get_api_key_trends(
     key_id: str,
@@ -238,6 +257,11 @@ async def get_api_key_trends(
     )
 
 
+@legacy_router.get(
+    "/{key_id}/usage-7d",
+    response_model=ApiKeyUsage7DayResponse,
+    include_in_schema=False,
+)
 @router.get("/{key_id}/usage-7d", response_model=ApiKeyUsage7DayResponse)
 async def get_api_key_usage_7d(
     key_id: str,

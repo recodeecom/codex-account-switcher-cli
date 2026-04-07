@@ -54,6 +54,8 @@ describe("useThemeStore", () => {
     });
     window.localStorage.clear();
     document.documentElement.classList.remove("dark");
+    document.documentElement.style.colorScheme = "";
+    document.documentElement.style.backgroundColor = "";
     useThemeStore.setState({ preference: "auto", theme: "light", initialized: false });
     mockMatchMedia(false);
   });
@@ -121,8 +123,13 @@ describe("useThemeStore", () => {
   it("syncs html dark class", () => {
     useThemeStore.getState().setTheme("dark");
     expect(document.documentElement.classList.contains("dark")).toBe(true);
+    expect(document.documentElement.style.colorScheme).toBe("dark");
+    expect(document.documentElement.style.backgroundColor).not.toBe("");
 
+    const darkBackground = document.documentElement.style.backgroundColor;
     useThemeStore.getState().setTheme("light");
     expect(document.documentElement.classList.contains("dark")).toBe(false);
+    expect(document.documentElement.style.colorScheme).toBe("light");
+    expect(document.documentElement.style.backgroundColor).not.toBe(darkBackground);
   });
 });

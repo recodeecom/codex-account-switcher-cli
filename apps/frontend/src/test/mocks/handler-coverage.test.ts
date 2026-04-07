@@ -55,6 +55,8 @@ const EXPECTED_ENDPOINTS = [
 	// settings
 	"GET /api/settings",
 	"PUT /api/settings",
+	"GET /api/billing",
+	"PUT /api/billing",
 	"GET /api/sticky-sessions",
 	"POST /api/sticky-sessions/delete",
 	"POST /api/sticky-sessions/purge",
@@ -67,6 +69,11 @@ const EXPECTED_ENDPOINTS = [
 	"POST /api/devices",
 	"PUT /api/devices/:deviceId",
 	"DELETE /api/devices/:deviceId",
+	// projects
+	"GET /api/projects",
+	"POST /api/projects",
+	"PUT /api/projects/:projectId",
+	"DELETE /api/projects/:projectId",
 	// models
 	"GET /api/models",
 	// api-keys

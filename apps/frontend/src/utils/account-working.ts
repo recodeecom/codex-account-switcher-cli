@@ -4,6 +4,7 @@ const LIVE_TELEMETRY_STALE_AFTER_MS = 5 * 60 * 1000;
 const LIVE_TELEMETRY_WORKING_GRACE_AFTER_MS = 20 * 60 * 1000;
 const WORKING_NOW_LIMIT_HIT_GRACE_MS = 60 * 1000;
 const WORKING_NOW_DEPLETED_QUOTA_THRESHOLD_PERCENT = 5;
+const WORKING_NOW_LOW_QUOTA_FALLBACK_THRESHOLD_PERCENT = 15;
 const RECENT_USAGE_SIGNAL_STALE_AFTER_MS = 36 * 60 * 60 * 1000;
 const RESET_ALIGNMENT_TOLERANCE_MS = 30 * 1000;
 const STATUS_ONLY_TASK_PREVIEW_RE =
@@ -108,6 +109,27 @@ function shouldSuppressNoCliSampleSessionSignal(
   return true;
 }
 
+function shouldSuppressConfidentCrossAccountSessionSignal(
+  account: Pick<
+    AccountSummary,
+    | "liveQuotaDebug"
+    | "codexAuth"
+    | "codexLiveSessionCount"
+    | "codexTrackedSessionCount"
+    | "codexSessionCount"
+    | "codexCurrentTaskPreview"
+    | "codexSessionTaskPreviews"
+    | "lastUsageRecordedAtPrimary"
+    | "lastUsageRecordedAtSecondary"
+  >,
+): boolean {
+  const overrideReason = (account.liveQuotaDebug?.overrideReason ?? "").trim().toLowerCase();
+  if (overrideReason !== "live_usage_confident_match_other_account") {
+    return false;
+  }
+  return account.liveQuotaDebug?.overrideApplied !== true;
+}
+
 function isFreshTimestamp(
   value: string | null | undefined,
   nowMs: number,
@@ -149,6 +171,13 @@ export function getMergedQuotaRemainingPercent(
   }
 
   const overrideReason = (liveQuotaDebug?.overrideReason ?? "").trim();
+  const normalizedOverrideReason = overrideReason.toLowerCase();
+  if (
+    normalizedOverrideReason === "live_usage_confident_match_other_account" &&
+    liveQuotaDebug?.overrideApplied !== true
+  ) {
+    return null;
+  }
   const deferredMixedDefaultSessions =
     overrideReason.startsWith("deferred_active_snapshot_mixed_default_sessions");
   if (deferredMixedDefaultSessions && liveQuotaDebug?.overrideApplied !== true) {
@@ -404,19 +433,39 @@ export function hasFreshLiveTelemetry(
 }
 
 function hasFreshTaskPreviewSignal(
-  account: Pick<AccountSummary, "codexCurrentTaskPreview">,
+  account: Pick<AccountSummary, "codexCurrentTaskPreview" | "codexSessionTaskPreviews">,
 ): boolean {
-  const normalized = account.codexCurrentTaskPreview?.trim().replace(/\s+/g, " ") ?? "";
-  if (!normalized) {
-    return false;
+  const isMeaningfulTaskPreview = (
+    taskPreview: string | null | undefined,
+  ): boolean => {
+    const normalized = taskPreview?.trim().replace(/\s+/g, " ") ?? "";
+    if (!normalized) {
+      return false;
+    }
+    if (/^warning\b/i.test(normalized)) {
+      return false;
+    }
+    if (STATUS_ONLY_TASK_PREVIEW_RE.test(normalized)) {
+      return false;
+    }
+    return true;
+  };
+
+  if (isMeaningfulTaskPreview(account.codexCurrentTaskPreview)) {
+    return true;
   }
-  if (/^warning\b/i.test(normalized)) {
-    return false;
+
+  const sessionTaskPreviews = account.codexSessionTaskPreviews ?? [];
+  for (const preview of sessionTaskPreviews) {
+    if (!isMeaningfulTaskPreview(preview.taskPreview)) {
+      continue;
+    }
+    // Session rows represent concrete tracked Codex sessions; keep them as
+    // active CLI evidence until they resolve to a finished/status-only preview.
+    return true;
   }
-  if (STATUS_ONLY_TASK_PREVIEW_RE.test(normalized)) {
-    return false;
-  }
-  return true;
+
+  return false;
 }
 
 export function hasActiveCliSessionSignal(
@@ -429,12 +478,16 @@ export function hasActiveCliSessionSignal(
     | "codexSessionCount"
     | "liveQuotaDebug"
     | "codexCurrentTaskPreview"
+    | "codexSessionTaskPreviews"
     | "usage"
     | "lastUsageRecordedAtPrimary"
     | "lastUsageRecordedAtSecondary"
   >,
   nowMs: number = Date.now(),
 ): boolean {
+  if (shouldSuppressConfidentCrossAccountSessionSignal(account)) {
+    return false;
+  }
   // CLI session detection flow is intentionally hard-coded and order-sensitive.
   // Keep this as a strict cascade so the UI remains stable:
   //   1) codexAuth.hasLiveSession
@@ -493,6 +546,7 @@ type WorkingNowAccount = Pick<
   | "codexTrackedSessionCount"
   | "liveQuotaDebug"
   | "codexCurrentTaskPreview"
+  | "codexSessionTaskPreviews"
   | "usage"
   | "lastUsageRecordedAtPrimary"
   | "lastUsageRecordedAtSecondary"
@@ -616,6 +670,9 @@ export function getWorkingNowUsageLimitHitCountdownMs(
   account: WorkingNowAccount,
   nowMs: number = Date.now(),
 ): number | null {
+  if (shouldSuppressConfidentCrossAccountSessionSignal(account)) {
+    return null;
+  }
   const cacheKey = buildWorkingNowLimitHitCacheKey(account);
   const hasActiveSessionCounterSignal =
     Math.max(
@@ -681,12 +738,16 @@ export function isAccountWorkingNow(
     | "codexTrackedSessionCount"
     | "liveQuotaDebug"
     | "codexCurrentTaskPreview"
+    | "codexSessionTaskPreviews"
     | "usage"
     | "lastUsageRecordedAtPrimary"
     | "lastUsageRecordedAtSecondary"
   >,
   nowMs: number = Date.now(),
 ): boolean {
+  if (shouldSuppressConfidentCrossAccountSessionSignal(account)) {
+    return false;
+  }
   const hasFreshLiveSession = hasFreshLiveTelemetry(account, nowMs);
   const hasGraceLiveSessionHint = (() => {
     if (!(account.codexAuth?.hasLiveSession ?? false)) {
@@ -765,6 +826,10 @@ export function isAccountWorkingNow(
     return true;
   }
 
+  if (hasTaskPreviewSignal) {
+    return true;
+  }
+
   if (
     (account.codexAuth?.hasLiveSession ?? false) &&
     (account.codexAuth?.isActiveSnapshot ?? false)
@@ -806,6 +871,16 @@ export function isAccountWorkingNow(
     if (isFreshTimestamp(secondaryFallbackRecordedAt, nowMs)) {
       return true;
     }
+  }
+
+  const primaryRemainingPercent = account.usage?.primaryRemainingPercent;
+  const hasLowQuotaFallbackWorkingSignal =
+    account.status !== "deactivated" &&
+    typeof primaryRemainingPercent === "number" &&
+    Number.isFinite(primaryRemainingPercent) &&
+    primaryRemainingPercent <= WORKING_NOW_LOW_QUOTA_FALLBACK_THRESHOLD_PERCENT;
+  if (hasLowQuotaFallbackWorkingSignal) {
+    return true;
   }
 
   return Math.max(account.codexTrackedSessionCount ?? 0, account.codexSessionCount ?? 0, 0) > 0;

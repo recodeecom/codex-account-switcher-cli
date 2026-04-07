@@ -442,6 +442,25 @@ describe("AccountCard", () => {
     expect(useButton).toHaveAttribute("title", "Weekly quota shown as 0%.");
   });
 
+  it("shows a success indicator on the use-local button while the switch is pending", () => {
+    const account = createAccountSummary({
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "different",
+        isActiveSnapshot: false,
+      },
+    });
+
+    render(<AccountCard account={account} useLocalBusy />);
+
+    const useButton = screen.getByRole("button", { name: "Use this account" });
+    expect(useButton).toBeDisabled();
+    expect(
+      within(useButton).getByTestId("use-local-success-icon"),
+    ).toBeInTheDocument();
+  });
+
   it("keeps use-local gating aligned with the displayed 5h value after floor-cache carryover", () => {
     const sharedAccountId = "acc_floor_cache_alignment";
     const sharedResetAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
@@ -1137,6 +1156,61 @@ describe("AccountCard", () => {
       );
       expect(terminateCalls).toHaveLength(1);
       expect(screen.queryByText(/Leaving working now in/i)).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not repeatedly auto-terminate when remaining quota display changes after grace expiry", () => {
+    vi.useFakeTimers();
+    try {
+      const now = new Date("2026-04-05T00:00:00.000Z");
+      vi.setSystemTime(now);
+      const nowIso = now.toISOString();
+      const account = createAccountSummary({
+        accountId: "account-auto-terminate-once",
+        status: "rate_limited",
+        usage: {
+          primaryRemainingPercent: 0,
+          secondaryRemainingPercent: 66,
+        },
+        codexLiveSessionCount: 1,
+        codexTrackedSessionCount: 1,
+        codexSessionCount: 1,
+        codexAuth: {
+          hasSnapshot: true,
+          snapshotName: "auto-terminate-main",
+          activeSnapshotName: "auto-terminate-main",
+          isActiveSnapshot: true,
+          hasLiveSession: true,
+        },
+        lastUsageRecordedAtPrimary: nowIso,
+        lastUsageRecordedAtSecondary: nowIso,
+      });
+      const onAction = vi.fn();
+
+      const { rerender } = render(<AccountCard account={account} onAction={onAction} />);
+
+      act(() => {
+        vi.advanceTimersByTime(61_000);
+      });
+      expect(onAction).toHaveBeenCalledWith(account, "terminateCliSessions");
+
+      const refreshedAccount = {
+        ...account,
+        usage: {
+          primaryRemainingPercent: 42,
+          secondaryRemainingPercent: 66,
+        },
+        lastUsageRecordedAtPrimary: new Date("2026-04-05T00:01:10.000Z").toISOString(),
+        lastUsageRecordedAtSecondary: new Date("2026-04-05T00:01:10.000Z").toISOString(),
+      };
+      rerender(<AccountCard account={refreshedAccount} onAction={onAction} />);
+
+      const terminateCalls = onAction.mock.calls.filter(
+        ([, action]) => action === "terminateCliSessions",
+      );
+      expect(terminateCalls).toHaveLength(1);
     } finally {
       vi.useRealTimers();
     }
@@ -1932,6 +2006,45 @@ describe("AccountCard", () => {
     expect(screen.getByText("task finished")).toBeInTheDocument();
     expect(screen.getByText("1 finished")).toBeInTheDocument();
     expect(screen.queryByText("thinking")).not.toBeInTheDocument();
+  });
+
+  it("marks older thinking tasks as finished when a newer thinking task exists", () => {
+    const account = createAccountSummary({
+      codexCurrentTaskPreview: "Investigate account card session states",
+      codexSessionTaskPreviews: [
+        {
+          sessionKey: "sess-older-thinking",
+          taskPreview: "Investigate historical prompt replay",
+          taskUpdatedAt: "2026-04-05T10:00:00.000Z",
+        },
+        {
+          sessionKey: "sess-newer-thinking",
+          taskPreview: "Investigate account card session states",
+          taskUpdatedAt: "2026-04-05T10:05:00.000Z",
+        },
+      ],
+      codexLiveSessionCount: 2,
+      codexSessionCount: 2,
+      codexTrackedSessionCount: 2,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+    });
+
+    render(<AccountCard account={account} />);
+
+    expect(screen.getByTitle("sess-older-thinking")).toBeInTheDocument();
+    expect(screen.getByTitle("sess-newer-thinking")).toBeInTheDocument();
+    expect(screen.getByText("Investigate historical prompt replay")).toBeInTheDocument();
+    expect(
+      screen.getAllByText("Investigate account card session states").length,
+    ).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("1 finished")).toBeInTheDocument();
+    expect(screen.getByText("thinking")).toBeInTheDocument();
   });
 
   it("treats waiting-for-user task previews as waiting instead of thinking", () => {

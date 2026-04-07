@@ -48,6 +48,9 @@ _PERCENT_PATTERN_HIGH_CONFIDENCE_MAX_DISTANCE = 8.0
 _PERCENT_PATTERN_HIGH_CONFIDENCE_MARGIN = 4.0
 _LIVE_USAGE_DEBUG_ENV = "CODEX_LB_LIVE_USAGE_DEBUG"
 _DEFAULT_SESSION_FINGERPRINT_FALLBACK_ENV = "CODEX_LB_DEFAULT_SESSION_FINGERPRINT_FALLBACK_ENABLED"
+_DEFAULT_SESSION_LOW_CONFIDENCE_ASSIGNMENTS_ENV = (
+    "CODEX_LB_DEFAULT_SESSION_LOW_CONFIDENCE_ASSIGNMENTS_ENABLED"
+)
 _ROLLOUT_SOURCE_SESSION_PREFIX_RE = re.compile(r"rollout-(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2})")
 logger = logging.getLogger(__name__)
 
@@ -171,6 +174,10 @@ def apply_local_live_usage_overrides(
         should_defer_active_snapshot_usage=should_defer_active_snapshot_usage,
     )
     live_process_session_counts_by_account: dict[str, int] = {}
+    forced_live_session_counts_by_account: dict[str, int] = {}
+    force_clear_live_session_account_ids: set[str] = set()
+
+    accounts_by_id = {account.id: account for account in accounts}
 
     for account in accounts:
         codex_auth_status = codex_auth_by_account.get(account.id)
@@ -410,6 +417,78 @@ def apply_local_live_usage_overrides(
             )
             continue
 
+        live_usage_match = _match_sample_to_account(
+            sample=live_usage,
+            accounts=accounts,
+            baseline_primary_usage=baseline_primary_usage,
+            baseline_secondary_usage=baseline_secondary_usage,
+        )
+        matched_account = (
+            accounts_by_id.get(live_usage_match.account_id)
+            if live_usage_match is not None
+            else None
+        )
+        current_chatgpt_account_id = (account.chatgpt_account_id or "").strip().lower()
+        matched_chatgpt_account_id = (
+            (matched_account.chatgpt_account_id or "").strip().lower()
+            if matched_account is not None
+            else ""
+        )
+        has_shared_chatgpt_account_identity = bool(
+            current_chatgpt_account_id
+            and matched_chatgpt_account_id
+            and current_chatgpt_account_id == matched_chatgpt_account_id
+        )
+
+        if (
+            live_usage_match is not None
+            and live_usage_match.confidence == "high"
+            and live_usage_match.account_id != account_id
+            and not has_shared_chatgpt_account_identity
+        ):
+            matched_account_id = live_usage_match.account_id
+            # Strong fingerprint says this live sample belongs to another
+            # account identity. Keep this account disconnected for live-session
+            # grouping and transfer process/session presence to the matched
+            # account so "Working now" stays aligned with quota ownership.
+            force_clear_live_session_account_ids.add(account_id)
+            transferred_live_session_count = max(
+                0,
+                live_process_session_count,
+                effective_live_runtime_session_count,
+            )
+            if transferred_live_session_count > 0:
+                forced_live_session_counts_by_account[matched_account_id] = max(
+                    forced_live_session_counts_by_account.get(matched_account_id, 0),
+                    transferred_live_session_count,
+                )
+
+            # Guardrail for multi-session mixed snapshot scopes:
+            # when a live-usage sample strongly fingerprints another account,
+            # keep this account on baseline quota windows instead of applying
+            # a wrong cross-account override.
+            override_reason = "live_usage_confident_match_other_account"
+            _set_live_quota_debug(
+                account_id=account_id,
+                snapshots_considered=snapshots_considered,
+                live_usage=live_usage,
+                live_usage_samples_by_snapshot=live_usage_samples_by_snapshot,
+                raw_samples_override=raw_samples_override,
+                override_applied=False,
+                override_reason=override_reason,
+                live_quota_debug_by_account=live_quota_debug_by_account,
+            )
+            _log_live_quota_debug(
+                account=account,
+                snapshots_considered=snapshots_considered,
+                live_usage=live_usage,
+                live_usage_samples_by_snapshot=live_usage_samples_by_snapshot,
+                live_process_session_count=live_process_session_count,
+                override_applied=False,
+                override_reason=override_reason,
+            )
+            continue
+
         if (
             not has_live_process_session
             and not has_live_runtime_session
@@ -571,6 +650,32 @@ def apply_local_live_usage_overrides(
             codex_session_counts_by_account=codex_live_session_counts_by_account,
             allow_quota_override=not should_defer_active_snapshot_usage,
         )
+
+    if forced_live_session_counts_by_account:
+        for account_id, transferred_live_session_count in forced_live_session_counts_by_account.items():
+            if transferred_live_session_count <= 0:
+                continue
+            codex_live_session_counts_by_account[account_id] = max(
+                codex_live_session_counts_by_account.get(account_id, 0),
+                transferred_live_session_count,
+            )
+            live_process_session_counts_by_account[account_id] = max(
+                live_process_session_counts_by_account.get(account_id, 0),
+                transferred_live_session_count,
+            )
+            codex_auth_status = codex_auth_by_account.get(account_id)
+            if codex_auth_status is not None:
+                codex_auth_status.has_live_session = True
+
+    if force_clear_live_session_account_ids:
+        for account_id in force_clear_live_session_account_ids:
+            if forced_live_session_counts_by_account.get(account_id, 0) > 0:
+                continue
+            codex_live_session_counts_by_account[account_id] = 0
+            live_process_session_counts_by_account[account_id] = 0
+            codex_auth_status = codex_auth_by_account.get(account_id)
+            if codex_auth_status is not None:
+                codex_auth_status.has_live_session = False
 
     _normalize_live_session_counts_to_process_presence(
         accounts=accounts,
@@ -1351,10 +1456,12 @@ def _build_default_sample_debug_overrides(
         baseline_secondary_usage=baseline_secondary_usage,
         sample_sources=[sample.source for sample in default_scope_samples],
         preferred_account_id=active_account_id,
-        # Deferred debug/session hints should only reflect confident ownership
-        # so stale/ambiguous default-scope samples don't mark extra accounts
-        # as "Working now".
-        allow_low_confidence_assignments=False,
+        # Keep mixed default-scope attribution conservative for small batches,
+        # but relax to low-confidence "near but not tied" matches for larger
+        # batches where strict matching can hide active accounts.
+        allow_low_confidence_assignments=_default_scope_low_confidence_assignments_enabled(
+            sample_count=len(default_scope_samples)
+        ),
         # Keep immediate attribution for a brand-new single default-scope
         # sample (common right after switching), but avoid spreading
         # multi-session ambiguous fingerprints across accounts.
@@ -1528,6 +1635,19 @@ def _live_usage_debug_enabled() -> bool:
 def _default_session_fingerprint_fallback_enabled() -> bool:
     raw = (os.environ.get(_DEFAULT_SESSION_FINGERPRINT_FALLBACK_ENV) or "").strip().lower()
     return raw in {"1", "true", "yes", "on"}
+
+
+def _default_scope_low_confidence_assignments_enabled(*, sample_count: int) -> bool:
+    raw = (os.environ.get(_DEFAULT_SESSION_LOW_CONFIDENCE_ASSIGNMENTS_ENV) or "").strip().lower()
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    # For larger mixed default-scope batches, strict high-confidence-only
+    # matching can under-report active accounts despite clear multi-session
+    # activity. Auto-enable low-confidence "near but not tied" attribution
+    # only when we have 3+ samples to reduce false positives.
+    return sample_count >= 3
 
 
 def _log_live_quota_debug(
@@ -1809,9 +1929,12 @@ def _apply_local_default_session_fingerprint_overrides(
         baseline_secondary_usage=baseline_secondary_usage,
         sample_sources=sample_sources,
         preferred_account_id=active_account_id,
-        # Default-scope fallback is presence-only attribution. Keep it strict:
-        # only confident ownership can create per-account live-session hints.
-        allow_low_confidence_assignments=False,
+        # Keep fallback conservative for small mixed batches; relax to
+        # low-confidence "near but not tied" attribution for larger mixed
+        # batches to avoid under-reporting active accounts.
+        allow_low_confidence_assignments=_default_scope_low_confidence_assignments_enabled(
+            sample_count=len(default_scope_samples)
+        ),
         # Conservative in mixed default-scope fallback mode: do not force-map
         # unresolved fingerprint samples to an account, because that can mark
         # the wrong account as "Working now" when multiple snapshots are

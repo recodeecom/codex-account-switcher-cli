@@ -46,7 +46,19 @@ function normalizeRegion(region: StoreRegion, index: number): MedusaRegionSummar
 
 export async function getMedusaConnectionSnapshot(): Promise<MedusaConnectionSnapshot> {
   const runtime = getMedusaRuntimeConfig();
-  const response = await medusaStoreFetch<StoreRegionsResponse>("/regions");
+  let response: StoreRegionsResponse;
+  try {
+    response = await medusaStoreFetch<StoreRegionsResponse>("/regions");
+  } catch (error) {
+    if (error instanceof Error) {
+      throw new Error(
+        `Failed to fetch ${runtime.backendUrl}/store/regions (${error.message})`,
+        { cause: error },
+      );
+    }
+    throw error;
+  }
+
   const regions = (response.regions ?? []).map((region, index) => normalizeRegion(region, index));
 
   return {

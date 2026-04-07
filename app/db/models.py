@@ -268,6 +268,63 @@ class Device(Base):
     )
 
 
+class Project(Base):
+    __tablename__ = "projects"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    name: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    project_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sandbox_mode: Mapped[str] = mapped_column(
+        String(64),
+        default="workspace-write",
+        server_default=text("'workspace-write'"),
+        nullable=False,
+    )
+    git_branch: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+
+class BusinessBillingAccount(Base):
+    __tablename__ = "business_billing_accounts"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    domain: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    billing_cycle_start: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    billing_cycle_end: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    chatgpt_seats_in_use: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        server_default=text("0"),
+        nullable=False,
+    )
+    codex_seats_in_use: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        server_default=text("0"),
+        nullable=False,
+    )
+    members_json: Mapped[str] = mapped_column(
+        Text,
+        default="[]",
+        server_default=text("'[]'"),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+
 class ApiKey(Base):
     __tablename__ = "api_keys"
 
@@ -449,6 +506,7 @@ Index(
     UsageHistory.id.desc(),
 )
 Index("idx_accounts_email", Account.email)
+Index("idx_business_billing_accounts_domain", BusinessBillingAccount.domain)
 Index("idx_api_keys_name", ApiKey.name)
 Index("idx_logs_account_time", RequestLog.account_id, RequestLog.requested_at)
 Index("idx_logs_requested_at", RequestLog.requested_at)

@@ -15,6 +15,8 @@ from app.modules.api_keys.repository import ApiKeysRepository
 from app.modules.api_keys.service import ApiKeysService
 from app.modules.audit.repository import AuditRepository
 from app.modules.audit.service import AuditLogsService
+from app.modules.billing.repository import BillingRepository
+from app.modules.billing.service import BillingService
 from app.modules.dashboard.repository import DashboardRepository
 from app.modules.dashboard.service import DashboardService
 from app.modules.dashboard_auth.repository import DashboardAuthRepository
@@ -31,6 +33,8 @@ from app.modules.oauth.service import OauthService
 from app.modules.proxy.repo_bundle import ProxyRepositories
 from app.modules.proxy.service import ProxyService
 from app.modules.proxy.sticky_repository import StickySessionsRepository
+from app.modules.projects.repository import ProjectsRepository
+from app.modules.projects.service import ProjectsRepositoryPort, ProjectsService
 from app.modules.request_logs.repository import RequestLogsRepository
 from app.modules.request_logs.service import RequestLogsService
 from app.modules.settings.repository import SettingsRepository
@@ -52,6 +56,13 @@ class AuditContext:
     session: AsyncSession
     repository: AuditRepository
     service: AuditLogsService
+
+
+@dataclass(slots=True)
+class BillingContext:
+    session: AsyncSession
+    repository: BillingRepository
+    service: BillingService
 
 
 @dataclass(slots=True)
@@ -121,6 +132,13 @@ class DevicesContext:
 
 
 @dataclass(slots=True)
+class ProjectsContext:
+    session: AsyncSession
+    repository: ProjectsRepository
+    service: ProjectsService
+
+
+@dataclass(slots=True)
 class StickySessionsContext:
     session: AsyncSession
     repository: StickySessionsRepository
@@ -148,6 +166,14 @@ def get_audit_context(
     repository = AuditRepository(session)
     service = AuditLogsService(repository)
     return AuditContext(session=session, repository=repository, service=service)
+
+
+def get_billing_context(
+    session: AsyncSession = Depends(get_session),
+) -> BillingContext:
+    repository = BillingRepository(session)
+    service = BillingService(repository)
+    return BillingContext(session=session, repository=repository, service=service)
 
 
 def get_usage_context(
@@ -267,6 +293,14 @@ def get_devices_context(
     repository = DevicesRepository(session)
     service = DevicesService(cast(DevicesRepositoryPort, repository))
     return DevicesContext(session=session, repository=repository, service=service)
+
+
+def get_projects_context(
+    session: AsyncSession = Depends(get_session),
+) -> ProjectsContext:
+    repository = ProjectsRepository(session)
+    service = ProjectsService(cast(ProjectsRepositoryPort, repository))
+    return ProjectsContext(session=session, repository=repository, service=service)
 
 
 def get_sticky_sessions_context(

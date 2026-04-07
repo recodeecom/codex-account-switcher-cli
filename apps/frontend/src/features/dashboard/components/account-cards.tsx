@@ -32,6 +32,8 @@ const WEEKLY_DEPLETED_SORT_THRESHOLD_PERCENT = 5;
 const QUOTA_SORT_BUCKET_PERCENT = 5;
 const ACCOUNT_CARDS_CLOCK_TICK_MS = 5_000;
 const EMAIL_AUTOCORRECT_MAX_DISTANCE = 3;
+const STATUS_ONLY_TASK_PREVIEW_RE =
+  /^(?:task\s+)?(?:is\s+)?(?:already\s+)?(?:done|complete(?:d)?|finished)(?:\s+already)?[.!]?$/i;
 
 type OtherAccountsSortMode =
   | "available-first"
@@ -50,6 +52,30 @@ function matchesOtherAccountEmailQuery(
     return true;
   }
   return normalizeEmailSearchValue(account.email).includes(normalizedQuery);
+}
+
+function hasMeaningfulTaskPreview(taskPreview: string | null | undefined): boolean {
+  const normalized = taskPreview?.trim().replace(/\s+/g, " ") ?? "";
+  if (!normalized) {
+    return false;
+  }
+  if (/^warning\b/i.test(normalized)) {
+    return false;
+  }
+  if (STATUS_ONLY_TASK_PREVIEW_RE.test(normalized)) {
+    return false;
+  }
+  return true;
+}
+
+function hasAssignedTaskSignal(account: AccountSummary): boolean {
+  if (hasMeaningfulTaskPreview(account.codexCurrentTaskPreview)) {
+    return true;
+  }
+  const sessionTaskPreviews = account.codexSessionTaskPreviews ?? [];
+  return sessionTaskPreviews.some((preview) =>
+    hasMeaningfulTaskPreview(preview.taskPreview),
+  );
 }
 
 function computeLevenshteinDistance(source: string, target: string): number {
@@ -478,6 +504,7 @@ export type AccountCardsProps = {
   primaryWindow: UsageWindow | null;
   secondaryWindow: UsageWindow | null;
   useLocalBusy?: boolean;
+  useLocalBusyAccountId?: string | null;
   deleteBusy?: boolean;
   onAction?: AccountCardProps["onAction"];
 };
@@ -529,6 +556,7 @@ export function AccountCards({
   primaryWindow,
   secondaryWindow,
   useLocalBusy = false,
+  useLocalBusyAccountId = null,
   deleteBusy = false,
   onAction,
 }: AccountCardsProps) {
@@ -586,7 +614,9 @@ export function AccountCards({
         allowDeactivatedOverride: false,
       });
 
-      if (isAccountWorkingNow(account, nowMs)) {
+      const hasWorkingNowSignal = isAccountWorkingNow(account, nowMs);
+      const hasTaskSignal = hasAssignedTaskSignal(account);
+      if (hasWorkingNowSignal || hasTaskSignal) {
         working.push(account);
         continue;
       }
@@ -690,7 +720,7 @@ export function AccountCards({
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-2 2xl:grid-cols-3">
       {items.map((account, index) => (
         <div
-          key={`${keyPrefix}-${buildAccountEntryKey(account)}`}
+          key={`${keyPrefix}-${account.accountId}`}
           className={
             keyPrefix === "working"
               ? "min-w-0 animate-working-account-enter"
@@ -716,7 +746,11 @@ export function AccountCards({
             )}
             showTokensRemaining
             showAccountId={duplicateAccountIds.has(account.accountId)}
-            useLocalBusy={useLocalBusy}
+            useLocalBusy={
+              useLocalBusy &&
+              useLocalBusyAccountId != null &&
+              useLocalBusyAccountId === account.accountId
+            }
             deleteBusy={deleteBusy}
             initialSessionTasksCollapsed
             onAction={onAction}
@@ -729,41 +763,64 @@ export function AccountCards({
   return (
     <div className="space-y-5">
       {groupedAccounts.working.length > 0 ? (
-        <section className="space-y-4 rounded-2xl border border-cyan-500/25 p-4 md:p-6">
-          <div className="flex flex-col gap-3 border-b border-border/70 pb-4 xl:flex-row xl:items-start xl:justify-between">
-            <div className="min-w-0 space-y-1">
-              <div className="inline-flex items-center gap-1.5 rounded-full border border-cyan-500/30 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-700 dark:text-cyan-300">
-                <span
-                  className="h-1.5 w-1.5 rounded-full bg-current"
-                  aria-hidden="true"
-                />
-                Live account group
+        <section className="relative overflow-hidden space-y-4 rounded-2xl border border-cyan-500/30 bg-[radial-gradient(120%_135%_at_0%_0%,rgba(34,211,238,0.14)_0%,rgba(8,13,24,0.9)_48%,rgba(3,7,18,0.98)_100%)] p-4 shadow-[0_0_0_1px_rgba(34,211,238,0.06),0_18px_48px_-34px_rgba(34,211,238,0.4)] md:p-6">
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute -top-16 -right-16 h-40 w-40 rounded-full bg-cyan-400/25 blur-3xl"
+          />
+          <div className="relative flex flex-col gap-3 border-b border-cyan-500/20 pb-4 xl:flex-row xl:items-start xl:justify-between">
+            <div className="min-w-0 space-y-1.5">
+              <div className="inline-flex items-center gap-2.5">
+                <span className="relative inline-flex h-2.5 w-2.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400/70" />
+                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-300 shadow-[0_0_0_3px_rgba(16,185,129,0.16)]" />
+                </span>
+                <h3 className="text-base font-semibold tracking-tight text-cyan-100">
+                  Working now
+                </h3>
               </div>
-              <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-cyan-700 dark:text-cyan-300">
-                Working now
-              </h3>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-cyan-100/70">
                 Accounts with active CLI sessions are grouped first so you can
                 switch faster.
               </p>
             </div>
-            <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 xl:w-[32rem] xl:min-w-[32rem]">
-              <span className="inline-flex min-h-8 items-center justify-center rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-1 text-[11px] font-semibold tabular-nums text-cyan-700 dark:text-cyan-300">
-                {groupedAccounts.working.length} working
+            <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 xl:w-[36rem] xl:min-w-[36rem]">
+              <span className="inline-flex min-h-11 items-center justify-between rounded-xl border border-cyan-400/35 bg-cyan-400/12 px-3 py-2 text-cyan-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)]">
+                <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-cyan-100/70">
+                  Active accounts
+                </span>
+                <span className="text-sm font-semibold tabular-nums">
+                  {groupedAccounts.working.length} working
+                </span>
               </span>
               {workingSummary.liveSessions > 0 ? (
-                <span className="inline-flex min-h-8 items-center justify-center rounded-lg border border-cyan-500/25 bg-cyan-500/10 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-cyan-700 dark:text-cyan-300">
-                  {workingSummary.liveSessions} live sessions
+                <span className="inline-flex min-h-11 items-center justify-between rounded-xl border border-cyan-400/30 bg-cyan-400/10 px-3 py-2 text-cyan-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)]">
+                  <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-cyan-100/70">
+                    CLI sessions
+                  </span>
+                  <span className="text-sm font-semibold tabular-nums">
+                    {workingSummary.liveSessions} live sessions
+                  </span>
                 </span>
               ) : null}
               {workingSummary.avgPrimaryRemaining !== null ? (
-                <span className="inline-flex min-h-8 items-center justify-center rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-emerald-700 dark:text-emerald-300">
-                  {primaryWindowLabel} avg {workingSummary.avgPrimaryRemaining}%
+                <span className="inline-flex min-h-11 items-center justify-between rounded-xl border border-emerald-400/32 bg-emerald-400/12 px-3 py-2 text-emerald-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)]">
+                  <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-emerald-100/75">
+                    {primaryWindowLabel} average
+                  </span>
+                  <span className="text-sm font-semibold tabular-nums">
+                    {primaryWindowLabel} avg {workingSummary.avgPrimaryRemaining}%
+                  </span>
                 </span>
               ) : null}
               {workingSummary.avgSecondaryRemaining !== null ? (
-                <span className="inline-flex min-h-8 items-center justify-center rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-emerald-700 dark:text-emerald-300">
-                  Weekly avg {workingSummary.avgSecondaryRemaining}%
+                <span className="inline-flex min-h-11 items-center justify-between rounded-xl border border-emerald-400/32 bg-emerald-400/12 px-3 py-2 text-emerald-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)]">
+                  <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-emerald-100/75">
+                    Weekly average
+                  </span>
+                  <span className="text-sm font-semibold tabular-nums">
+                    Weekly avg {workingSummary.avgSecondaryRemaining}%
+                  </span>
                 </span>
               ) : null}
             </div>

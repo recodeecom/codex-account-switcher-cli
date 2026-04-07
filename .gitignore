@@ -3,6 +3,8 @@ refs/
 poc/
 WEBU/
 examples/WEBU/
+examples/claudia/
+examples/claduio/
 
 # Python
 .venv/

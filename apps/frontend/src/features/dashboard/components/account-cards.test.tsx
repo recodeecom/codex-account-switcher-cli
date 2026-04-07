@@ -95,6 +95,55 @@ describe("AccountCards", () => {
     expect(betaCardAfter).toBe(betaCardBefore);
   });
 
+  it("only disables the matching use-local button when a switch is pending", () => {
+    const busyAccount = createAccountSummary({
+      accountId: "acc_busy",
+      email: "busy@example.com",
+      displayName: "busy@example.com",
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "busy",
+        activeSnapshotName: "different",
+        isActiveSnapshot: false,
+        hasLiveSession: false,
+      },
+    });
+    const idleAccount = createAccountSummary({
+      accountId: "acc_idle",
+      email: "idle@example.com",
+      displayName: "idle@example.com",
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "idle",
+        activeSnapshotName: "different",
+        isActiveSnapshot: false,
+        hasLiveSession: false,
+      },
+    });
+
+    render(
+      <AccountCards
+        accounts={[busyAccount, idleAccount]}
+        primaryWindow={null}
+        secondaryWindow={null}
+        useLocalBusy
+        useLocalBusyAccountId={busyAccount.accountId}
+      />,
+    );
+
+    const busyCard = screen.getByText("busy@example.com").closest(".card-hover");
+    const idleCard = screen.getByText("idle@example.com").closest(".card-hover");
+    expect(busyCard).not.toBeNull();
+    expect(idleCard).not.toBeNull();
+
+    expect(
+      within(busyCard as HTMLElement).getByRole("button", { name: "Use this account" }),
+    ).toBeDisabled();
+    expect(
+      within(idleCard as HTMLElement).getByRole("button", { name: "Use this account" }),
+    ).toBeEnabled();
+  });
+
   it("renders working accounts in a dedicated top section before other accounts", () => {
     const nowIso = new Date().toISOString();
     const idle = createAccountSummary({
@@ -148,6 +197,57 @@ describe("AccountCards", () => {
     expect(cards).toHaveLength(2);
     expect(within(cards[0] as HTMLElement).getByText("working@example.com")).toBeInTheDocument();
     expect(within(cards[1] as HTMLElement).getByText("idle@example.com")).toBeInTheDocument();
+  });
+
+  it("keeps accounts with active CLI task signals in working-now even if status is deactivated", () => {
+    const taskingDeactivated = createAccountSummary({
+      accountId: "acc_tasking_deactivated",
+      email: "tasking-deactivated@example.com",
+      displayName: "tasking-deactivated@example.com",
+      status: "deactivated",
+      codexCurrentTaskPreview: "Investigate session handoff mismatch",
+      codexLiveSessionCount: 0,
+      codexTrackedSessionCount: 0,
+      codexSessionCount: 0,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "tasking",
+        activeSnapshotName: "different",
+        isActiveSnapshot: false,
+        hasLiveSession: false,
+      },
+    });
+    const idle = createAccountSummary({
+      accountId: "acc_idle_tasking",
+      email: "idle-tasking@example.com",
+      displayName: "idle-tasking@example.com",
+      codexCurrentTaskPreview: null,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "idle",
+        activeSnapshotName: "different",
+        isActiveSnapshot: false,
+        hasLiveSession: false,
+      },
+    });
+
+    const { container } = render(
+      <AccountCards
+        accounts={[idle, taskingDeactivated]}
+        primaryWindow={null}
+        secondaryWindow={null}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: "Working now" })).toBeInTheDocument();
+    const cards = Array.from(container.querySelectorAll(".card-hover"));
+    expect(cards).toHaveLength(2);
+    expect(
+      within(cards[0] as HTMLElement).getByText("tasking-deactivated@example.com"),
+    ).toBeInTheDocument();
+    expect(
+      within(cards[0] as HTMLElement).getByText("Investigate session handoff mismatch"),
+    ).toBeInTheDocument();
   });
 
   it("uses primary window remaining for regular-account token balance", () => {
@@ -623,7 +723,7 @@ describe("AccountCards", () => {
       email: "weekly-zero-soon@example.com",
       displayName: "weekly-zero-soon@example.com",
       usage: {
-        primaryRemainingPercent: 6,
+        primaryRemainingPercent: 26,
         secondaryRemainingPercent: 0,
       },
       resetAtSecondary: new Date(now + 4 * 24 * 60 * 60 * 1000 + 12 * 60 * 60 * 1000).toISOString(),
@@ -743,7 +843,7 @@ describe("AccountCards", () => {
       email: "weekly-depleted-later@example.com",
       displayName: "weekly-depleted-later@example.com",
       usage: {
-        primaryRemainingPercent: 5,
+        primaryRemainingPercent: 25,
         secondaryRemainingPercent: 0,
       },
       resetAtSecondary: new Date(now + 6 * 24 * 60 * 60 * 1000 + 2 * 60 * 60 * 1000).toISOString(),
@@ -782,7 +882,7 @@ describe("AccountCards", () => {
         isActiveSnapshot: true,
       },
       usage: {
-        primaryRemainingPercent: 12,
+        primaryRemainingPercent: 32,
         secondaryRemainingPercent: 42,
       },
     });
@@ -1138,6 +1238,45 @@ describe("AccountCards", () => {
     expect(screen.getByRole("heading", { name: "Working now" })).toBeInTheDocument();
     expect(screen.getByText("tracked@example.com")).toBeInTheDocument();
     expect(screen.queryByText("live sessions")).not.toBeInTheDocument();
+  });
+
+  it("places fresh session-task-preview accounts in the working-now section", () => {
+    const taskPreviewOnly = createAccountSummary({
+      accountId: "acc_task_preview_only",
+      email: "task-preview-only@example.com",
+      displayName: "task-preview-only@example.com",
+      codexLiveSessionCount: 0,
+      codexTrackedSessionCount: 0,
+      codexSessionCount: 0,
+      codexCurrentTaskPreview: null,
+      codexSessionTaskPreviews: [
+        {
+          sessionKey: "session-1",
+          taskPreview: "Investigate admin session mapping",
+          taskUpdatedAt: new Date().toISOString(),
+        },
+      ],
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "task-preview-only",
+        activeSnapshotName: "other",
+        isActiveSnapshot: false,
+        hasLiveSession: false,
+      },
+      lastUsageRecordedAtPrimary: null,
+      lastUsageRecordedAtSecondary: null,
+    });
+
+    render(
+      <AccountCards
+        accounts={[taskPreviewOnly]}
+        primaryWindow={null}
+        secondaryWindow={null}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: "Working now" })).toBeInTheDocument();
+    expect(screen.getByText("task-preview-only@example.com")).toBeInTheDocument();
   });
 
   it("keeps deferred mixed-session debug-only accounts out of working-now", () => {
