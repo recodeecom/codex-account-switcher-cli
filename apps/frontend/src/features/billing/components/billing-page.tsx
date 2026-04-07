@@ -48,6 +48,10 @@ import {
 type BusinessPlanAccount = {
   id: string;
   domain: string;
+  billingCycle: {
+    start: Date;
+    end: Date;
+  };
   chatgptSeatsInUse: number;
   codexSeatsInUse: number;
   members: BusinessPlanMember[];
@@ -64,13 +68,15 @@ type BusinessPlanMember = {
 
 const CHATGPT_MONTHLY_SEAT_PRICE_EUR = 26;
 const CODEX_MONTHLY_SEAT_PRICE_EUR = 0;
-const BILLING_CYCLE_START = new Date(2026, 2, 23);
-const BILLING_CYCLE_END = new Date(2026, 3, 23);
 
 const BUSINESS_PLAN_ACCOUNTS: BusinessPlanAccount[] = [
   {
     id: "business-plan-edixai",
     domain: "edixai.com",
+    billingCycle: {
+      start: new Date(2026, 2, 23),
+      end: new Date(2026, 3, 23),
+    },
     chatgptSeatsInUse: 5,
     codexSeatsInUse: 5,
     members: [
@@ -159,6 +165,10 @@ const BUSINESS_PLAN_ACCOUNTS: BusinessPlanAccount[] = [
   {
     id: "business-plan-kozpont",
     domain: "kozpontihusbolt.hu",
+    billingCycle: {
+      start: new Date(2026, 2, 26),
+      end: new Date(2026, 3, 26),
+    },
     chatgptSeatsInUse: 5,
     codexSeatsInUse: 5,
     members: [
@@ -244,6 +254,66 @@ const BUSINESS_PLAN_ACCOUNTS: BusinessPlanAccount[] = [
       },
     ],
   },
+  {
+    id: "business-plan-kronakert",
+    domain: "kronakert.hu",
+    billingCycle: {
+      start: new Date(2026, 3, 1),
+      end: new Date(2026, 4, 1),
+    },
+    chatgptSeatsInUse: 3,
+    codexSeatsInUse: 3,
+    members: [
+      {
+        id: "member-kronakert-owner",
+        name: "Kronakert Owner",
+        email: "owner@kronakert.hu",
+        role: "Owner",
+        seatType: "ChatGPT",
+        dateAdded: "Apr 1, 2026",
+      },
+      {
+        id: "member-kronakert-admin",
+        name: "Admin Team",
+        email: "admin@kronakert.hu",
+        role: "Member",
+        seatType: "ChatGPT",
+        dateAdded: "Apr 2, 2026",
+      },
+      {
+        id: "member-kronakert-sales",
+        name: "Sales Ops",
+        email: "sales@kronakert.hu",
+        role: "Member",
+        seatType: "ChatGPT",
+        dateAdded: "Apr 3, 2026",
+      },
+      {
+        id: "member-kronakert-codex-1",
+        name: "Automation Runner 1",
+        email: "codex1@kronakert.hu",
+        role: "Member",
+        seatType: "Codex",
+        dateAdded: "Apr 3, 2026",
+      },
+      {
+        id: "member-kronakert-codex-2",
+        name: "Automation Runner 2",
+        email: "codex2@kronakert.hu",
+        role: "Member",
+        seatType: "Codex",
+        dateAdded: "Apr 4, 2026",
+      },
+      {
+        id: "member-kronakert-codex-3",
+        name: "Automation Runner 3",
+        email: "codex3@kronakert.hu",
+        role: "Member",
+        seatType: "Codex",
+        dateAdded: "Apr 4, 2026",
+      },
+    ],
+  },
 ];
 
 function getInitials(value: string): string {
@@ -284,6 +354,10 @@ function formatSeatPriceLabel(seatType: BusinessPlanMember["seatType"]): string 
   return `${monthlySeatPrice} euro`;
 }
 
+function formatBillingCycleLabel(cycle: BusinessPlanAccount["billingCycle"]): string {
+  return `${format(cycle.start, "MMM d")} - ${format(cycle.end, "MMM d")}`;
+}
+
 export function BillingPage() {
   const [businessPlanAccounts, setBusinessPlanAccounts] = useState(BUSINESS_PLAN_ACCOUNTS);
   const [businessPlanDetailsOpen, setBusinessPlanDetailsOpen] = useState(false);
@@ -297,10 +371,24 @@ export function BillingPage() {
     [businessPlanAccounts, selectedBusinessAccountId],
   );
 
-  const cycleLabel = useMemo(
-    () => `${format(BILLING_CYCLE_START, "MMM d")} - ${format(BILLING_CYCLE_END, "MMM d")}`,
-    [],
-  );
+  const hasMixedBillingCycles = useMemo(() => {
+    const cycleFingerprints = new Set(
+      businessPlanAccounts.map((account) =>
+        `${account.billingCycle.start.toISOString()}::${account.billingCycle.end.toISOString()}`,
+      ),
+    );
+    return cycleFingerprints.size > 1;
+  }, [businessPlanAccounts]);
+
+  const billingCycleHeadlineLabel = useMemo(() => {
+    if (businessPlanAccounts.length === 0) {
+      return "Current cycle: —";
+    }
+    if (hasMixedBillingCycles) {
+      return "Current cycles vary by business account";
+    }
+    return `Current cycle: ${formatBillingCycleLabel(businessPlanAccounts[0].billingCycle)}`;
+  }, [businessPlanAccounts, hasMixedBillingCycles]);
 
   const businessPlanTotals = useMemo(
     () =>
@@ -323,6 +411,16 @@ export function BillingPage() {
       ),
     [businessPlanAccounts],
   );
+
+  const renewalsSummaryLabel = useMemo(() => {
+    if (businessPlanAccounts.length === 0) {
+      return "Renews on —";
+    }
+    if (hasMixedBillingCycles) {
+      return "Renewals vary by account";
+    }
+    return `Renews on ${format(businessPlanAccounts[0].billingCycle.end, "MMM d")}`;
+  }, [businessPlanAccounts, hasMixedBillingCycles]);
 
   function updateMemberSeatType(
     accountId: string,
@@ -406,7 +504,7 @@ export function BillingPage() {
               </div>
               <p className="mt-2 flex items-center gap-2 text-base text-muted-foreground">
                 <CalendarClock className="h-4 w-4" aria-hidden="true" />
-                Current cycle: {cycleLabel}
+                {billingCycleHeadlineLabel}
               </p>
             </div>
           </div>
@@ -443,6 +541,7 @@ export function BillingPage() {
                   <TableHead>Business account</TableHead>
                   <TableHead>ChatGPT seats</TableHead>
                   <TableHead>Codex seats</TableHead>
+                  <TableHead>Current cycle</TableHead>
                   <TableHead>Monthly ChatGPT cost</TableHead>
                   <TableHead className="w-[130px] text-right">Accounts list</TableHead>
                 </TableRow>
@@ -462,6 +561,7 @@ export function BillingPage() {
                       </TableCell>
                       <TableCell>{account.chatgptSeatsInUse} seats in use</TableCell>
                       <TableCell>{account.codexSeatsInUse} seats in use</TableCell>
+                      <TableCell>{formatBillingCycleLabel(account.billingCycle)}</TableCell>
                       <TableCell>€{accountMonthlyCost}/month</TableCell>
                       <TableCell className="text-right">
                         <Button
@@ -486,8 +586,7 @@ export function BillingPage() {
           <Separator />
 
           <p className="text-sm text-muted-foreground">
-            Total business plan monthly cost: €{businessPlanTotalMonthlyCost}/month · Renews on{" "}
-            {format(BILLING_CYCLE_END, "MMM d")}
+            Total business plan monthly cost: €{businessPlanTotalMonthlyCost}/month · {renewalsSummaryLabel}
           </p>
         </CardContent>
       </Card>
@@ -540,6 +639,7 @@ export function BillingPage() {
                     <TableHead>Business account</TableHead>
                     <TableHead>ChatGPT seats</TableHead>
                     <TableHead>Codex seats</TableHead>
+                    <TableHead>Current cycle</TableHead>
                     <TableHead>Monthly ChatGPT cost</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -552,6 +652,7 @@ export function BillingPage() {
                         <TableCell className="font-medium">{account.domain}</TableCell>
                         <TableCell>{account.chatgptSeatsInUse} seats in use</TableCell>
                         <TableCell>{account.codexSeatsInUse} seats in use</TableCell>
+                        <TableCell>{formatBillingCycleLabel(account.billingCycle)}</TableCell>
                         <TableCell>€{accountMonthlyCost}/month</TableCell>
                       </TableRow>
                     );
@@ -565,7 +666,7 @@ export function BillingPage() {
                 <p className="text-sm font-semibold text-foreground">
                   Total business plan monthly cost: €{businessPlanTotalMonthlyCost}/month
                 </p>
-                <p className="text-xs text-muted-foreground">Renews on {format(BILLING_CYCLE_END, "MMM d")}</p>
+                <p className="text-xs text-muted-foreground">{renewalsSummaryLabel}</p>
               </div>
               <p className="text-xs text-muted-foreground">
                 Combined seats in use: {businessPlanTotals.chatgptSeatsInUse} ChatGPT and{" "}
@@ -588,7 +689,10 @@ export function BillingPage() {
           <DialogHeader>
             <DialogTitle>{selectedBusinessAccount?.domain} · Accounts list</DialogTitle>
             <DialogDescription>
-              Check and edit seat assignments for members in this business account.
+              Check and edit seat assignments for members in this business account. Current cycle:{" "}
+              {selectedBusinessAccount
+                ? formatBillingCycleLabel(selectedBusinessAccount.billingCycle)
+                : "—"}
             </DialogDescription>
           </DialogHeader>
 
