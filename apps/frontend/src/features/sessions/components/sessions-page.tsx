@@ -706,7 +706,7 @@ export function SessionsPage() {
                             </Badge>
                           </TableCell>
                           <TableCell
-                            className="max-w-[28rem] text-xs text-muted-foreground"
+                            className="max-w-[28rem] whitespace-normal break-words text-xs text-muted-foreground"
                             title={row.currentTask ?? row.lastTask ?? undefined}
                           >
                             <div className="space-y-1">
