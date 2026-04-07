@@ -1,7 +1,14 @@
 import { Flags } from "@oclif/core";
 import prompts from "prompts";
 import { BaseCommand } from "../lib/base-command";
-import { fetchLatestNpmVersion, isVersionNewer, PACKAGE_NAME, runGlobalNpmInstall } from "../lib/update-check";
+import {
+  fetchLatestNpmVersion,
+  formatUpdateSummaryCard,
+  formatUpdateSummaryInline,
+  getUpdateSummary,
+  PACKAGE_NAME,
+  runGlobalNpmInstall,
+} from "../lib/update-check";
 
 export default class SelfUpdateCommand extends BaseCommand {
   static description = "Check for updates and upgrade codex-auth globally";
@@ -34,24 +41,28 @@ export default class SelfUpdateCommand extends BaseCommand {
         return;
       }
 
-      const hasUpdate = isVersionNewer(currentVersion, latestVersion);
+      const summary = getUpdateSummary(currentVersion, latestVersion);
+      const hasUpdate = summary.state === "update-available";
       if (flags.check) {
-        this.log(`Current: ${currentVersion}`);
-        this.log(`Latest:  ${latestVersion}`);
-        this.log(hasUpdate ? "Status:  update available" : "Status:  up to date");
+        for (const line of formatUpdateSummaryCard(summary)) {
+          this.log(line);
+        }
+        if (hasUpdate) {
+          this.log("Run `codex-auth self-update` to install the latest release.");
+        }
         return;
       }
 
       if (!hasUpdate && !flags.reinstall) {
-        this.log(`codex-auth is up to date (current ${currentVersion}, latest ${latestVersion}).`);
+        this.log(formatUpdateSummaryInline(summary));
         this.log("Use `codex-auth self-update --reinstall` if you want to reinstall anyway.");
         return;
       }
 
       if (hasUpdate) {
-        this.log(`Update available: ${currentVersion} -> ${latestVersion}`);
+        this.log(formatUpdateSummaryInline(summary));
       } else {
-        this.log(`Reinstall requested for latest version (${latestVersion}).`);
+        this.log(`↺ Reinstall requested for latest version (${latestVersion}).`);
       }
 
       if (!flags.yes) {
@@ -70,7 +81,7 @@ export default class SelfUpdateCommand extends BaseCommand {
 
       const exitCode = await runGlobalNpmInstall(PACKAGE_NAME);
       if (exitCode === 0) {
-        this.log(`Global update completed (installed ${latestVersion}).`);
+        this.log(`✓ Global update completed (installed ${latestVersion}).`);
         return;
       }
 

@@ -1,5 +1,10 @@
 import type { Hook } from "@oclif/core";
-import { fetchLatestNpmVersion, isVersionNewer, PACKAGE_NAME } from "../../lib/update-check";
+import {
+  fetchLatestNpmVersion,
+  formatUpdateSummaryInline,
+  getUpdateSummary,
+  PACKAGE_NAME,
+} from "../../lib/update-check";
 
 const hook: Hook.Init = async function (options) {
   if (options.id) return;
@@ -10,9 +15,11 @@ const hook: Hook.Init = async function (options) {
   if (!currentVersion) return;
 
   const latestVersion = await fetchLatestNpmVersion(PACKAGE_NAME);
-  if (!latestVersion || !isVersionNewer(currentVersion, latestVersion)) return;
+  if (!latestVersion) return;
+  const summary = getUpdateSummary(currentVersion, latestVersion);
+  if (summary.state !== "update-available") return;
 
-  this.log(`Update available for codex-auth: ${currentVersion} -> ${latestVersion}`);
+  this.log(formatUpdateSummaryInline(summary));
   this.log("Run `codex-auth self-update` to install the latest version.");
 };
 

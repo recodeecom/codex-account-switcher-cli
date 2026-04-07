@@ -1,7 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { isVersionNewer, parseVersionTriplet } from "../lib/update-check";
+import {
+  formatUpdateSummaryCard,
+  formatUpdateSummaryInline,
+  getUpdateSummary,
+  isVersionNewer,
+  parseVersionTriplet,
+} from "../lib/update-check";
 
 test("parseVersionTriplet parses standard semver triplets", () => {
   assert.deepEqual(parseVersionTriplet("0.1.9"), [0, 1, 9]);
@@ -27,4 +33,52 @@ test("isVersionNewer compares semver triplets correctly", () => {
 test("isVersionNewer returns false when either version is invalid", () => {
   assert.equal(isVersionNewer("latest", "0.1.9"), false);
   assert.equal(isVersionNewer("0.1.8", "nightly"), false);
+});
+
+test("getUpdateSummary returns update-available state", () => {
+  const summary = getUpdateSummary("0.1.8", "0.1.9");
+  assert.deepEqual(summary, {
+    currentVersion: "0.1.8",
+    latestVersion: "0.1.9",
+    state: "update-available",
+  });
+});
+
+test("getUpdateSummary returns up-to-date state", () => {
+  const summary = getUpdateSummary("0.1.9", "0.1.9");
+  assert.deepEqual(summary, {
+    currentVersion: "0.1.9",
+    latestVersion: "0.1.9",
+    state: "up-to-date",
+  });
+});
+
+test("formatUpdateSummaryInline renders human-friendly states", () => {
+  assert.equal(
+    formatUpdateSummaryInline({
+      currentVersion: "0.1.8",
+      latestVersion: "0.1.9",
+      state: "update-available",
+    }),
+    "⬆ Update available: 0.1.8 -> 0.1.9",
+  );
+  assert.equal(
+    formatUpdateSummaryInline({
+      currentVersion: "0.1.9",
+      latestVersion: "0.1.9",
+      state: "up-to-date",
+    }),
+    "✓ Up to date: 0.1.9",
+  );
+});
+
+test("formatUpdateSummaryCard renders a stable 4-line card", () => {
+  const lines = formatUpdateSummaryCard({
+    currentVersion: "0.1.9",
+    latestVersion: "0.1.10",
+    state: "update-available",
+  });
+  assert.equal(lines.length, 4);
+  assert.equal(lines[0], "┌─ codex-auth update");
+  assert.equal(lines[3], "└─ status : update available");
 });
