@@ -49,6 +49,8 @@ certs/
 .specstory/
 logs/*
 !logs/.gitkeep
+.dev-ports.json
+apps/logs/*.log
 
 .agents/hooks/state/
 .agents/.personality_migration

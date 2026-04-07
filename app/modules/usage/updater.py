@@ -104,6 +104,7 @@ class AdditionalUsageRepositoryPort(Protocol):
 class AccountRefreshResult:
     usage_written: bool
     fetch_succeeded: bool = True
+    invalidated_token_error: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,6 +124,10 @@ _last_successful_refresh: dict[str, datetime] = {}
 # short cooldown so dashboard polling does not hammer the same disconnected
 # account on every request.
 _last_failed_refresh: dict[str, datetime] = {}
+# Invalidated-token 401s may hit multiple sibling rows (same ChatGPT account
+# id, different local account ids). Track a short sibling cooldown to avoid
+# repeated fetch/deactivation log storms within dashboard polling loops.
+_last_invalidated_chatgpt_refresh: dict[str, datetime] = {}
 _FAILED_REFRESH_BACKOFF_SECONDS = 60
 _DEACTIVATING_REFRESH_ERROR_CODES = {"http_401", "invalid_grant", "invalid_token", "token_inactive"}
 _DEACTIVATION_FAILURE_THRESHOLD = 3
@@ -200,7 +205,15 @@ class UsageUpdater:
         refreshed = False
         now = utcnow()
         interval = settings.usage_refresh_interval_seconds
+        invalidated_chatgpt_ids_this_pass: set[str] = set()
         for account in accounts:
+            normalized_chatgpt_account_id = (account.chatgpt_account_id or "").strip() or None
+            if normalized_chatgpt_account_id in invalidated_chatgpt_ids_this_pass:
+                continue
+            if normalized_chatgpt_account_id:
+                invalidated_at = _last_invalidated_chatgpt_refresh.get(normalized_chatgpt_account_id)
+                if invalidated_at and (now - invalidated_at).total_seconds() < _FAILED_REFRESH_BACKOFF_SECONDS:
+                    continue
             if account.status == AccountStatus.DEACTIVATED:
                 recovered = await self._recover_deactivated_account_from_token_donor(account)
                 if not recovered:
@@ -243,6 +256,9 @@ class UsageUpdater:
                 )
                 await self._sync_account_from_repo(account)
                 refreshed = refreshed or result.usage_written
+                normalized_chatgpt_account_id = (
+                    (account.chatgpt_account_id or "").strip() or normalized_chatgpt_account_id
+                )
                 # Only cache when the upstream fetch actually succeeded.
                 # Transient errors (401 retry failure, 5xx, etc.) must not
                 # suppress retries within the interval.
@@ -250,8 +266,13 @@ class UsageUpdater:
                     _last_successful_refresh[account.id] = now
                     _last_failed_refresh.pop(account.id, None)
                     _deactivation_failure_streak.pop(account.id, None)
+                    if normalized_chatgpt_account_id:
+                        _last_invalidated_chatgpt_refresh.pop(normalized_chatgpt_account_id, None)
                 else:
                     _last_failed_refresh[account.id] = now
+                    if result.invalidated_token_error and normalized_chatgpt_account_id:
+                        invalidated_chatgpt_ids_this_pass.add(normalized_chatgpt_account_id)
+                        _last_invalidated_chatgpt_refresh[normalized_chatgpt_account_id] = now
             except Exception as exc:
                 logger.warning(
                     "Usage refresh failed account_id=%s request_id=%s error=%s",
@@ -299,7 +320,11 @@ class UsageUpdater:
                 return AccountRefreshResult(usage_written=False, fetch_succeeded=False)
             if exc.status_code == 401 and _is_invalidated_token_error(exc.message):
                 await self._maybe_deactivate_for_client_error(account, exc)
-                return AccountRefreshResult(usage_written=False, fetch_succeeded=False)
+                return AccountRefreshResult(
+                    usage_written=False,
+                    fetch_succeeded=False,
+                    invalidated_token_error=True,
+                )
             if exc.status_code != 401 or not self._auth_manager:
                 return AccountRefreshResult(usage_written=False, fetch_succeeded=False)
             try:
@@ -310,7 +335,14 @@ class UsageUpdater:
                         account,
                         UsageFetchError(401, refresh_exc.message or "Token refresh failed"),
                     )
-                return AccountRefreshResult(usage_written=False, fetch_succeeded=False)
+                return AccountRefreshResult(
+                    usage_written=False,
+                    fetch_succeeded=False,
+                    invalidated_token_error=(
+                        refresh_exc.code in _DEACTIVATING_REFRESH_ERROR_CODES
+                        or _is_invalidated_token_error(refresh_exc.message)
+                    ),
+                )
             access_token = self._encryptor.decrypt(account.access_token_encrypted)
             try:
                 payload = await fetch_usage(
@@ -318,11 +350,17 @@ class UsageUpdater:
                     account_id=usage_account_id,
                 )
             except UsageFetchError as retry_exc:
+                invalidated_token_error = False
                 if retry_exc.status_code == 401:
                     await self._maybe_deactivate_for_client_error(account, retry_exc)
+                    invalidated_token_error = _is_invalidated_token_error(retry_exc.message)
                 elif _should_deactivate_for_usage_error(retry_exc.status_code):
                     await self._maybe_deactivate_for_client_error(account, retry_exc)
-                return AccountRefreshResult(usage_written=False, fetch_succeeded=False)
+                return AccountRefreshResult(
+                    usage_written=False,
+                    fetch_succeeded=False,
+                    invalidated_token_error=invalidated_token_error,
+                )
 
         if payload is None:
             return AccountRefreshResult(usage_written=False, fetch_succeeded=False)
@@ -430,17 +468,24 @@ class UsageUpdater:
             usage_written = usage_written or _usage_entry_written(entry)
         return AccountRefreshResult(usage_written=usage_written)
 
-    async def _deactivate_for_client_error(self, account: Account, exc: UsageFetchError) -> None:
+    async def _deactivate_for_client_error(
+        self,
+        account: Account,
+        exc: UsageFetchError,
+        *,
+        skip_log: bool = False,
+    ) -> None:
         if not self._auth_manager:
             return
         reason = f"Usage API error: HTTP {exc.status_code} - {exc.message}"
-        logger.warning(
-            "Deactivating account due to client error account_id=%s status=%s message=%s request_id=%s",
-            account.id,
-            exc.status_code,
-            exc.message,
-            get_request_id(),
-        )
+        if not skip_log:
+            logger.warning(
+                "Deactivating account due to client error account_id=%s status=%s message=%s request_id=%s",
+                account.id,
+                exc.status_code,
+                exc.message,
+                get_request_id(),
+            )
         await self._auth_manager._repo.update_status(account.id, AccountStatus.DEACTIVATED, reason)
         account.status = AccountStatus.DEACTIVATED
         account.deactivation_reason = reason
@@ -457,7 +502,7 @@ class UsageUpdater:
                 exc.message,
                 get_request_id(),
             )
-            await self._deactivate_for_client_error(account, exc)
+            await self._deactivate_for_client_error(account, exc, skip_log=True)
             return
 
         attempts = _deactivation_failure_streak.get(account.id, 0) + 1

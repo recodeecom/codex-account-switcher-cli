@@ -17,6 +17,7 @@ from app.modules.usage.updater import (
     UsageUpdater,
     _deactivation_failure_streak,
     _last_failed_refresh,
+    _last_invalidated_chatgpt_refresh,
     _last_successful_refresh,
 )
 
@@ -28,10 +29,12 @@ def _clear_refresh_cache():
     """Clear the module-level freshness cache between tests."""
     _last_successful_refresh.clear()
     _last_failed_refresh.clear()
+    _last_invalidated_chatgpt_refresh.clear()
     _deactivation_failure_streak.clear()
     yield
     _last_successful_refresh.clear()
     _last_failed_refresh.clear()
+    _last_invalidated_chatgpt_refresh.clear()
     _deactivation_failure_streak.clear()
 
 
@@ -300,6 +303,48 @@ async def test_usage_updater_includes_chatgpt_account_id_even_when_shared(monkey
     await updater.refresh_accounts([acc_a, acc_b, acc_c], latest_usage={})
 
     assert [call["account_id"] for call in calls] == [shared, shared, "workspace_unique"]
+
+
+@pytest.mark.asyncio
+async def test_usage_updater_avoids_invalidated_token_sibling_spam(monkeypatch) -> None:
+    monkeypatch.setenv("CODEX_LB_USAGE_REFRESH_ENABLED", "true")
+    monkeypatch.setattr("app.modules.usage.updater._FAILED_REFRESH_BACKOFF_SECONDS", 60)
+    from app.core.clients.usage import UsageFetchError
+    from app.core.config.settings import get_settings
+
+    get_settings.cache_clear()
+
+    fetch_calls: list[str | None] = []
+
+    async def stub_fetch_usage(*, account_id: str | None, **_: Any) -> UsagePayload:
+        fetch_calls.append(account_id)
+        raise UsageFetchError(
+            401,
+            "Your authentication token has been invalidated. Please try signing in again.",
+        )
+
+    monkeypatch.setattr("app.modules.usage.updater.fetch_usage", stub_fetch_usage)
+
+    usage_repo = StubUsageRepository()
+    accounts_repo = StubAccountsRepository()
+    updater = UsageUpdater(usage_repo, accounts_repo=accounts_repo)
+
+    shared = "workspace_shared_invalidated"
+    acc_a = _make_account("acc_a_invalidated", shared, email="a@example.com")
+    acc_b = _make_account("acc_b_invalidated", shared, email="b@example.com")
+    accounts_repo.accounts_by_id[acc_a.id] = acc_a
+    accounts_repo.accounts_by_id[acc_b.id] = acc_b
+
+    await updater.refresh_accounts([acc_a, acc_b], latest_usage={})
+
+    assert fetch_calls == [shared]
+    assert len(accounts_repo.status_updates) == 1
+    assert accounts_repo.status_updates[0]["account_id"] == acc_a.id
+
+    await updater.refresh_accounts([acc_a, acc_b], latest_usage={})
+
+    # Still in cooldown: no additional fetch attempts for sibling rows.
+    assert fetch_calls == [shared]
 
 
 class StubAccountsRepository:

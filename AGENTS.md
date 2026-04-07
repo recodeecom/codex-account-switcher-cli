@@ -15,6 +15,11 @@ The `/project-conventions` skill is auto-activated on code edits (PreToolUse gua
 | Code Conventions (Full) | `/project-conventions` skill          | On code edit (auto-enforced) |
 | Git Workflow            | `.agents/conventions/git-workflow.md` | Commit / PR                  |
 
+## Git Hygiene Preference
+
+- Prefer committing and pushing completed work by default unless the user explicitly asks to keep it local.
+- Do not commit ephemeral local runtime artifacts (for example `.dev-ports.json` and `apps/logs/*.log`).
+
 ## CLI Session Detection Lock (Dashboard / Accounts)
 
 The current CLI session detection behavior is intentionally frozen and must stay order-sensitive.
