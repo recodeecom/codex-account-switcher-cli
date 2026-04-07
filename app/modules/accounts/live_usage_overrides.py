@@ -174,6 +174,8 @@ def apply_local_live_usage_overrides(
         should_defer_active_snapshot_usage=should_defer_active_snapshot_usage,
     )
     live_process_session_counts_by_account: dict[str, int] = {}
+    forced_live_session_counts_by_account: dict[str, int] = {}
+    force_clear_live_session_account_ids: set[str] = set()
 
     accounts_by_id = {account.id: account for account in accounts}
 
@@ -444,6 +446,23 @@ def apply_local_live_usage_overrides(
             and live_usage_match.account_id != account_id
             and not has_shared_chatgpt_account_identity
         ):
+            matched_account_id = live_usage_match.account_id
+            # Strong fingerprint says this live sample belongs to another
+            # account identity. Keep this account disconnected for live-session
+            # grouping and transfer process/session presence to the matched
+            # account so "Working now" stays aligned with quota ownership.
+            force_clear_live_session_account_ids.add(account_id)
+            transferred_live_session_count = max(
+                0,
+                live_process_session_count,
+                effective_live_runtime_session_count,
+            )
+            if transferred_live_session_count > 0:
+                forced_live_session_counts_by_account[matched_account_id] = max(
+                    forced_live_session_counts_by_account.get(matched_account_id, 0),
+                    transferred_live_session_count,
+                )
+
             # Guardrail for multi-session mixed snapshot scopes:
             # when a live-usage sample strongly fingerprints another account,
             # keep this account on baseline quota windows instead of applying
@@ -631,6 +650,32 @@ def apply_local_live_usage_overrides(
             codex_session_counts_by_account=codex_live_session_counts_by_account,
             allow_quota_override=not should_defer_active_snapshot_usage,
         )
+
+    if forced_live_session_counts_by_account:
+        for account_id, transferred_live_session_count in forced_live_session_counts_by_account.items():
+            if transferred_live_session_count <= 0:
+                continue
+            codex_live_session_counts_by_account[account_id] = max(
+                codex_live_session_counts_by_account.get(account_id, 0),
+                transferred_live_session_count,
+            )
+            live_process_session_counts_by_account[account_id] = max(
+                live_process_session_counts_by_account.get(account_id, 0),
+                transferred_live_session_count,
+            )
+            codex_auth_status = codex_auth_by_account.get(account_id)
+            if codex_auth_status is not None:
+                codex_auth_status.has_live_session = True
+
+    if force_clear_live_session_account_ids:
+        for account_id in force_clear_live_session_account_ids:
+            if forced_live_session_counts_by_account.get(account_id, 0) > 0:
+                continue
+            codex_live_session_counts_by_account[account_id] = 0
+            live_process_session_counts_by_account[account_id] = 0
+            codex_auth_status = codex_auth_by_account.get(account_id)
+            if codex_auth_status is not None:
+                codex_auth_status.has_live_session = False
 
     _normalize_live_session_counts_to_process_presence(
         accounts=accounts,

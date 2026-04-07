@@ -8,36 +8,48 @@ import {
   ApiKeyUpdateRequestSchema,
   ModelsResponseSchema,
 } from "@/features/api-keys/schemas";
-
-const API_KEYS_BASE_PATH = "/api/api-keys";
+import {
+  callApiKeysResolvedPath,
+  callApiKeysWithFallback,
+} from "@/features/api-keys/api-paths";
 const MODELS_PATH = "/api/models";
 
 export function listApiKeys() {
-  return get(`${API_KEYS_BASE_PATH}/`, ApiKeyListSchema);
+  return callApiKeysWithFallback((basePath) =>
+    get(`${basePath}/`, ApiKeyListSchema),
+  );
 }
 
 export function createApiKey(payload: unknown) {
   const validated = ApiKeyCreateRequestSchema.parse(payload);
-  return post(`${API_KEYS_BASE_PATH}/`, ApiKeyCreateResponseSchema, {
-    body: validated,
-  });
+  return callApiKeysWithFallback((basePath) =>
+    post(`${basePath}/`, ApiKeyCreateResponseSchema, {
+      body: validated,
+    }),
+  );
 }
 
 export function updateApiKey(keyId: string, payload: unknown) {
   const validated = ApiKeyUpdateRequestSchema.parse(payload);
-  return patch(`${API_KEYS_BASE_PATH}/${encodeURIComponent(keyId)}`, ApiKeySchema, {
-    body: validated,
-  });
+  return callApiKeysResolvedPath((basePath) =>
+    patch(`${basePath}/${encodeURIComponent(keyId)}`, ApiKeySchema, {
+      body: validated,
+    }),
+  );
 }
 
 export function deleteApiKey(keyId: string) {
-  return del(`${API_KEYS_BASE_PATH}/${encodeURIComponent(keyId)}`);
+  return callApiKeysResolvedPath((basePath) =>
+    del(`${basePath}/${encodeURIComponent(keyId)}`),
+  );
 }
 
 export function regenerateApiKey(keyId: string) {
-  return post(
-    `${API_KEYS_BASE_PATH}/${encodeURIComponent(keyId)}/regenerate`,
-    ApiKeyCreateResponseSchema,
+  return callApiKeysResolvedPath((basePath) =>
+    post(
+      `${basePath}/${encodeURIComponent(keyId)}/regenerate`,
+      ApiKeyCreateResponseSchema,
+    ),
   );
 }
 

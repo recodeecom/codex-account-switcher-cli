@@ -356,8 +356,10 @@ def test_apply_local_live_usage_overrides_keeps_baseline_when_live_usage_confide
 
     assert primary_usage[account_a.id].used_percent == 20.0
     assert secondary_usage[account_a.id].used_percent == 40.0
-    assert codex_session_counts_by_account[account_a.id] == 1
-    assert codex_auth_by_account[account_a.id].has_live_session is True
+    assert codex_session_counts_by_account[account_a.id] == 0
+    assert codex_auth_by_account[account_a.id].has_live_session is False
+    assert codex_session_counts_by_account[account_b.id] == 1
+    assert codex_auth_by_account[account_b.id].has_live_session is True
 
     account_a_debug = live_quota_debug_by_account[account_a.id]
     assert account_a_debug.override_applied is False

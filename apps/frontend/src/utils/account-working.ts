@@ -108,6 +108,27 @@ function shouldSuppressNoCliSampleSessionSignal(
   return true;
 }
 
+function shouldSuppressConfidentCrossAccountSessionSignal(
+  account: Pick<
+    AccountSummary,
+    | "liveQuotaDebug"
+    | "codexAuth"
+    | "codexLiveSessionCount"
+    | "codexTrackedSessionCount"
+    | "codexSessionCount"
+    | "codexCurrentTaskPreview"
+    | "codexSessionTaskPreviews"
+    | "lastUsageRecordedAtPrimary"
+    | "lastUsageRecordedAtSecondary"
+  >,
+): boolean {
+  const overrideReason = (account.liveQuotaDebug?.overrideReason ?? "").trim().toLowerCase();
+  if (overrideReason !== "live_usage_confident_match_other_account") {
+    return false;
+  }
+  return account.liveQuotaDebug?.overrideApplied !== true;
+}
+
 function isFreshTimestamp(
   value: string | null | undefined,
   nowMs: number,
@@ -463,6 +484,9 @@ export function hasActiveCliSessionSignal(
   >,
   nowMs: number = Date.now(),
 ): boolean {
+  if (shouldSuppressConfidentCrossAccountSessionSignal(account)) {
+    return false;
+  }
   // CLI session detection flow is intentionally hard-coded and order-sensitive.
   // Keep this as a strict cascade so the UI remains stable:
   //   1) codexAuth.hasLiveSession
@@ -645,6 +669,9 @@ export function getWorkingNowUsageLimitHitCountdownMs(
   account: WorkingNowAccount,
   nowMs: number = Date.now(),
 ): number | null {
+  if (shouldSuppressConfidentCrossAccountSessionSignal(account)) {
+    return null;
+  }
   const cacheKey = buildWorkingNowLimitHitCacheKey(account);
   const hasActiveSessionCounterSignal =
     Math.max(
@@ -717,6 +744,9 @@ export function isAccountWorkingNow(
   >,
   nowMs: number = Date.now(),
 ): boolean {
+  if (shouldSuppressConfidentCrossAccountSessionSignal(account)) {
+    return false;
+  }
   const hasFreshLiveSession = hasFreshLiveTelemetry(account, nowMs);
   const hasGraceLiveSessionHint = (() => {
     if (!(account.codexAuth?.hasLiveSession ?? false)) {

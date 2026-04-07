@@ -957,6 +957,40 @@ describe("isAccountWorkingNow", () => {
     expect(getMergedQuotaRemainingPercent(account, "secondary")).toBeNull();
   });
 
+  it("drops working-now status when telemetry is confidently attributed to another account", () => {
+    const nowMs = new Date("2026-04-04T12:00:00.000Z").getTime();
+    const account = createAccountSummary({
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "odin",
+        activeSnapshotName: "odin",
+        expectedSnapshotName: "odin",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+      codexLiveSessionCount: 4,
+      codexTrackedSessionCount: 4,
+      codexSessionCount: 4,
+      codexCurrentTaskPreview: "Investigate admin account session attribution",
+      liveQuotaDebug: {
+        snapshotsConsidered: ["odin"],
+        overrideApplied: false,
+        overrideReason: "live_usage_confident_match_other_account",
+        merged: {
+          source: "merged",
+          snapshotName: "odin",
+          recordedAt: "2026-04-04T11:58:00.000Z",
+          stale: false,
+          primary: { usedPercent: 84, remainingPercent: 16, resetAt: 1760000000, windowMinutes: 300 },
+          secondary: { usedPercent: 10, remainingPercent: 90, resetAt: 1760600000, windowMinutes: 10080 },
+        },
+        rawSamples: [],
+      },
+    });
+
+    expect(isAccountWorkingNow(account, nowMs)).toBe(false);
+  });
+
   it("keeps merged quotas when override was applied", () => {
     const account = createAccountSummary({
       codexAuth: {
@@ -1563,6 +1597,36 @@ describe("hasActiveCliSessionSignal", () => {
       },
     });
     expect(hasActiveCliSessionSignal(donePreviewOnly, nowMs)).toBe(false);
+
+    const confidentOtherAccountMatch = createAccountSummary({
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "odin",
+        activeSnapshotName: "odin",
+        expectedSnapshotName: "odin",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+      codexLiveSessionCount: 4,
+      codexTrackedSessionCount: 4,
+      codexSessionCount: 4,
+      codexCurrentTaskPreview: "Investigate admin account session attribution",
+      liveQuotaDebug: {
+        snapshotsConsidered: ["odin"],
+        overrideApplied: false,
+        overrideReason: "live_usage_confident_match_other_account",
+        merged: {
+          source: "merged",
+          snapshotName: "odin",
+          recordedAt: "2026-04-04T11:58:00.000Z",
+          stale: false,
+          primary: { usedPercent: 84, remainingPercent: 16, resetAt: 1760000000, windowMinutes: 300 },
+          secondary: { usedPercent: 10, remainingPercent: 90, resetAt: 1760600000, windowMinutes: 10080 },
+        },
+        rawSamples: [],
+      },
+    });
+    expect(hasActiveCliSessionSignal(confidentOtherAccountMatch, nowMs)).toBe(false);
 
     const debugOnly = createAccountSummary({
       codexAuth: {

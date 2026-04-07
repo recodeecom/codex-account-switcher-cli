@@ -141,6 +141,29 @@ async def test_api_keys_crud_and_regenerate(async_client):
 
 
 @pytest.mark.asyncio
+async def test_api_keys_legacy_prefix_alias(async_client):
+    created = await async_client.post(
+        "/api/keys/",
+        json={
+            "name": "legacy-prefix-key",
+            "limits": [
+                {"limitType": "total_tokens", "limitWindow": "weekly", "maxValue": 1000},
+            ],
+        },
+    )
+    assert created.status_code == 200
+    key_id = created.json()["id"]
+
+    listed = await async_client.get("/api/keys/")
+    assert listed.status_code == 200
+    rows = listed.json()
+    assert any(row["id"] == key_id for row in rows)
+
+    deleted = await async_client.delete(f"/api/keys/{key_id}")
+    assert deleted.status_code == 204
+
+
+@pytest.mark.asyncio
 async def test_api_keys_crud_with_legacy_weekly_limit(async_client):
     """Legacy weeklyTokenLimit field is auto-converted to a limit rule."""
     create = await async_client.post(

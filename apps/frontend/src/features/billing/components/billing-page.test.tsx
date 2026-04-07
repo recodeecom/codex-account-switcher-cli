@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
@@ -130,6 +130,44 @@ describe("BillingPage", () => {
     expect(within(codexMetricCard as HTMLDivElement).getByText("12")).toBeInTheDocument();
     expect(
       screen.getByText("Total business plan monthly cost: €364/month · Renewals vary by account"),
+    ).toBeInTheDocument();
+  });
+
+  it("lets me edit billing cycle start and end dates from the business account row", async () => {
+    const user = userEvent.setup({ delay: null });
+
+    renderWithProviders(<BillingPage />);
+
+    const kronakertRow = screen.getByText("kronakert.hu").closest("tr");
+    expect(kronakertRow).not.toBeNull();
+
+    const startInput = within(kronakertRow as HTMLTableRowElement).getByRole("button", {
+      name: "Billing cycle start for kronakert.hu",
+    });
+
+    await user.click(startInput);
+    fireEvent.change(await screen.findByLabelText("Billing cycle start for kronakert.hu input"), {
+      target: { value: "2026-04-05" },
+    });
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Billing cycle end for kronakert.hu",
+      }),
+    );
+    fireEvent.change(await screen.findByLabelText("Billing cycle end for kronakert.hu input"), {
+      target: { value: "2026-05-08" },
+    });
+
+    await user.click(screen.getByRole("button", { name: "Watch kronakert.hu accounts list" }));
+
+    const accountListDialog = await screen.findByRole("dialog", {
+      name: "kronakert.hu · Accounts list",
+    });
+    expect(
+      within(accountListDialog).getByText(
+        "Check and edit seat assignments for members in this business account. Current cycle: Apr 5 - May 8",
+      ),
     ).toBeInTheDocument();
   });
 });

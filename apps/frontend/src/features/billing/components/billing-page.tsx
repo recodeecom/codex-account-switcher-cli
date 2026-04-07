@@ -1,7 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
   Building2,
+  CalendarDays,
   CalendarClock,
   Euro,
   Eye,
@@ -16,6 +16,7 @@ import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
@@ -32,6 +33,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -48,6 +50,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
 import { getBillingAccounts, updateBillingAccounts } from "@/features/billing/api";
 import type { BillingAccount as BusinessPlanAccount, BillingMember as BusinessPlanMember } from "@/features/billing/schemas";
 import { getErrorMessageOrNull } from "@/utils/errors";
@@ -333,33 +336,113 @@ function clampSeatCount(value: number): number {
   return Math.max(0, value);
 }
 
+function formatDateInputValue(value: Date): string {
+  return format(value, "yyyy-MM-dd");
+}
+
+function parseDateInputValue(value: string): Date | null {
+  const [year, month, day] = value.split("-").map((segment) => Number(segment));
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) {
+    return null;
+  }
+  const parsed = new Date(year, month - 1, day);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  return parsed;
+}
+
+function BillingCycleDatePicker({
+  value,
+  ariaLabel,
+  onSelect,
+}: {
+  value: Date;
+  ariaLabel: string;
+  onSelect: (nextValue: Date) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 min-w-[128px] justify-start px-2 text-xs tabular-nums"
+          aria-label={ariaLabel}
+        >
+          <CalendarDays className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+          {format(value, "MMM d, yyyy")}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-2" align="start">
+        <Input
+          type="date"
+          className="mb-2 h-8 text-xs tabular-nums"
+          value={formatDateInputValue(value)}
+          aria-label={`${ariaLabel} input`}
+          onChange={(event) => {
+            const parsedValue = parseDateInputValue(event.target.value);
+            if (!parsedValue) {
+              return;
+            }
+            onSelect(parsedValue);
+            setOpen(false);
+          }}
+        />
+        <Calendar
+          mode="single"
+          selected={value}
+          onSelect={(nextValue) => {
+            if (!nextValue) {
+              return;
+            }
+            onSelect(new Date(nextValue.getFullYear(), nextValue.getMonth(), nextValue.getDate()));
+            setOpen(false);
+          }}
+          autoFocus
+        />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export function BillingPage() {
   const [businessPlanAccounts, setBusinessPlanAccounts] = useState(BUSINESS_PLAN_ACCOUNTS);
   const [businessPlanDetailsOpen, setBusinessPlanDetailsOpen] = useState(false);
   const [selectedBusinessAccountId, setSelectedBusinessAccountId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const persistRequestIdRef = useRef(0);
-  const loadErrorShownRef = useRef(false);
-  const billingQuery = useQuery({
-    queryKey: ["billing", "accounts"],
-    queryFn: getBillingAccounts,
-    refetchOnWindowFocus: false,
-  });
 
   useEffect(() => {
-    if (!billingQuery.data) {
-      return;
-    }
-    setBusinessPlanAccounts(billingQuery.data.accounts);
-  }, [billingQuery.data]);
+    let isMounted = true;
 
-  useEffect(() => {
-    if (!billingQuery.error || loadErrorShownRef.current) {
-      return;
-    }
-    loadErrorShownRef.current = true;
-    toast.error(getErrorMessageOrNull(billingQuery.error) ?? "Failed to load billing data");
-  }, [billingQuery.error]);
+    void getBillingAccounts()
+      .then((response) => {
+        if (!isMounted) {
+          return;
+        }
+        setBusinessPlanAccounts(response.accounts);
+      })
+      .catch((caught) => {
+        if (!isMounted) {
+          return;
+        }
+        toast.error(getErrorMessageOrNull(caught) ?? "Failed to load billing data");
+      })
+      .finally(() => {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   function persistBusinessPlanAccounts(nextAccounts: BusinessPlanAccount[]) {
     const requestId = ++persistRequestIdRef.current;
@@ -569,6 +652,63 @@ export function BillingPage() {
     );
   }
 
+  function updateBillingCycleBoundary(
+    accountId: string,
+    boundary: keyof BusinessPlanAccount["billingCycle"],
+    nextValue: Date,
+  ) {
+    setBusinessPlanAccounts((previousAccounts) => {
+      const normalizedDate = new Date(
+        nextValue.getFullYear(),
+        nextValue.getMonth(),
+        nextValue.getDate(),
+      );
+
+      let changed = false;
+      const nextAccounts = previousAccounts.map((account) => {
+        if (account.id !== accountId) {
+          return account;
+        }
+
+        const nextStart =
+          boundary === "start" ? normalizedDate : new Date(account.billingCycle.start.getTime());
+        const nextEnd =
+          boundary === "end" ? normalizedDate : new Date(account.billingCycle.end.getTime());
+
+        if (nextStart.getTime() > nextEnd.getTime()) {
+          if (boundary === "start") {
+            nextEnd.setTime(nextStart.getTime());
+          } else {
+            nextStart.setTime(nextEnd.getTime());
+          }
+        }
+
+        if (
+          nextStart.getTime() === account.billingCycle.start.getTime() &&
+          nextEnd.getTime() === account.billingCycle.end.getTime()
+        ) {
+          return account;
+        }
+
+        changed = true;
+        return {
+          ...account,
+          billingCycle: {
+            start: nextStart,
+            end: nextEnd,
+          },
+        };
+      });
+
+      if (changed) {
+        persistBusinessPlanAccounts(nextAccounts);
+        return nextAccounts;
+      }
+
+      return previousAccounts;
+    });
+  }
+
   return (
     <div className="animate-fade-in-up space-y-6">
       <div className="rounded-2xl border border-border/70 bg-gradient-to-b from-card via-card to-card/70 p-5 shadow-sm">
@@ -727,7 +867,25 @@ export function BillingPage() {
                           </Button>
                         </div>
                       </TableCell>
-                      <TableCell>{formatBillingCycleLabel(account.billingCycle)}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1.5">
+                          <BillingCycleDatePicker
+                            value={account.billingCycle.start}
+                            ariaLabel={`Billing cycle start for ${account.domain}`}
+                            onSelect={(nextValue) =>
+                              updateBillingCycleBoundary(account.id, "start", nextValue)
+                            }
+                          />
+                          <span className="text-xs text-muted-foreground">→</span>
+                          <BillingCycleDatePicker
+                            value={account.billingCycle.end}
+                            ariaLabel={`Billing cycle end for ${account.domain}`}
+                            onSelect={(nextValue) =>
+                              updateBillingCycleBoundary(account.id, "end", nextValue)
+                            }
+                          />
+                        </div>
+                      </TableCell>
                       <TableCell>€{accountMonthlyCost}/month</TableCell>
                       <TableCell className="text-right">
                         <Button
@@ -755,7 +913,7 @@ export function BillingPage() {
             Total business plan monthly cost: €{businessPlanTotalMonthlyCost}/month · {renewalsSummaryLabel}
           </p>
           <p className="text-xs text-muted-foreground">
-            {billingQuery.isLoading
+            {isLoading
               ? "Loading billing data…"
               : isSaving
                 ? "Saving billing changes…"
@@ -825,7 +983,25 @@ export function BillingPage() {
                         <TableCell className="font-medium">{account.domain}</TableCell>
                         <TableCell>{account.chatgptSeatsInUse} seats in use</TableCell>
                         <TableCell>{account.codexSeatsInUse} seats in use</TableCell>
-                        <TableCell>{formatBillingCycleLabel(account.billingCycle)}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1.5">
+                            <BillingCycleDatePicker
+                              value={account.billingCycle.start}
+                              ariaLabel={`Billing cycle start for ${account.domain} in details`}
+                              onSelect={(nextValue) =>
+                                updateBillingCycleBoundary(account.id, "start", nextValue)
+                              }
+                            />
+                            <span className="text-xs text-muted-foreground">→</span>
+                            <BillingCycleDatePicker
+                              value={account.billingCycle.end}
+                              ariaLabel={`Billing cycle end for ${account.domain} in details`}
+                              onSelect={(nextValue) =>
+                                updateBillingCycleBoundary(account.id, "end", nextValue)
+                              }
+                            />
+                          </div>
+                        </TableCell>
                         <TableCell>€{accountMonthlyCost}/month</TableCell>
                       </TableRow>
                     );

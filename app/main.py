@@ -326,6 +326,7 @@ def create_app() -> FastAPI:
     app.include_router(projects_api.router)
     app.include_router(sticky_sessions_api.router)
     app.include_router(api_keys_api.router)
+    app.include_router(api_keys_api.legacy_router)
     app.include_router(billing_api.router)
     app.include_router(health_api.router)
 
