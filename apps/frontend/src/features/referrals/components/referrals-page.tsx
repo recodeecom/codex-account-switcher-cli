@@ -95,7 +95,15 @@ export function ReferralsPage() {
                     {row.accountId}
                   </TableCell>
                   <TableCell className="max-w-[520px]">
-                    <p className="truncate text-xs text-muted-foreground">{row.referralLink}</p>
+                    <a
+                      href={row.referralLink}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="block break-all text-xs text-muted-foreground transition-colors hover:text-foreground hover:underline"
+                      title={row.referralLink}
+                    >
+                      {row.referralLink}
+                    </a>
                   </TableCell>
                   <TableCell className="text-right">
                     <CopyButton value={row.referralLink} label="Copy link" />

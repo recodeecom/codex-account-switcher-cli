@@ -66,7 +66,6 @@ def overlay_live_codex_task_previews(
             if snapshot_names_by_account is not None
             else None,
         )
-        existing_session_task_previews = codex_session_task_previews_by_account.get(account.id, [])
         if snapshot_names:
             live_session_task_previews = _resolve_session_task_previews_for_snapshot_names(
                 process_session_task_previews_by_snapshot=process_session_task_previews_by_snapshot,
@@ -81,15 +80,13 @@ def overlay_live_codex_task_previews(
                     snapshot_name=snapshot_name,
                 )
             if live_session_task_previews:
-                merged_session_task_previews: list[AccountSessionTaskPreview] = []
-                seen_session_keys: set[str] = set()
-                for preview in [*live_session_task_previews, *existing_session_task_previews]:
-                    session_key = preview.session_key.strip()
-                    if not session_key or session_key in seen_session_keys:
-                        continue
-                    seen_session_keys.add(session_key)
-                    merged_session_task_previews.append(preview)
-                codex_session_task_previews_by_account[account.id] = merged_session_task_previews
+                # Runtime-attributed live session previews are authoritative for
+                # active snapshots. Replace persisted rows so stale or
+                # cross-account session previews cannot leak into this account's
+                # task list.
+                codex_session_task_previews_by_account[account.id] = list(
+                    live_session_task_previews
+                )
         if snapshot_names:
             process_snapshot_name = _resolve_first_matching_snapshot_name(
                 snapshot_names=snapshot_names,

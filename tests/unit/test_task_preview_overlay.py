@@ -192,7 +192,6 @@ def test_overlay_includes_live_process_session_task_previews(monkeypatch) -> Non
     assert [preview.session_key for preview in session_previews] == [
         "pid:31001",
         "pid:31002",
-        "session-abc",
     ]
     assert session_previews[0].task_preview == "next js error debug"
     assert session_previews[1].task_preview is None

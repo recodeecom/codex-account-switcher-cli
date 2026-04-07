@@ -41,6 +41,9 @@ from app.modules.usage.depletion_service import (
 )
 from app.modules.usage.updater import UsageUpdater
 
+_TRACKED_CLI_SESSION_ACTIVE_WINDOW = timedelta(minutes=30)
+
+
 class DashboardService:
     def __init__(self, repo: DashboardRepository) -> None:
         self._repo = repo
@@ -48,6 +51,7 @@ class DashboardService:
 
     async def get_overview(self) -> DashboardOverviewResponse:
         now = utcnow()
+        tracked_session_active_since = now - _TRACKED_CLI_SESSION_ACTIVE_WINDOW
         await sync_local_codex_auth_snapshots(repo=self._repo.accounts_repo, encryptor=self._encryptor)
         accounts = await self._repo.list_accounts()
         primary_usage = await self._repo.latest_usage_by_account("primary")
@@ -73,13 +77,16 @@ class DashboardService:
         }
         codex_tracked_session_counts_by_account = await self._repo.list_codex_session_counts_by_account(
             account_ids,
+            active_since=tracked_session_active_since,
         )
         codex_live_session_counts_by_account = {account_id: 0 for account_id in account_ids}
         codex_current_task_preview_by_account = await self._repo.list_codex_current_task_preview_by_account(
             account_ids,
+            active_since=tracked_session_active_since,
         )
         raw_codex_session_task_previews_by_account = await self._repo.list_codex_session_task_previews_by_account(
             account_ids,
+            active_since=tracked_session_active_since,
             limit_per_account=None,
         )
         codex_session_task_previews_by_account: dict[str, list[AccountSessionTaskPreview]] = {

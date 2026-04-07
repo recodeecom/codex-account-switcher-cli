@@ -873,10 +873,8 @@ export function isAccountWorkingNow(
     }
   }
 
-  const hasCodexSnapshotVisibility = account.codexAuth?.hasSnapshot ?? false;
   const primaryRemainingPercent = account.usage?.primaryRemainingPercent;
   const hasLowQuotaFallbackWorkingSignal =
-    !hasCodexSnapshotVisibility &&
     account.status !== "deactivated" &&
     typeof primaryRemainingPercent === "number" &&
     Number.isFinite(primaryRemainingPercent) &&

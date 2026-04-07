@@ -65,6 +65,9 @@ from app.modules.usage.updater import AdditionalUsageRepositoryPort, UsageUpdate
 
 _SPARKLINE_DAYS = 7
 _DETAIL_BUCKET_SECONDS = 3600  # 1h → 168 points
+_TRACKED_CLI_SESSION_ACTIVE_WINDOW = timedelta(minutes=30)
+
+
 class InvalidAuthJsonError(Exception):
     pass
 
@@ -84,6 +87,8 @@ class AccountsService:
         self._auth_manager = AuthManager(repo)
 
     async def list_accounts(self) -> list[AccountSummary]:
+        now = utcnow()
+        tracked_session_active_since = now - _TRACKED_CLI_SESSION_ACTIVE_WINDOW
         await sync_local_codex_auth_snapshots(repo=self._repo, encryptor=self._encryptor)
 
         accounts = await self._repo.list_accounts()
@@ -98,13 +103,16 @@ class AccountsService:
         secondary_usage = await self._usage_repo.latest_by_account(window="secondary") if self._usage_repo else {}
         codex_tracked_session_counts_by_account = await self._repo.list_codex_session_counts_by_account(
             account_ids,
+            active_since=tracked_session_active_since,
         )
         codex_live_session_counts_by_account = {account_id: 0 for account_id in account_ids}
         codex_current_task_preview_by_account = await self._repo.list_codex_current_task_preview_by_account(
             account_ids,
+            active_since=tracked_session_active_since,
         )
         raw_codex_session_task_previews_by_account = await self._repo.list_codex_session_task_previews_by_account(
             account_ids,
+            active_since=tracked_session_active_since,
             limit_per_account=None,
         )
         codex_session_task_previews_by_account: dict[str, list[AccountSessionTaskPreview]] = {
@@ -208,7 +216,7 @@ class AccountsService:
             codex_last_task_preview_by_account=codex_last_task_preview_by_account,
             codex_session_task_previews_by_account=codex_session_task_previews_by_account,
             live_quota_debug_by_account=live_quota_debug_by_account,
-            now=utcnow(),
+            now=now,
         )
 
         return build_account_summaries(

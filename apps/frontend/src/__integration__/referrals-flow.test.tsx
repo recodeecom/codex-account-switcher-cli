@@ -13,12 +13,13 @@ describe("referrals page integration", () => {
     expect((await screen.findAllByText("primary@example.com")).length).toBeGreaterThan(0);
     expect((await screen.findAllByText("secondary@example.com")).length).toBeGreaterThan(0);
 
+    const referralLinks = screen.getAllByRole("link");
     expect(
-      screen.getByText((content) => content.includes("ref=acc_primary")),
-    ).toBeInTheDocument();
+      referralLinks.some((link) => link.getAttribute("href")?.includes("ref=acc_primary")),
+    ).toBe(true);
     expect(
-      screen.getByText((content) => content.includes("ref=acc_secondary")),
-    ).toBeInTheDocument();
+      referralLinks.some((link) => link.getAttribute("href")?.includes("ref=acc_secondary")),
+    ).toBe(true);
     expect(screen.getAllByRole("button", { name: "Copy link" })).toHaveLength(2);
   });
 });

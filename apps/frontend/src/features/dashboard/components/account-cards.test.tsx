@@ -95,6 +95,55 @@ describe("AccountCards", () => {
     expect(betaCardAfter).toBe(betaCardBefore);
   });
 
+  it("only disables the matching use-local button when a switch is pending", () => {
+    const busyAccount = createAccountSummary({
+      accountId: "acc_busy",
+      email: "busy@example.com",
+      displayName: "busy@example.com",
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "busy",
+        activeSnapshotName: "different",
+        isActiveSnapshot: false,
+        hasLiveSession: false,
+      },
+    });
+    const idleAccount = createAccountSummary({
+      accountId: "acc_idle",
+      email: "idle@example.com",
+      displayName: "idle@example.com",
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "idle",
+        activeSnapshotName: "different",
+        isActiveSnapshot: false,
+        hasLiveSession: false,
+      },
+    });
+
+    render(
+      <AccountCards
+        accounts={[busyAccount, idleAccount]}
+        primaryWindow={null}
+        secondaryWindow={null}
+        useLocalBusy
+        useLocalBusyAccountId={busyAccount.accountId}
+      />,
+    );
+
+    const busyCard = screen.getByText("busy@example.com").closest(".card-hover");
+    const idleCard = screen.getByText("idle@example.com").closest(".card-hover");
+    expect(busyCard).not.toBeNull();
+    expect(idleCard).not.toBeNull();
+
+    expect(
+      within(busyCard as HTMLElement).getByRole("button", { name: "Use this account" }),
+    ).toBeDisabled();
+    expect(
+      within(idleCard as HTMLElement).getByRole("button", { name: "Use this account" }),
+    ).toBeEnabled();
+  });
+
   it("renders working accounts in a dedicated top section before other accounts", () => {
     const nowIso = new Date().toISOString();
     const idle = createAccountSummary({
@@ -623,7 +672,7 @@ describe("AccountCards", () => {
       email: "weekly-zero-soon@example.com",
       displayName: "weekly-zero-soon@example.com",
       usage: {
-        primaryRemainingPercent: 6,
+        primaryRemainingPercent: 26,
         secondaryRemainingPercent: 0,
       },
       resetAtSecondary: new Date(now + 4 * 24 * 60 * 60 * 1000 + 12 * 60 * 60 * 1000).toISOString(),
@@ -743,7 +792,7 @@ describe("AccountCards", () => {
       email: "weekly-depleted-later@example.com",
       displayName: "weekly-depleted-later@example.com",
       usage: {
-        primaryRemainingPercent: 5,
+        primaryRemainingPercent: 25,
         secondaryRemainingPercent: 0,
       },
       resetAtSecondary: new Date(now + 6 * 24 * 60 * 60 * 1000 + 2 * 60 * 60 * 1000).toISOString(),
@@ -782,7 +831,7 @@ describe("AccountCards", () => {
         isActiveSnapshot: true,
       },
       usage: {
-        primaryRemainingPercent: 12,
+        primaryRemainingPercent: 32,
         secondaryRemainingPercent: 42,
       },
     });

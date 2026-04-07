@@ -1,5 +1,6 @@
 import {
   Activity,
+  CheckCircle2,
   ChevronDown,
   Clock,
   Download,
@@ -1092,6 +1093,7 @@ export function AccountCard(props: AccountCardProps) {
   });
   const useLocalButtonDisabled =
     !canUseLocally || useLocalBusy || useLocalBlockedByWeeklyQuota;
+  const useLocalButtonShowsSuccess = isActiveSnapshot;
   const useLocalButtonDisabledReason = useLocalBlockedByWeeklyQuota
     ? "Weekly quota shown as 0%."
     : useLocalDisabledReason;
@@ -1982,6 +1984,8 @@ export function AccountCard(props: AccountCardProps) {
               variant="default"
               className={cn(
                 "h-9 w-full justify-center gap-1.5 rounded-xl border border-emerald-400/35 bg-gradient-to-r from-emerald-500/22 via-emerald-500/16 to-cyan-500/14 px-3 text-sm font-semibold shadow-[inset_0_1px_0_rgba(255,255,255,0.16)] transition-colors hover:from-emerald-500/30 hover:via-emerald-500/22 hover:to-cyan-500/20",
+                useLocalButtonShowsSuccess &&
+                  "border-emerald-300/60 from-emerald-500/34 via-emerald-500/30 to-cyan-500/24 shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_0_0_1px_rgba(16,185,129,0.22)]",
                 canUseLocally
                   ? "text-emerald-700 hover:text-emerald-800 dark:text-emerald-200 dark:hover:text-emerald-100"
                   : "text-muted-foreground",
@@ -1991,6 +1995,9 @@ export function AccountCard(props: AccountCardProps) {
               aria-label={primaryActionAriaLabel}
               onClick={() => onAction?.(account, "useLocal")}
             >
+              {useLocalButtonShowsSuccess ? (
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-300" />
+              ) : null}
               {primaryActionLabel}
             </Button>
             <div className="mt-2.5 flex flex-wrap items-center gap-1.5">

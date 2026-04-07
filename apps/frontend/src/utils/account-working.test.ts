@@ -84,7 +84,7 @@ describe("isAccountWorkingNow", () => {
     expect(isAccountWorkingNow(account)).toBe(true);
   });
 
-  it("keeps low-quota accounts out of working-now when codex snapshot visibility exists but no live signal is present", () => {
+  it("returns true for low-quota accounts even when snapshot visibility exists", () => {
     const account = createAccountSummary({
       status: "active",
       usage: {
@@ -105,7 +105,7 @@ describe("isAccountWorkingNow", () => {
       lastUsageRecordedAtSecondary: null,
     });
 
-    expect(isAccountWorkingNow(account)).toBe(false);
+    expect(isAccountWorkingNow(account)).toBe(true);
   });
 
   it("returns true when 5h is depleted but tracked sessions are still present", () => {

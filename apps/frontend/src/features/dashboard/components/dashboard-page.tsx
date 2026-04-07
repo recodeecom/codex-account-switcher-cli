@@ -205,6 +205,10 @@ export function DashboardPage() {
     (usageSummaryQuery.error instanceof Error &&
       usageSummaryQuery.error.message) ||
     null;
+  const useLocalBusyAccountId =
+    useLocalMutation.isPending && typeof useLocalMutation.variables === "string"
+      ? useLocalMutation.variables
+      : null;
 
   return (
     <div className="animate-fade-in-up space-y-8">
@@ -266,6 +270,7 @@ export function DashboardPage() {
               primaryWindow={overview?.windows.primary ?? null}
               secondaryWindow={overview?.windows.secondary ?? null}
               useLocalBusy={useLocalMutation.isPending}
+              useLocalBusyAccountId={useLocalBusyAccountId}
               deleteBusy={deleteMutation.isPending}
               onAction={handleAccountAction}
             />

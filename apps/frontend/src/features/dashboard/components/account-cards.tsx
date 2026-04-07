@@ -478,6 +478,7 @@ export type AccountCardsProps = {
   primaryWindow: UsageWindow | null;
   secondaryWindow: UsageWindow | null;
   useLocalBusy?: boolean;
+  useLocalBusyAccountId?: string | null;
   deleteBusy?: boolean;
   onAction?: AccountCardProps["onAction"];
 };
@@ -529,6 +530,7 @@ export function AccountCards({
   primaryWindow,
   secondaryWindow,
   useLocalBusy = false,
+  useLocalBusyAccountId = null,
   deleteBusy = false,
   onAction,
 }: AccountCardsProps) {
@@ -716,7 +718,11 @@ export function AccountCards({
             )}
             showTokensRemaining
             showAccountId={duplicateAccountIds.has(account.accountId)}
-            useLocalBusy={useLocalBusy}
+            useLocalBusy={
+              useLocalBusy &&
+              useLocalBusyAccountId != null &&
+              useLocalBusyAccountId === account.accountId
+            }
             deleteBusy={deleteBusy}
             initialSessionTasksCollapsed
             onAction={onAction}
