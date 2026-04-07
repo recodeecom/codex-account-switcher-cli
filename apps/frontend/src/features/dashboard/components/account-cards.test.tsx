@@ -1140,6 +1140,45 @@ describe("AccountCards", () => {
     expect(screen.queryByText("live sessions")).not.toBeInTheDocument();
   });
 
+  it("places fresh session-task-preview accounts in the working-now section", () => {
+    const taskPreviewOnly = createAccountSummary({
+      accountId: "acc_task_preview_only",
+      email: "task-preview-only@example.com",
+      displayName: "task-preview-only@example.com",
+      codexLiveSessionCount: 0,
+      codexTrackedSessionCount: 0,
+      codexSessionCount: 0,
+      codexCurrentTaskPreview: null,
+      codexSessionTaskPreviews: [
+        {
+          sessionKey: "session-1",
+          taskPreview: "Investigate admin session mapping",
+          taskUpdatedAt: new Date().toISOString(),
+        },
+      ],
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "task-preview-only",
+        activeSnapshotName: "other",
+        isActiveSnapshot: false,
+        hasLiveSession: false,
+      },
+      lastUsageRecordedAtPrimary: null,
+      lastUsageRecordedAtSecondary: null,
+    });
+
+    render(
+      <AccountCards
+        accounts={[taskPreviewOnly]}
+        primaryWindow={null}
+        secondaryWindow={null}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: "Working now" })).toBeInTheDocument();
+    expect(screen.getByText("task-preview-only@example.com")).toBeInTheDocument();
+  });
+
   it("keeps deferred mixed-session debug-only accounts out of working-now", () => {
     const sampled = createAccountSummary({
       accountId: "acc_sampled",

@@ -107,6 +107,7 @@ describe("projects flow integration", () => {
     renderWithProviders(<App />);
 
     expect(await screen.findByRole("heading", { name: "Projects" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Open Codex control tools" }));
 
     const promptInput = screen.getByPlaceholderText(
       "Describe exactly what this Codex account should implement next...",
@@ -136,6 +137,7 @@ describe("projects flow integration", () => {
     await user.click(screen.getByRole("button", { name: "Add project" }));
 
     expect(await screen.findByText("alpha-sandbox")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Open Codex control tools" }));
 
     const selectTriggers = screen.getAllByRole("combobox");
     await user.click(selectTriggers[1]);

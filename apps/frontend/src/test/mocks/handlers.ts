@@ -2,6 +2,7 @@ import { HttpResponse, http } from "msw";
 import { z } from "zod";
 
 import { LIMIT_TYPES, LIMIT_WINDOWS } from "@/features/api-keys/schemas";
+import { BillingAccountSchema } from "@/features/billing/schemas";
 import {
 	type AccountSummary,
 	type ApiKey,
@@ -128,6 +129,12 @@ const SettingsPayloadSchema = z
 	})
 	.passthrough();
 
+const BillingPayloadSchema = z
+	.object({
+		accounts: z.array(BillingAccountSchema),
+	})
+	.passthrough();
+
 // ── Helpers ──
 
 async function parseJsonBody<T>(
@@ -167,6 +174,7 @@ type MockState = {
 		createdAt: string;
 		updatedAt: string;
 	}>;
+	billingAccounts: z.infer<typeof BillingAccountSchema>[];
 	stickySessions: Array<{
 		key: string;
 		accountId: string;
@@ -189,8 +197,98 @@ function createInitialState(): MockState {
 		firewallEntries: [],
 		devices: [],
 		projects: [],
+		billingAccounts: createDefaultBillingAccounts(),
 		stickySessions: [],
 	};
+}
+
+function createDefaultBillingAccounts(): z.infer<typeof BillingAccountSchema>[] {
+	return [
+		{
+			id: "business-plan-edixai",
+			domain: "edixai.com",
+			billingCycle: {
+				start: new Date("2026-03-23T00:00:00.000Z"),
+				end: new Date("2026-04-23T00:00:00.000Z"),
+			},
+			chatgptSeatsInUse: 5,
+			codexSeatsInUse: 5,
+			members: [
+				{
+					id: "member-bianka-belovics",
+					name: "Bianka Belovics",
+					email: "bia@edixai.com",
+					role: "Member",
+					seatType: "ChatGPT",
+					dateAdded: "Mar 30, 2026",
+				},
+				{
+					id: "member-csoves",
+					name: "Csoves",
+					email: "csoves@edixai.com",
+					role: "Member",
+					seatType: "Codex",
+					dateAdded: "Mar 23, 2026",
+				},
+			],
+		},
+		{
+			id: "business-plan-kozpont",
+			domain: "kozpontihusbolt.hu",
+			billingCycle: {
+				start: new Date("2026-03-26T00:00:00.000Z"),
+				end: new Date("2026-04-26T00:00:00.000Z"),
+			},
+			chatgptSeatsInUse: 5,
+			codexSeatsInUse: 5,
+			members: [
+				{
+					id: "member-kozpont-admin",
+					name: "Kozpont Admin",
+					email: "admin@kozpontihusbolt.hu",
+					role: "Owner",
+					seatType: "ChatGPT",
+					dateAdded: "Mar 23, 2026",
+				},
+				{
+					id: "member-kozpont-codex-1",
+					name: "Automation 1",
+					email: "codex1@kozpontihusbolt.hu",
+					role: "Member",
+					seatType: "Codex",
+					dateAdded: "Mar 26, 2026",
+				},
+				{
+					id: "member-kozpont-codex-2",
+					name: "Automation 2",
+					email: "codex2@kozpontihusbolt.hu",
+					role: "Member",
+					seatType: "Codex",
+					dateAdded: "Mar 27, 2026",
+				},
+			],
+		},
+		{
+			id: "business-plan-kronakert",
+			domain: "kronakert.hu",
+			billingCycle: {
+				start: new Date("2026-04-01T00:00:00.000Z"),
+				end: new Date("2026-05-01T00:00:00.000Z"),
+			},
+			chatgptSeatsInUse: 3,
+			codexSeatsInUse: 3,
+			members: [
+				{
+					id: "member-kronakert-owner",
+					name: "Kronakert Owner",
+					email: "owner@kronakert.hu",
+					role: "Owner",
+					seatType: "ChatGPT",
+					dateAdded: "Apr 1, 2026",
+				},
+			],
+		},
+	];
 }
 
 let state: MockState = createInitialState();
@@ -720,6 +818,27 @@ export const handlers = [
 
 	http.get("/api/settings", () => {
 		return HttpResponse.json(state.settings);
+	}),
+
+	http.get("/api/billing", () => {
+		return HttpResponse.json({ accounts: state.billingAccounts });
+	}),
+
+	http.put("/api/billing", async ({ request }) => {
+		const payload = await parseJsonBody(request, BillingPayloadSchema);
+		if (!payload) {
+			return HttpResponse.json(
+				{
+					error: {
+						code: "invalid_billing_payload",
+						message: "Invalid billing payload",
+					},
+				},
+				{ status: 400 },
+			);
+		}
+		state.billingAccounts = payload.accounts;
+		return HttpResponse.json({ accounts: state.billingAccounts });
 	}),
 
 	http.get("/api/firewall/ips", () => {

@@ -1,14 +1,18 @@
+import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
   Building2,
   CalendarClock,
   Euro,
   Eye,
+  Minus,
   MoreHorizontal,
+  Plus,
   Sparkles,
   Users2,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -44,27 +48,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-
-type BusinessPlanAccount = {
-  id: string;
-  domain: string;
-  billingCycle: {
-    start: Date;
-    end: Date;
-  };
-  chatgptSeatsInUse: number;
-  codexSeatsInUse: number;
-  members: BusinessPlanMember[];
-};
-
-type BusinessPlanMember = {
-  id: string;
-  name: string;
-  email: string;
-  role: "Owner" | "Member";
-  seatType: "ChatGPT" | "Codex";
-  dateAdded: string;
-};
+import { getBillingAccounts, updateBillingAccounts } from "@/features/billing/api";
+import type { BillingAccount as BusinessPlanAccount, BillingMember as BusinessPlanMember } from "@/features/billing/schemas";
+import { getErrorMessageOrNull } from "@/utils/errors";
 
 const CHATGPT_MONTHLY_SEAT_PRICE_EUR = 26;
 const CODEX_MONTHLY_SEAT_PRICE_EUR = 0;
@@ -333,21 +319,6 @@ function getInitials(value: string): string {
   return `${words[0][0]}${words[1][0]}`.toUpperCase();
 }
 
-function countSeatsInUse(members: BusinessPlanMember[]): Pick<BusinessPlanAccount, "chatgptSeatsInUse" | "codexSeatsInUse"> {
-  return members.reduce(
-    (accumulator, member) => {
-      if (member.seatType === "ChatGPT") {
-        accumulator.chatgptSeatsInUse += 1;
-      } else {
-        accumulator.codexSeatsInUse += 1;
-      }
-
-      return accumulator;
-    },
-    { chatgptSeatsInUse: 0, codexSeatsInUse: 0 },
-  );
-}
-
 function formatSeatPriceLabel(seatType: BusinessPlanMember["seatType"]): string {
   const monthlySeatPrice =
     seatType === "ChatGPT" ? CHATGPT_MONTHLY_SEAT_PRICE_EUR : CODEX_MONTHLY_SEAT_PRICE_EUR;
@@ -358,10 +329,61 @@ function formatBillingCycleLabel(cycle: BusinessPlanAccount["billingCycle"]): st
   return `${format(cycle.start, "MMM d")} - ${format(cycle.end, "MMM d")}`;
 }
 
+function clampSeatCount(value: number): number {
+  return Math.max(0, value);
+}
+
 export function BillingPage() {
   const [businessPlanAccounts, setBusinessPlanAccounts] = useState(BUSINESS_PLAN_ACCOUNTS);
   const [businessPlanDetailsOpen, setBusinessPlanDetailsOpen] = useState(false);
   const [selectedBusinessAccountId, setSelectedBusinessAccountId] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const persistRequestIdRef = useRef(0);
+  const loadErrorShownRef = useRef(false);
+  const billingQuery = useQuery({
+    queryKey: ["billing", "accounts"],
+    queryFn: getBillingAccounts,
+    refetchOnWindowFocus: false,
+  });
+
+  useEffect(() => {
+    if (!billingQuery.data) {
+      return;
+    }
+    setBusinessPlanAccounts(billingQuery.data.accounts);
+  }, [billingQuery.data]);
+
+  useEffect(() => {
+    if (!billingQuery.error || loadErrorShownRef.current) {
+      return;
+    }
+    loadErrorShownRef.current = true;
+    toast.error(getErrorMessageOrNull(billingQuery.error) ?? "Failed to load billing data");
+  }, [billingQuery.error]);
+
+  function persistBusinessPlanAccounts(nextAccounts: BusinessPlanAccount[]) {
+    const requestId = ++persistRequestIdRef.current;
+    setIsSaving(true);
+
+    void updateBillingAccounts({ accounts: nextAccounts })
+      .then((response) => {
+        if (requestId !== persistRequestIdRef.current) {
+          return;
+        }
+        setBusinessPlanAccounts(response.accounts);
+      })
+      .catch((caught) => {
+        if (requestId !== persistRequestIdRef.current) {
+          return;
+        }
+        toast.error(getErrorMessageOrNull(caught) ?? "Failed to save billing changes");
+      })
+      .finally(() => {
+        if (requestId === persistRequestIdRef.current) {
+          setIsSaving(false);
+        }
+      });
+  }
 
   const selectedBusinessAccount = useMemo(
     () =>
@@ -428,38 +450,122 @@ export function BillingPage() {
     nextSeatType: BusinessPlanMember["seatType"],
   ) {
     setBusinessPlanAccounts((previousAccounts) =>
-      previousAccounts.map((account) => {
+      {
+        let changed = false;
+        const nextAccounts = previousAccounts.map((account) => {
         if (account.id !== accountId) {
           return account;
         }
+
+        const currentMember = account.members.find((member) => member.id === memberId);
+        if (!currentMember) {
+          return account;
+        }
+        if (currentMember.seatType === nextSeatType) {
+          return account;
+        }
+        changed = true;
 
         const members = account.members.map((member) =>
           member.id === memberId ? { ...member, seatType: nextSeatType } : member,
         );
 
+        const nextChatgptSeatsInUse = clampSeatCount(
+          account.chatgptSeatsInUse +
+            (nextSeatType === "ChatGPT" ? 1 : 0) -
+            (currentMember.seatType === "ChatGPT" ? 1 : 0),
+        );
+        const nextCodexSeatsInUse = clampSeatCount(
+          account.codexSeatsInUse +
+            (nextSeatType === "Codex" ? 1 : 0) -
+            (currentMember.seatType === "Codex" ? 1 : 0),
+        );
+
         return {
           ...account,
           members,
-          ...countSeatsInUse(members),
+          chatgptSeatsInUse: nextChatgptSeatsInUse,
+          codexSeatsInUse: nextCodexSeatsInUse,
         };
-      }),
+        });
+
+        if (changed) {
+          persistBusinessPlanAccounts(nextAccounts);
+          return nextAccounts;
+        }
+        return previousAccounts;
+      },
     );
   }
 
   function removeMemberAccount(accountId: string, memberId: string) {
     setBusinessPlanAccounts((previousAccounts) =>
-      previousAccounts.map((account) => {
+      {
+        let changed = false;
+        const nextAccounts = previousAccounts.map((account) => {
         if (account.id !== accountId) {
           return account;
         }
+
+        const removedMember = account.members.find((member) => member.id === memberId);
+        if (!removedMember) {
+          return account;
+        }
+        changed = true;
 
         const members = account.members.filter((member) => member.id !== memberId);
         return {
           ...account,
           members,
-          ...countSeatsInUse(members),
+          chatgptSeatsInUse: clampSeatCount(
+            account.chatgptSeatsInUse - (removedMember.seatType === "ChatGPT" ? 1 : 0),
+          ),
+          codexSeatsInUse: clampSeatCount(
+            account.codexSeatsInUse - (removedMember.seatType === "Codex" ? 1 : 0),
+          ),
         };
-      }),
+        });
+        if (changed) {
+          persistBusinessPlanAccounts(nextAccounts);
+          return nextAccounts;
+        }
+        return previousAccounts;
+      },
+    );
+  }
+
+  function adjustSeatsInUse(
+    accountId: string,
+    seatType: BusinessPlanMember["seatType"],
+    delta: number,
+  ) {
+    setBusinessPlanAccounts((previousAccounts) =>
+      {
+        let changed = false;
+        const nextAccounts = previousAccounts.map((account) => {
+        if (account.id !== accountId) {
+          return account;
+        }
+        changed = true;
+
+        return {
+          ...account,
+          chatgptSeatsInUse:
+            seatType === "ChatGPT"
+              ? clampSeatCount(account.chatgptSeatsInUse + delta)
+              : account.chatgptSeatsInUse,
+          codexSeatsInUse:
+            seatType === "Codex"
+              ? clampSeatCount(account.codexSeatsInUse + delta)
+              : account.codexSeatsInUse,
+        };
+        });
+        if (changed) {
+          persistBusinessPlanAccounts(nextAccounts);
+          return nextAccounts;
+        }
+        return previousAccounts;
+      },
     );
   }
 
@@ -559,8 +665,68 @@ export function BillingPage() {
                           <div className="font-medium">{account.domain}</div>
                         </div>
                       </TableCell>
-                      <TableCell>{account.chatgptSeatsInUse} seats in use</TableCell>
-                      <TableCell>{account.codexSeatsInUse} seats in use</TableCell>
+                      <TableCell>
+                        <div
+                          role="group"
+                          aria-label={`ChatGPT seats for ${account.domain}`}
+                          className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-muted/40 p-0.5"
+                        >
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-xs"
+                            className="h-6 w-6"
+                            aria-label={`Decrease ChatGPT seats for ${account.domain}`}
+                            onClick={() => adjustSeatsInUse(account.id, "ChatGPT", -1)}
+                          >
+                            <Minus className="h-3 w-3" aria-hidden="true" />
+                          </Button>
+                          <span className="min-w-6 text-center text-sm font-medium tabular-nums">
+                            {account.chatgptSeatsInUse}
+                          </span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-xs"
+                            className="h-6 w-6"
+                            aria-label={`Increase ChatGPT seats for ${account.domain}`}
+                            onClick={() => adjustSeatsInUse(account.id, "ChatGPT", 1)}
+                          >
+                            <Plus className="h-3 w-3" aria-hidden="true" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div
+                          role="group"
+                          aria-label={`Codex seats for ${account.domain}`}
+                          className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-muted/40 p-0.5"
+                        >
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-xs"
+                            className="h-6 w-6"
+                            aria-label={`Decrease Codex seats for ${account.domain}`}
+                            onClick={() => adjustSeatsInUse(account.id, "Codex", -1)}
+                          >
+                            <Minus className="h-3 w-3" aria-hidden="true" />
+                          </Button>
+                          <span className="min-w-6 text-center text-sm font-medium tabular-nums">
+                            {account.codexSeatsInUse}
+                          </span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-xs"
+                            className="h-6 w-6"
+                            aria-label={`Increase Codex seats for ${account.domain}`}
+                            onClick={() => adjustSeatsInUse(account.id, "Codex", 1)}
+                          >
+                            <Plus className="h-3 w-3" aria-hidden="true" />
+                          </Button>
+                        </div>
+                      </TableCell>
                       <TableCell>{formatBillingCycleLabel(account.billingCycle)}</TableCell>
                       <TableCell>€{accountMonthlyCost}/month</TableCell>
                       <TableCell className="text-right">
@@ -587,6 +753,13 @@ export function BillingPage() {
 
           <p className="text-sm text-muted-foreground">
             Total business plan monthly cost: €{businessPlanTotalMonthlyCost}/month · {renewalsSummaryLabel}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {billingQuery.isLoading
+              ? "Loading billing data…"
+              : isSaving
+                ? "Saving billing changes…"
+                : "Billing changes are synced to backend."}
           </p>
         </CardContent>
       </Card>

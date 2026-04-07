@@ -149,6 +149,13 @@ export function getMergedQuotaRemainingPercent(
   }
 
   const overrideReason = (liveQuotaDebug?.overrideReason ?? "").trim();
+  const normalizedOverrideReason = overrideReason.toLowerCase();
+  if (
+    normalizedOverrideReason === "live_usage_confident_match_other_account" &&
+    liveQuotaDebug?.overrideApplied !== true
+  ) {
+    return null;
+  }
   const deferredMixedDefaultSessions =
     overrideReason.startsWith("deferred_active_snapshot_mixed_default_sessions");
   if (deferredMixedDefaultSessions && liveQuotaDebug?.overrideApplied !== true) {
@@ -404,19 +411,39 @@ export function hasFreshLiveTelemetry(
 }
 
 function hasFreshTaskPreviewSignal(
-  account: Pick<AccountSummary, "codexCurrentTaskPreview">,
+  account: Pick<AccountSummary, "codexCurrentTaskPreview" | "codexSessionTaskPreviews">,
 ): boolean {
-  const normalized = account.codexCurrentTaskPreview?.trim().replace(/\s+/g, " ") ?? "";
-  if (!normalized) {
-    return false;
+  const isMeaningfulTaskPreview = (
+    taskPreview: string | null | undefined,
+  ): boolean => {
+    const normalized = taskPreview?.trim().replace(/\s+/g, " ") ?? "";
+    if (!normalized) {
+      return false;
+    }
+    if (/^warning\b/i.test(normalized)) {
+      return false;
+    }
+    if (STATUS_ONLY_TASK_PREVIEW_RE.test(normalized)) {
+      return false;
+    }
+    return true;
+  };
+
+  if (isMeaningfulTaskPreview(account.codexCurrentTaskPreview)) {
+    return true;
   }
-  if (/^warning\b/i.test(normalized)) {
-    return false;
+
+  const sessionTaskPreviews = account.codexSessionTaskPreviews ?? [];
+  for (const preview of sessionTaskPreviews) {
+    if (!isMeaningfulTaskPreview(preview.taskPreview)) {
+      continue;
+    }
+    // Session rows represent concrete tracked Codex sessions; keep them as
+    // active CLI evidence until they resolve to a finished/status-only preview.
+    return true;
   }
-  if (STATUS_ONLY_TASK_PREVIEW_RE.test(normalized)) {
-    return false;
-  }
-  return true;
+
+  return false;
 }
 
 export function hasActiveCliSessionSignal(
@@ -429,6 +456,7 @@ export function hasActiveCliSessionSignal(
     | "codexSessionCount"
     | "liveQuotaDebug"
     | "codexCurrentTaskPreview"
+    | "codexSessionTaskPreviews"
     | "usage"
     | "lastUsageRecordedAtPrimary"
     | "lastUsageRecordedAtSecondary"
@@ -493,6 +521,7 @@ type WorkingNowAccount = Pick<
   | "codexTrackedSessionCount"
   | "liveQuotaDebug"
   | "codexCurrentTaskPreview"
+  | "codexSessionTaskPreviews"
   | "usage"
   | "lastUsageRecordedAtPrimary"
   | "lastUsageRecordedAtSecondary"
@@ -681,6 +710,7 @@ export function isAccountWorkingNow(
     | "codexTrackedSessionCount"
     | "liveQuotaDebug"
     | "codexCurrentTaskPreview"
+    | "codexSessionTaskPreviews"
     | "usage"
     | "lastUsageRecordedAtPrimary"
     | "lastUsageRecordedAtSecondary"
@@ -762,6 +792,10 @@ export function isAccountWorkingNow(
   }
 
   if (hasGraceLiveSessionHint) {
+    return true;
+  }
+
+  if (hasTaskPreviewSignal) {
     return true;
   }
 

@@ -89,9 +89,45 @@ describe("BillingPage", () => {
 
     const businessAccountRow = screen.getByText("kozpontihusbolt.hu").closest("tr");
     expect(businessAccountRow).not.toBeNull();
-    expect(within(businessAccountRow as HTMLTableRowElement).getByText("6 seats in use")).toBeInTheDocument();
-    expect(within(businessAccountRow as HTMLTableRowElement).getByText("3 seats in use")).toBeInTheDocument();
+    const chatgptSeatControl = within(businessAccountRow as HTMLTableRowElement).getByLabelText(
+      "ChatGPT seats for kozpontihusbolt.hu",
+    );
+    const codexSeatControl = within(businessAccountRow as HTMLTableRowElement).getByLabelText(
+      "Codex seats for kozpontihusbolt.hu",
+    );
+    expect(within(chatgptSeatControl).getByText("6")).toBeInTheDocument();
+    expect(within(codexSeatControl).getByText("3")).toBeInTheDocument();
 
+    expect(
+      screen.getByText("Total business plan monthly cost: €364/month · Renewals vary by account"),
+    ).toBeInTheDocument();
+  });
+
+  it("lets me increase and decrease seats directly from the business account row", async () => {
+    const user = userEvent.setup({ delay: null });
+
+    renderWithProviders(<BillingPage />);
+
+    await user.click(screen.getByRole("button", { name: "Increase ChatGPT seats for edixai.com" }));
+    await user.click(screen.getByRole("button", { name: "Decrease Codex seats for edixai.com" }));
+
+    const businessAccountRow = screen.getByText("edixai.com").closest("tr");
+    expect(businessAccountRow).not.toBeNull();
+    const chatgptSeatControl = within(businessAccountRow as HTMLTableRowElement).getByLabelText(
+      "ChatGPT seats for edixai.com",
+    );
+    const codexSeatControl = within(businessAccountRow as HTMLTableRowElement).getByLabelText(
+      "Codex seats for edixai.com",
+    );
+    expect(within(chatgptSeatControl).getByText("6")).toBeInTheDocument();
+    expect(within(codexSeatControl).getByText("4")).toBeInTheDocument();
+
+    const chatgptMetricCard = screen.getByText("ChatGPT seats in use").closest("div");
+    const codexMetricCard = screen.getByText("Codex seats in use").closest("div");
+    expect(chatgptMetricCard).not.toBeNull();
+    expect(codexMetricCard).not.toBeNull();
+    expect(within(chatgptMetricCard as HTMLDivElement).getByText("14")).toBeInTheDocument();
+    expect(within(codexMetricCard as HTMLDivElement).getByText("12")).toBeInTheDocument();
     expect(
       screen.getByText("Total business plan monthly cost: €364/month · Renewals vary by account"),
     ).toBeInTheDocument();

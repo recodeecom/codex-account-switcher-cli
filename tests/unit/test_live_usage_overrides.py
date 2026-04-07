@@ -251,6 +251,243 @@ def test_apply_local_live_usage_overrides_ignores_process_sessions_from_legacy_i
     assert codex_session_counts_by_account[account.id] == 0
 
 
+def test_apply_local_live_usage_overrides_keeps_baseline_when_live_usage_confidently_matches_other_account(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    account_a = _make_account("acc-a", "a@example.com")
+    account_b = _make_account("acc-b", "b@example.com")
+    now = datetime(2026, 4, 7, 21, 58, tzinfo=timezone.utc)
+
+    snapshot_index = CodexAuthSnapshotIndex(
+        snapshots_by_account_id={
+            account_a.id: ["snap-a"],
+            account_b.id: ["snap-b"],
+        },
+        active_snapshot_name="snap-a",
+    )
+    codex_auth_by_account = {
+        account_a.id: AccountCodexAuthStatus(
+            has_snapshot=True,
+            snapshot_name="snap-a",
+            active_snapshot_name="snap-a",
+            is_active_snapshot=True,
+            has_live_session=False,
+        ),
+        account_b.id: AccountCodexAuthStatus(
+            has_snapshot=True,
+            snapshot_name="snap-b",
+            active_snapshot_name="snap-a",
+            is_active_snapshot=False,
+            has_live_session=False,
+        ),
+    }
+    primary_usage = {
+        account_a.id: _usage_entry(
+            account_id=account_a.id,
+            window="primary",
+            used_percent=20.0,
+            reset_at=1_111,
+            window_minutes=300,
+        ),
+        account_b.id: _usage_entry(
+            account_id=account_b.id,
+            window="primary",
+            used_percent=70.0,
+            reset_at=2_222,
+            window_minutes=300,
+        ),
+    }
+    secondary_usage = {
+        account_a.id: _usage_entry(
+            account_id=account_a.id,
+            window="secondary",
+            used_percent=40.0,
+            reset_at=3_333,
+            window_minutes=10_080,
+        ),
+        account_b.id: _usage_entry(
+            account_id=account_b.id,
+            window="secondary",
+            used_percent=60.0,
+            reset_at=4_444,
+            window_minutes=10_080,
+        ),
+    }
+    codex_session_counts_by_account = {account_a.id: 0, account_b.id: 0}
+    live_quota_debug_by_account: dict[str, AccountLiveQuotaDebug] = {}
+
+    sample = _live_sample(
+        recorded_at=now,
+        primary_used=70.0,
+        secondary_used=60.0,
+        primary_reset=2_222,
+        secondary_reset=4_444,
+    )
+    sample_entry = LocalCodexLiveUsageSample(
+        source="/tmp/rollout-a.jsonl",
+        recorded_at=now,
+        primary=sample.primary,
+        secondary=sample.secondary,
+        stale=False,
+    )
+
+    monkeypatch.setattr(
+        "app.modules.accounts.live_usage_overrides.read_local_codex_live_usage_by_snapshot",
+        lambda: {"snap-a": sample},
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.live_usage_overrides.read_local_codex_live_usage_samples_by_snapshot",
+        lambda: {"snap-a": [sample_entry]},
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.live_usage_overrides.read_live_codex_process_session_counts_by_snapshot",
+        lambda: {"snap-a": 1},
+    )
+
+    apply_local_live_usage_overrides(
+        accounts=[account_a, account_b],
+        snapshot_index=snapshot_index,
+        codex_auth_by_account=codex_auth_by_account,
+        primary_usage=primary_usage,
+        secondary_usage=secondary_usage,
+        codex_live_session_counts_by_account=codex_session_counts_by_account,
+        live_quota_debug_by_account=live_quota_debug_by_account,
+    )
+
+    assert primary_usage[account_a.id].used_percent == 20.0
+    assert secondary_usage[account_a.id].used_percent == 40.0
+    assert codex_session_counts_by_account[account_a.id] == 1
+    assert codex_auth_by_account[account_a.id].has_live_session is True
+
+    account_a_debug = live_quota_debug_by_account[account_a.id]
+    assert account_a_debug.override_applied is False
+    assert account_a_debug.override_reason == "live_usage_confident_match_other_account"
+    assert account_a_debug.merged is not None
+    assert account_a_debug.merged.primary is not None
+    assert account_a_debug.merged.primary.used_percent == pytest.approx(70.0)
+
+
+def test_apply_local_live_usage_overrides_keeps_live_windows_when_confident_match_shares_chatgpt_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    account_a = _make_account(
+        "acc-a",
+        "odin@example.com",
+        chatgpt_account_id="chatgpt-shared",
+    )
+    account_b = _make_account(
+        "acc-b",
+        "perzeus@example.com",
+        chatgpt_account_id="chatgpt-shared",
+    )
+    now = datetime(2026, 4, 7, 21, 58, tzinfo=timezone.utc)
+
+    snapshot_index = CodexAuthSnapshotIndex(
+        snapshots_by_account_id={
+            account_a.id: ["snap-a"],
+            account_b.id: ["snap-b"],
+        },
+        active_snapshot_name="snap-a",
+    )
+    codex_auth_by_account = {
+        account_a.id: AccountCodexAuthStatus(
+            has_snapshot=True,
+            snapshot_name="snap-a",
+            active_snapshot_name="snap-a",
+            is_active_snapshot=True,
+            has_live_session=False,
+        ),
+        account_b.id: AccountCodexAuthStatus(
+            has_snapshot=True,
+            snapshot_name="snap-b",
+            active_snapshot_name="snap-a",
+            is_active_snapshot=False,
+            has_live_session=False,
+        ),
+    }
+    primary_usage = {
+        account_a.id: _usage_entry(
+            account_id=account_a.id,
+            window="primary",
+            used_percent=20.0,
+            reset_at=1_111,
+            window_minutes=300,
+        ),
+        account_b.id: _usage_entry(
+            account_id=account_b.id,
+            window="primary",
+            used_percent=70.0,
+            reset_at=2_222,
+            window_minutes=300,
+        ),
+    }
+    secondary_usage = {
+        account_a.id: _usage_entry(
+            account_id=account_a.id,
+            window="secondary",
+            used_percent=40.0,
+            reset_at=3_333,
+            window_minutes=10_080,
+        ),
+        account_b.id: _usage_entry(
+            account_id=account_b.id,
+            window="secondary",
+            used_percent=60.0,
+            reset_at=4_444,
+            window_minutes=10_080,
+        ),
+    }
+    codex_session_counts_by_account = {account_a.id: 0, account_b.id: 0}
+    live_quota_debug_by_account: dict[str, AccountLiveQuotaDebug] = {}
+
+    sample = _live_sample(
+        recorded_at=now,
+        primary_used=70.0,
+        secondary_used=60.0,
+        primary_reset=2_222,
+        secondary_reset=4_444,
+    )
+    sample_entry = LocalCodexLiveUsageSample(
+        source="/tmp/rollout-a.jsonl",
+        recorded_at=now,
+        primary=sample.primary,
+        secondary=sample.secondary,
+        stale=False,
+    )
+
+    monkeypatch.setattr(
+        "app.modules.accounts.live_usage_overrides.read_local_codex_live_usage_by_snapshot",
+        lambda: {"snap-a": sample},
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.live_usage_overrides.read_local_codex_live_usage_samples_by_snapshot",
+        lambda: {"snap-a": [sample_entry]},
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.live_usage_overrides.read_live_codex_process_session_counts_by_snapshot",
+        lambda: {"snap-a": 1},
+    )
+
+    apply_local_live_usage_overrides(
+        accounts=[account_a, account_b],
+        snapshot_index=snapshot_index,
+        codex_auth_by_account=codex_auth_by_account,
+        primary_usage=primary_usage,
+        secondary_usage=secondary_usage,
+        codex_live_session_counts_by_account=codex_session_counts_by_account,
+        live_quota_debug_by_account=live_quota_debug_by_account,
+    )
+
+    assert primary_usage[account_a.id].used_percent == pytest.approx(70.0)
+    assert secondary_usage[account_a.id].used_percent == pytest.approx(60.0)
+    assert codex_session_counts_by_account[account_a.id] == 1
+    assert codex_auth_by_account[account_a.id].has_live_session is True
+
+    account_a_debug = live_quota_debug_by_account[account_a.id]
+    assert account_a_debug.override_applied is True
+    assert account_a_debug.override_reason == "applied_live_usage_windows"
+
+
 def test_apply_local_live_usage_overrides_matches_session_presence_with_expected_email_snapshot_name(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1240,6 +1477,106 @@ def test_fallback_mapping_distributes_low_confidence_fingerprint_samples_determi
     assert codex_session_counts_by_account == {account_a.id: 0, account_b.id: 0}
     assert codex_auth_by_account[account_a.id].has_live_session is False
     assert codex_auth_by_account[account_b.id].has_live_session is False
+    assert primary_usage[account_a.id].used_percent == baseline_primary[account_a.id].used_percent
+    assert secondary_usage[account_a.id].used_percent == baseline_secondary[account_a.id].used_percent
+    assert primary_usage[account_b.id].used_percent == baseline_primary[account_b.id].used_percent
+    assert secondary_usage[account_b.id].used_percent == baseline_secondary[account_b.id].used_percent
+
+
+def test_fallback_mapping_distributes_low_confidence_for_large_mixed_batches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    account_a = _make_account("acc-a", "a@example.com")
+    account_b = _make_account("acc-b", "b@example.com")
+    accounts = [account_a, account_b]
+    snapshot_index = CodexAuthSnapshotIndex(
+        snapshots_by_account_id={account_a.id: ["snap-a"], account_b.id: ["snap-b"]},
+        active_snapshot_name="snap-b",
+    )
+    codex_auth_by_account = {
+        account_a.id: AccountCodexAuthStatus(
+            has_snapshot=True,
+            snapshot_name="snap-a",
+            active_snapshot_name="snap-b",
+            is_active_snapshot=False,
+            has_live_session=False,
+        ),
+        account_b.id: AccountCodexAuthStatus(
+            has_snapshot=True,
+            snapshot_name="snap-b",
+            active_snapshot_name="snap-b",
+            is_active_snapshot=True,
+            has_live_session=False,
+        ),
+    }
+
+    shared_primary_reset = 1_220_100
+    shared_secondary_reset = 1_223_700
+    baseline_primary = {
+        account_a.id: _usage_entry(account_id=account_a.id, window="primary", used_percent=40.0, reset_at=shared_primary_reset, window_minutes=300),
+        account_b.id: _usage_entry(account_id=account_b.id, window="primary", used_percent=42.0, reset_at=shared_primary_reset, window_minutes=300),
+    }
+    baseline_secondary = {
+        account_a.id: _usage_entry(account_id=account_a.id, window="secondary", used_percent=40.0, reset_at=shared_secondary_reset, window_minutes=10_080),
+        account_b.id: _usage_entry(account_id=account_b.id, window="secondary", used_percent=42.0, reset_at=shared_secondary_reset, window_minutes=10_080),
+    }
+    primary_usage = dict(baseline_primary)
+    secondary_usage = dict(baseline_secondary)
+    codex_session_counts_by_account = {account_a.id: 0, account_b.id: 0}
+    monkeypatch.delenv(
+        "CODEX_LB_DEFAULT_SESSION_LOW_CONFIDENCE_ASSIGNMENTS_ENABLED",
+        raising=False,
+    )
+
+    _apply_local_default_session_fingerprint_overrides(
+        accounts=accounts,
+        snapshot_index=snapshot_index,
+        live_usage_by_snapshot={
+            "snap-b": LocalCodexLiveUsage(
+                recorded_at=datetime(2026, 4, 3, tzinfo=timezone.utc),
+                active_session_count=4,
+                primary=LocalUsageWindow(used_percent=50.0, reset_at=1_220_500, window_minutes=300),
+                secondary=LocalUsageWindow(used_percent=50.0, reset_at=1_224_100, window_minutes=10_080),
+            )
+        },
+        live_usage_samples_by_snapshot={
+            "snap-b": [
+                LocalCodexLiveUsageSample(
+                    source="rollout-low-confidence-1.jsonl",
+                    recorded_at=datetime(2026, 4, 3, 12, 0, tzinfo=timezone.utc),
+                    primary=LocalUsageWindow(used_percent=40.9, reset_at=shared_primary_reset, window_minutes=300),
+                    secondary=LocalUsageWindow(used_percent=40.9, reset_at=shared_secondary_reset, window_minutes=10_080),
+                    stale=False,
+                ),
+                LocalCodexLiveUsageSample(
+                    source="rollout-low-confidence-2.jsonl",
+                    recorded_at=datetime(2026, 4, 3, 12, 1, tzinfo=timezone.utc),
+                    primary=LocalUsageWindow(used_percent=41.9, reset_at=shared_primary_reset, window_minutes=300),
+                    secondary=LocalUsageWindow(used_percent=41.9, reset_at=shared_secondary_reset, window_minutes=10_080),
+                    stale=False,
+                ),
+                LocalCodexLiveUsageSample(
+                    source="rollout-low-confidence-3.jsonl",
+                    recorded_at=datetime(2026, 4, 3, 12, 2, tzinfo=timezone.utc),
+                    primary=LocalUsageWindow(used_percent=41.1, reset_at=shared_primary_reset, window_minutes=300),
+                    secondary=LocalUsageWindow(used_percent=41.1, reset_at=shared_secondary_reset, window_minutes=10_080),
+                    stale=False,
+                ),
+            ]
+        },
+        codex_auth_by_account=codex_auth_by_account,
+        baseline_primary_usage=baseline_primary,
+        baseline_secondary_usage=baseline_secondary,
+        primary_usage=primary_usage,
+        secondary_usage=secondary_usage,
+        codex_session_counts_by_account=codex_session_counts_by_account,
+    )
+
+    assert codex_session_counts_by_account[account_a.id] > 0
+    assert codex_session_counts_by_account[account_b.id] > 0
+    assert codex_session_counts_by_account[account_a.id] + codex_session_counts_by_account[account_b.id] == 3
+    assert codex_auth_by_account[account_a.id].has_live_session is True
+    assert codex_auth_by_account[account_b.id].has_live_session is True
     assert primary_usage[account_a.id].used_percent == baseline_primary[account_a.id].used_percent
     assert secondary_usage[account_a.id].used_percent == baseline_secondary[account_a.id].used_percent
     assert primary_usage[account_b.id].used_percent == baseline_primary[account_b.id].used_percent

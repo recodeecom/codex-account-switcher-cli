@@ -173,7 +173,7 @@ function TaskFinishedPill({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        "inline-flex h-7 items-center gap-2 rounded-full bg-emerald-500/10 px-2.5 text-emerald-200",
+        "inline-flex h-7 items-center gap-2 rounded-full border border-emerald-400/35 bg-gradient-to-r from-emerald-500/18 to-teal-500/12 px-2.5 text-emerald-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.09)]",
         className,
       )}
     >
@@ -239,7 +239,7 @@ function WaitingForTaskPill({
   return (
     <div
       className={cn(
-        "inline-flex h-7 items-center gap-2 rounded-full border border-cyan-400/35 bg-cyan-500/12 px-2.5 text-cyan-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]",
+        "inline-flex h-7 items-center gap-2 rounded-full border border-cyan-400/35 bg-gradient-to-r from-cyan-500/14 to-sky-500/10 px-2.5 text-cyan-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]",
         className,
       )}
     >
@@ -259,7 +259,7 @@ function ThinkingTaskPill({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        "inline-flex h-7 items-center gap-2 rounded-full bg-indigo-500/14 px-2.5 text-indigo-200",
+        "inline-flex h-7 items-center gap-2 rounded-full border border-indigo-300/35 bg-gradient-to-r from-indigo-500/14 to-violet-500/12 px-2.5 text-indigo-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]",
         className,
       )}
     >
@@ -271,6 +271,28 @@ function ThinkingTaskPill({ className }: { className?: string }) {
       </span>
       <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-100/95">
         thinking
+      </span>
+    </div>
+  );
+}
+
+function WorkingNowPill({ className }: { className?: string }) {
+  return (
+    <div
+      className={cn(
+        "inline-flex h-7 items-center gap-2 rounded-full border border-cyan-500/35 bg-gradient-to-r from-cyan-500/16 to-sky-500/12 px-2.5 text-cyan-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]",
+        className,
+      )}
+    >
+      <span className="sr-only">Codex working</span>
+      <span className="flex items-end gap-1" aria-hidden>
+        <span className="h-2 w-1 rounded-full bg-zinc-100/95 shadow-[0_0_8px_rgba(255,255,255,0.25)] animate-bounce [animation-duration:900ms]" />
+        <span className="h-3 w-1 rounded-full bg-zinc-100/95 shadow-[0_0_8px_rgba(255,255,255,0.25)] animate-bounce [animation-delay:140ms] [animation-duration:900ms]" />
+        <span className="h-4 w-1 rounded-full bg-cyan-200/95 shadow-[0_0_10px_rgba(103,232,249,0.35)] animate-bounce [animation-delay:280ms] [animation-duration:900ms]" />
+        <span className="h-3 w-1 rounded-full bg-zinc-100/95 shadow-[0_0_8px_rgba(255,255,255,0.25)] animate-bounce [animation-delay:420ms] [animation-duration:900ms]" />
+      </span>
+      <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-100/95">
+        working...
       </span>
     </div>
   );
@@ -336,15 +358,20 @@ function resolveSessionTaskStateForRow(
   row: SessionTaskRow,
   {
     hasLiveCliSessions,
+    latestThinkingTaskTimestampMs,
   }: {
     hasLiveCliSessions: boolean;
+    latestThinkingTaskTimestampMs: number | null;
   },
 ): SessionTaskState {
   const baseState = resolveSessionTaskState(row.taskPreview);
+  const rowTaskTimestampMs =
+    row.taskUpdatedAt != null && Number.isFinite(Date.parse(row.taskUpdatedAt))
+      ? Date.parse(row.taskUpdatedAt)
+      : null;
   const hasFreshTaskTimestamp =
-    row.taskUpdatedAt != null &&
-    Number.isFinite(Date.parse(row.taskUpdatedAt)) &&
-    Date.now() - Date.parse(row.taskUpdatedAt) <= STALE_SESSION_TASK_MS;
+    rowTaskTimestampMs != null &&
+    Date.now() - rowTaskTimestampMs <= STALE_SESSION_TASK_MS;
   if (baseState !== "thinking") {
     if (
       !hasLiveCliSessions &&
@@ -360,6 +387,13 @@ function resolveSessionTaskStateForRow(
     return "waiting";
   }
   if (hasLiveCliSessions) {
+    if (
+      latestThinkingTaskTimestampMs != null &&
+      rowTaskTimestampMs != null &&
+      rowTaskTimestampMs < latestThinkingTaskTimestampMs
+    ) {
+      return "finished";
+    }
     return "thinking";
   }
   return "finished";
@@ -1310,14 +1344,31 @@ export function AccountCard(props: AccountCardProps) {
   ]);
   const hasSessionTaskRows = sessionTaskRows.length > 0;
   const hasLiveCliSessions = codexLiveSessionCount > 0;
+  const latestThinkingTaskTimestampMs = useMemo(() => {
+    let latest: number | null = null;
+    for (const row of sessionTaskRows) {
+      if (resolveSessionTaskState(row.taskPreview) !== "thinking") {
+        continue;
+      }
+      if (row.taskUpdatedAt == null || !Number.isFinite(Date.parse(row.taskUpdatedAt))) {
+        continue;
+      }
+      const taskTimestamp = Date.parse(row.taskUpdatedAt);
+      if (latest == null || taskTimestamp > latest) {
+        latest = taskTimestamp;
+      }
+    }
+    return latest;
+  }, [sessionTaskRows]);
   const sessionTaskStates = useMemo(
     () =>
       sessionTaskRows.map((row) =>
         resolveSessionTaskStateForRow(row, {
           hasLiveCliSessions,
+          latestThinkingTaskTimestampMs,
         }),
       ),
-    [hasLiveCliSessions, sessionTaskRows],
+    [hasLiveCliSessions, latestThinkingTaskTimestampMs, sessionTaskRows],
   );
   const hasThinkingSessionTaskPreview = sessionTaskStates.some(
     (state) => state === "thinking",
@@ -1443,18 +1494,7 @@ export function AccountCard(props: AccountCardProps) {
                   ) : null}
                 </Badge>
               ) : showWorkingIndicator ? (
-                <div className="inline-flex h-7 items-center gap-2 rounded-full border border-cyan-500/35 px-2.5 text-cyan-200">
-                  <span className="sr-only">Codex working</span>
-                  <span className="flex items-end gap-1" aria-hidden>
-                    <span className="h-2 w-1 rounded-full bg-zinc-100/95 shadow-[0_0_8px_rgba(255,255,255,0.25)] animate-bounce [animation-duration:900ms]" />
-                    <span className="h-3 w-1 rounded-full bg-zinc-100/95 shadow-[0_0_8px_rgba(255,255,255,0.25)] animate-bounce [animation-delay:140ms] [animation-duration:900ms]" />
-                    <span className="h-4 w-1 rounded-full bg-cyan-200/95 shadow-[0_0_10px_rgba(103,232,249,0.35)] animate-bounce [animation-delay:280ms] [animation-duration:900ms]" />
-                    <span className="h-3 w-1 rounded-full bg-zinc-100/95 shadow-[0_0_8px_rgba(255,255,255,0.25)] animate-bounce [animation-delay:420ms] [animation-duration:900ms]" />
-                  </span>
-                  <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-100/95">
-                    working...
-                  </span>
-                </div>
+                <WorkingNowPill />
               ) : showWaitingForTaskIndicator ? (
                 <WaitingForTaskPill label={waitingTaskPillLabel} />
               ) : null}

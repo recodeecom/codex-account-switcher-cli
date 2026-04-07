@@ -20,7 +20,7 @@ function getErrorMessage(error: unknown): string {
     return error.message;
   }
 
-  return "Failed to authenticate with Medusa admin.";
+  return "Failed to authenticate with Medusa storefront.";
 }
 
 type MedusaAdminAuthState = {

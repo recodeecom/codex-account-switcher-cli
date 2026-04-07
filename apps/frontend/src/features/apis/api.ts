@@ -1,4 +1,4 @@
-import { del, get, patch, post } from "@/lib/api-client";
+import { ApiError, del, get, patch, post } from "@/lib/api-client";
 
 import {
   ApiKeyCreateRequestSchema,
@@ -9,47 +9,80 @@ import {
 } from "@/features/api-keys/schemas";
 import { ApiKeyTrendsResponseSchema, ApiKeyUsage7DayResponseSchema } from "@/features/apis/schemas";
 
-const API_KEYS_BASE_PATH = "/api/api-keys";
+const API_KEYS_BASE_PATHS = ["/api/api-keys", "/api/keys"] as const;
+
+async function withApiKeysPathFallback<T>(
+  operation: (basePath: (typeof API_KEYS_BASE_PATHS)[number]) => Promise<T>,
+): Promise<T> {
+  for (let index = 0; index < API_KEYS_BASE_PATHS.length; index += 1) {
+    const basePath = API_KEYS_BASE_PATHS[index];
+    const isLastPath = index === API_KEYS_BASE_PATHS.length - 1;
+    try {
+      return await operation(basePath);
+    } catch (error) {
+      const isNotFound = error instanceof ApiError && error.status === 404;
+      if (!isNotFound || isLastPath) {
+        throw error;
+      }
+    }
+  }
+
+  throw new Error("Failed to resolve API keys endpoint");
+}
 
 export function listApiKeys() {
-  return get(`${API_KEYS_BASE_PATH}/`, ApiKeyListSchema);
+  return withApiKeysPathFallback((basePath) =>
+    get(`${basePath}/`, ApiKeyListSchema),
+  );
 }
 
 export function createApiKey(payload: unknown) {
   const validated = ApiKeyCreateRequestSchema.parse(payload);
-  return post(`${API_KEYS_BASE_PATH}/`, ApiKeyCreateResponseSchema, {
-    body: validated,
-  });
+  return withApiKeysPathFallback((basePath) =>
+    post(`${basePath}/`, ApiKeyCreateResponseSchema, {
+      body: validated,
+    }),
+  );
 }
 
 export function updateApiKey(keyId: string, payload: unknown) {
   const validated = ApiKeyUpdateRequestSchema.parse(payload);
-  return patch(`${API_KEYS_BASE_PATH}/${encodeURIComponent(keyId)}`, ApiKeySchema, {
-    body: validated,
-  });
+  return withApiKeysPathFallback((basePath) =>
+    patch(`${basePath}/${encodeURIComponent(keyId)}`, ApiKeySchema, {
+      body: validated,
+    }),
+  );
 }
 
 export function deleteApiKey(keyId: string) {
-  return del(`${API_KEYS_BASE_PATH}/${encodeURIComponent(keyId)}`);
+  return withApiKeysPathFallback((basePath) =>
+    del(`${basePath}/${encodeURIComponent(keyId)}`),
+  );
 }
 
 export function regenerateApiKey(keyId: string) {
-  return post(
-    `${API_KEYS_BASE_PATH}/${encodeURIComponent(keyId)}/regenerate`,
-    ApiKeyCreateResponseSchema,
+  return withApiKeysPathFallback((basePath) =>
+    post(
+      `${basePath}/${encodeURIComponent(keyId)}/regenerate`,
+      ApiKeyCreateResponseSchema,
+    ),
   );
 }
 
 export function getApiKeyTrends(keyId: string) {
-  return get(
-    `${API_KEYS_BASE_PATH}/${encodeURIComponent(keyId)}/trends`,
-    ApiKeyTrendsResponseSchema,
+  return withApiKeysPathFallback((basePath) =>
+    get(
+      `${basePath}/${encodeURIComponent(keyId)}/trends`,
+      ApiKeyTrendsResponseSchema,
+    ),
   );
 }
 
 export function getApiKeyUsage7Day(keyId: string) {
-  return get(
-    `${API_KEYS_BASE_PATH}/${encodeURIComponent(keyId)}/usage-7d`,
-    ApiKeyUsage7DayResponseSchema,
+  return withApiKeysPathFallback((basePath) =>
+    get(
+      `${basePath}/${encodeURIComponent(keyId)}/usage-7d`,
+      ApiKeyUsage7DayResponseSchema,
+    ),
   );
 }

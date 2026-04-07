@@ -1934,6 +1934,45 @@ describe("AccountCard", () => {
     expect(screen.queryByText("thinking")).not.toBeInTheDocument();
   });
 
+  it("marks older thinking tasks as finished when a newer thinking task exists", () => {
+    const account = createAccountSummary({
+      codexCurrentTaskPreview: "Investigate account card session states",
+      codexSessionTaskPreviews: [
+        {
+          sessionKey: "sess-older-thinking",
+          taskPreview: "Investigate historical prompt replay",
+          taskUpdatedAt: "2026-04-05T10:00:00.000Z",
+        },
+        {
+          sessionKey: "sess-newer-thinking",
+          taskPreview: "Investigate account card session states",
+          taskUpdatedAt: "2026-04-05T10:05:00.000Z",
+        },
+      ],
+      codexLiveSessionCount: 2,
+      codexSessionCount: 2,
+      codexTrackedSessionCount: 2,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+    });
+
+    render(<AccountCard account={account} />);
+
+    expect(screen.getByTitle("sess-older-thinking")).toBeInTheDocument();
+    expect(screen.getByTitle("sess-newer-thinking")).toBeInTheDocument();
+    expect(screen.getByText("Investigate historical prompt replay")).toBeInTheDocument();
+    expect(
+      screen.getAllByText("Investigate account card session states").length,
+    ).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("1 finished")).toBeInTheDocument();
+    expect(screen.getByText("thinking")).toBeInTheDocument();
+  });
+
   it("treats waiting-for-user task previews as waiting instead of thinking", () => {
     const account = createAccountSummary({
       codexCurrentTaskPreview: "Waiting for user to press Submit.",

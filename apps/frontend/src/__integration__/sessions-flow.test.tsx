@@ -263,8 +263,77 @@ describe("sessions flow integration", () => {
     expect(screen.getByText("Weekly")).toBeInTheDocument();
     expect(screen.getAllByText("Collect per-session watch logs").length).toBeGreaterThan(0);
     expect(screen.getByText("AI timeline")).toBeInTheDocument();
-    expect(screen.getByText("Loaded session logs and summarized active quotas.")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Loaded session logs and summarized active quotas."),
+    ).toBeInTheDocument();
     expect(screen.getByText(/\$ session=session-watch-logs/i)).toBeInTheDocument();
+  });
+
+  it("keeps watch timeline graceful when fallback sessions have no sticky mapping", async () => {
+    let sessionEventsRequests = 0;
+
+    server.use(
+      http.get("/api/sticky-sessions", () =>
+        HttpResponse.json({
+          entries: [],
+          stalePromptCacheCount: 0,
+          total: 0,
+          hasMore: false,
+        }),
+      ),
+      http.get("/api/dashboard/overview", () =>
+        HttpResponse.json(
+          createDashboardOverview({
+            accounts: [
+              createAccountSummary({
+                accountId: "acc_watch_fallback",
+                email: "watch-fallback@example.com",
+                displayName: "watch-fallback@example.com",
+                codexLiveSessionCount: 1,
+                codexTrackedSessionCount: 1,
+                codexSessionCount: 0,
+                codexCurrentTaskPreview: "Waiting for new task",
+                codexAuth: {
+                  hasSnapshot: true,
+                  snapshotName: "watch-fallback",
+                  activeSnapshotName: "watch-fallback",
+                  isActiveSnapshot: true,
+                  hasLiveSession: true,
+                },
+              }),
+            ],
+          }),
+        ),
+      ),
+      http.get("/api/sticky-sessions/session-events", () => {
+        sessionEventsRequests += 1;
+        return HttpResponse.json(
+          {
+            error: {
+              code: "sticky_session_not_found",
+              message: "Sticky session not found",
+            },
+          },
+          { status: 404 },
+        );
+      }),
+    );
+
+    window.history.pushState(
+      {},
+      "",
+      "/sessions?accountId=acc_watch_fallback&sessionKey=pid%3A2716527&view=watch",
+    );
+    renderWithProviders(<App />);
+
+    expect(await screen.findByRole("heading", { name: "Sessions" })).toBeInTheDocument();
+    expect(await screen.findByText("Session watch logs")).toBeInTheDocument();
+    expect(screen.getByText("AI timeline")).toBeInTheDocument();
+    expect(screen.queryByText(/Failed to load session timeline:/i)).not.toBeInTheDocument();
+    expect(
+      screen.getByText("No prompt/answer timeline was captured for this session yet."),
+    ).toBeInTheDocument();
+    expect(sessionEventsRequests).toBe(0);
   });
 
   it("navigates to sessions from header tab", async () => {

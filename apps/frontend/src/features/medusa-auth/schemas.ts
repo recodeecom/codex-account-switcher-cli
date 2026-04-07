@@ -27,7 +27,7 @@ export const MedusaAdminUserSchema = z.object({
 });
 
 export const MedusaAdminUserResponseSchema = z.object({
-  user: MedusaAdminUserSchema,
+  customer: MedusaAdminUserSchema,
 });
 
 export type MedusaAdminLoginRequest = z.infer<typeof MedusaAdminLoginRequestSchema>;

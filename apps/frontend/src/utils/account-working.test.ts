@@ -927,6 +927,36 @@ describe("isAccountWorkingNow", () => {
     expect(getMergedQuotaRemainingPercent(account, "secondary")).toBeNull();
   });
 
+  it("ignores merged quotas when backend flags another account as the confident live-usage owner", () => {
+    const account = createAccountSummary({
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "odin",
+        activeSnapshotName: "odin",
+        expectedSnapshotName: "odin",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+      liveQuotaDebug: {
+        snapshotsConsidered: ["odin"],
+        overrideApplied: false,
+        overrideReason: "live_usage_confident_match_other_account",
+        merged: {
+          source: "merged",
+          snapshotName: "odin",
+          recordedAt: "2026-04-04T11:58:00.000Z",
+          stale: false,
+          primary: { usedPercent: 84, remainingPercent: 16, resetAt: 1760000000, windowMinutes: 300 },
+          secondary: { usedPercent: 10, remainingPercent: 90, resetAt: 1760600000, windowMinutes: 10080 },
+        },
+        rawSamples: [],
+      },
+    });
+
+    expect(getMergedQuotaRemainingPercent(account, "primary")).toBeNull();
+    expect(getMergedQuotaRemainingPercent(account, "secondary")).toBeNull();
+  });
+
   it("keeps merged quotas when override was applied", () => {
     const account = createAccountSummary({
       codexAuth: {
@@ -1391,6 +1421,99 @@ describe("hasActiveCliSessionSignal", () => {
       },
     });
     expect(hasActiveCliSessionSignal(taskPreviewOnly, nowMs)).toBe(true);
+
+    const sessionTaskPreviewOnly = createAccountSummary({
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
+        hasLiveSession: false,
+      },
+      codexLiveSessionCount: 0,
+      codexTrackedSessionCount: 0,
+      codexSessionCount: 0,
+      codexCurrentTaskPreview: null,
+      codexSessionTaskPreviews: [
+        {
+          sessionKey: "session-1",
+          taskPreview: "Investigate admin account session attribution",
+          taskUpdatedAt: "2026-04-04T11:59:00.000Z",
+        },
+      ],
+      lastUsageRecordedAtPrimary: null,
+      lastUsageRecordedAtSecondary: null,
+      liveQuotaDebug: {
+        snapshotsConsidered: ["main"],
+        overrideApplied: false,
+        overrideReason: "none",
+        merged: null,
+        rawSamples: [],
+      },
+    });
+    expect(hasActiveCliSessionSignal(sessionTaskPreviewOnly, nowMs)).toBe(true);
+
+    const staleSessionTaskPreviewOnly = createAccountSummary({
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
+        hasLiveSession: false,
+      },
+      codexLiveSessionCount: 0,
+      codexTrackedSessionCount: 0,
+      codexSessionCount: 0,
+      codexCurrentTaskPreview: null,
+      codexSessionTaskPreviews: [
+        {
+          sessionKey: "session-1",
+          taskPreview: "Investigate admin account session attribution",
+          taskUpdatedAt: "2026-04-04T03:40:00.000Z",
+        },
+      ],
+      lastUsageRecordedAtPrimary: null,
+      lastUsageRecordedAtSecondary: null,
+      liveQuotaDebug: {
+        snapshotsConsidered: ["main"],
+        overrideApplied: false,
+        overrideReason: "none",
+        merged: null,
+        rawSamples: [],
+      },
+    });
+    expect(hasActiveCliSessionSignal(staleSessionTaskPreviewOnly, nowMs)).toBe(true);
+
+    const finishedSessionTaskPreviewOnly = createAccountSummary({
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
+        hasLiveSession: false,
+      },
+      codexLiveSessionCount: 0,
+      codexTrackedSessionCount: 0,
+      codexSessionCount: 0,
+      codexCurrentTaskPreview: null,
+      codexSessionTaskPreviews: [
+        {
+          sessionKey: "session-1",
+          taskPreview: "Task finished",
+          taskUpdatedAt: "2026-04-04T11:59:00.000Z",
+        },
+      ],
+      lastUsageRecordedAtPrimary: null,
+      lastUsageRecordedAtSecondary: null,
+      liveQuotaDebug: {
+        snapshotsConsidered: ["main"],
+        overrideApplied: false,
+        overrideReason: "none",
+        merged: null,
+        rawSamples: [],
+      },
+    });
+    expect(hasActiveCliSessionSignal(finishedSessionTaskPreviewOnly, nowMs)).toBe(false);
 
     const warningPreviewOnly = createAccountSummary({
       codexAuth: {

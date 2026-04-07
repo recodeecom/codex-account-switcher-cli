@@ -31,6 +31,7 @@ from app.db.session import SessionLocal, close_db, init_background_db, init_db
 from app.modules.accounts import api as accounts_api
 from app.modules.api_keys import api as api_keys_api
 from app.modules.audit import api as audit_api
+from app.modules.billing import api as billing_api
 from app.modules.dashboard import api as dashboard_api
 from app.modules.dashboard_auth import api as dashboard_auth_api
 from app.modules.devices import api as devices_api
@@ -325,6 +326,7 @@ def create_app() -> FastAPI:
     app.include_router(projects_api.router)
     app.include_router(sticky_sessions_api.router)
     app.include_router(api_keys_api.router)
+    app.include_router(billing_api.router)
     app.include_router(health_api.router)
 
     static_dir = Path(__file__).parent / "static"

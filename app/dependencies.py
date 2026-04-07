@@ -15,6 +15,8 @@ from app.modules.api_keys.repository import ApiKeysRepository
 from app.modules.api_keys.service import ApiKeysService
 from app.modules.audit.repository import AuditRepository
 from app.modules.audit.service import AuditLogsService
+from app.modules.billing.repository import BillingRepository
+from app.modules.billing.service import BillingService
 from app.modules.dashboard.repository import DashboardRepository
 from app.modules.dashboard.service import DashboardService
 from app.modules.dashboard_auth.repository import DashboardAuthRepository
@@ -54,6 +56,13 @@ class AuditContext:
     session: AsyncSession
     repository: AuditRepository
     service: AuditLogsService
+
+
+@dataclass(slots=True)
+class BillingContext:
+    session: AsyncSession
+    repository: BillingRepository
+    service: BillingService
 
 
 @dataclass(slots=True)
@@ -157,6 +166,14 @@ def get_audit_context(
     repository = AuditRepository(session)
     service = AuditLogsService(repository)
     return AuditContext(session=session, repository=repository, service=service)
+
+
+def get_billing_context(
+    session: AsyncSession = Depends(get_session),
+) -> BillingContext:
+    repository = BillingRepository(session)
+    service = BillingService(repository)
+    return BillingContext(session=session, repository=repository, service=service)
 
 
 def get_usage_context(

@@ -47,6 +47,8 @@ import {
   formatQuotaResetLabel,
   formatWindowLabel,
 } from "@/utils/formatters";
+import { ApiError } from "@/lib/api-client";
+import type { SessionEventsResponse } from "@/features/sessions/schemas";
 
 const DEFAULT_LIMIT = 25;
 const WAITING_FOR_NEW_TASK_LABEL = "Waiting for new task";
@@ -325,6 +327,20 @@ function formatTimelineTimestamp(timestamp: string): string {
   return new Date(parsed).toLocaleString();
 }
 
+function isStickySessionNotFoundError(error: unknown): boolean {
+  return error instanceof ApiError && error.code === "sticky_session_not_found";
+}
+
+function buildEmptySessionEventsResponse(sessionKey: string): SessionEventsResponse {
+  return {
+    sessionKey,
+    resolvedSessionId: null,
+    sourceFile: null,
+    events: [],
+    truncated: false,
+  };
+}
+
 export function SessionsPage() {
   const navigate = useNavigate();
   const [offset, setOffset] = useState(0);
@@ -537,18 +553,31 @@ export function SessionsPage() {
         sessionKey: selectedSessionKey,
       },
     ],
-    queryFn: () =>
-      getSessionEvents({
-        accountId: selectedAccountId as string,
-        sessionKey: selectedSessionKey as string,
-        limit: 160,
-      }),
+    queryFn: async () => {
+      try {
+        return await getSessionEvents({
+          accountId: selectedAccountId as string,
+          sessionKey: selectedSessionKey as string,
+          limit: 160,
+        });
+      } catch (error) {
+        if (isStickySessionNotFoundError(error)) {
+          return buildEmptySessionEventsResponse(selectedSessionKey as string);
+        }
+        throw error;
+      }
+    },
     enabled:
       watchMode
       && selectedSessionKey != null
       && selectedSessionKey.length > 0
       && selectedAccountId != null
-      && selectedAccountId.length > 0,
+      && selectedAccountId.length > 0
+      && sessionsQuery.isFetched
+      && (
+        selectedStickyEntry != null
+        || (sessionsQuery.data?.total ?? 0) > 0
+      ),
     refetchInterval: 12_000,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,

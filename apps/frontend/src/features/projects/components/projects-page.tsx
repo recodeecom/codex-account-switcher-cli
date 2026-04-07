@@ -74,6 +74,18 @@ function buildProjectContextBlock(args: {
   ].join("\n");
 }
 
+function formatAccountLabel(account: AccountSummary): string {
+  const displayName = account.displayName.trim();
+  const email = account.email.trim();
+  if (!displayName) {
+    return email;
+  }
+  if (!email || displayName.toLowerCase() === email.toLowerCase()) {
+    return displayName;
+  }
+  return `${displayName} (${email})`;
+}
+
 export function ProjectsPage() {
   const [projectName, setProjectName] = useState("");
   const [projectDescription, setProjectDescription] = useState("");
@@ -89,13 +101,16 @@ export function ProjectsPage() {
   const [editingProjectGitBranch, setEditingProjectGitBranch] = useState("");
   const [controlAccountId, setControlAccountId] = useState("");
   const [controlProjectId, setControlProjectId] = useState(NO_PROJECT_CONTEXT_VALUE);
+  const [manualAccountId, setManualAccountId] = useState("");
   const [controlPrompt, setControlPrompt] = useState("");
   const [controlSending, setControlSending] = useState(false);
+  const [showControlCenter, setShowControlCenter] = useState(false);
   const { projectsQuery, createMutation, updateMutation, deleteMutation } = useProjects();
   const deleteDialog = useDialogState<{ id: string; name: string }>();
   const overviewQuery = useQuery({
     queryKey: ["dashboard", "overview"],
     queryFn: getDashboardOverview,
+    enabled: showControlCenter,
     refetchInterval: 30_000,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
@@ -106,16 +121,27 @@ export function ProjectsPage() {
       getErrorMessageOrNull(projectsQuery.error) ||
       getErrorMessageOrNull(createMutation.error) ||
       getErrorMessageOrNull(updateMutation.error) ||
-      getErrorMessageOrNull(deleteMutation.error) ||
-      getErrorMessageOrNull(overviewQuery.error),
+      getErrorMessageOrNull(deleteMutation.error),
     [
       projectsQuery.error,
       createMutation.error,
       updateMutation.error,
       deleteMutation.error,
-      overviewQuery.error,
     ],
   );
+  const displayMutationError = useMemo(() => {
+    if (!mutationError) {
+      return null;
+    }
+    if (
+      mutationError.toLowerCase() === "unexpected error"
+      && projectsQuery.isError
+    ) {
+      return "Couldn’t load projects yet. Check backend status and database migrations, then refresh.";
+    }
+    return mutationError;
+  }, [mutationError, projectsQuery.isError]);
+  const controlPanelError = getErrorMessageOrNull(overviewQuery.error);
 
   const entries = projectsQuery.data?.entries ?? [];
   const busy = createMutation.isPending || updateMutation.isPending || deleteMutation.isPending;
@@ -135,7 +161,8 @@ export function ProjectsPage() {
       ? entries.find((entry) => entry.id === controlProjectId) ?? null
       : null;
   const selectedAccount = orderedAccounts.find((account) => account.accountId === controlAccountId) ?? null;
-  const controlDisabled = controlSending || !controlAccountId || controlPrompt.trim().length === 0;
+  const effectiveControlAccountId = controlAccountId.trim() || manualAccountId.trim();
+  const controlDisabled = controlSending || !effectiveControlAccountId || controlPrompt.trim().length === 0;
 
   useEffect(() => {
     if (controlAccountId || orderedAccounts.length === 0) {
@@ -233,10 +260,10 @@ export function ProjectsPage() {
     setControlSending(true);
     try {
       await sendPromptToAccountTerminal({
-        accountId: controlAccountId,
+        accountId: effectiveControlAccountId,
         prompt,
       });
-      const displayName = selectedAccount?.displayName ?? controlAccountId;
+      const displayName = selectedAccount?.displayName ?? effectiveControlAccountId;
       toast.success(`Prompt sent to ${displayName}`);
     } catch (caught) {
       toast.error(getErrorMessageOrNull(caught) ?? "Failed to dispatch prompt");
@@ -246,25 +273,45 @@ export function ProjectsPage() {
   };
 
   return (
-    <div className="animate-fade-in-up space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Projects</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Group and manage your project contexts in one place.
-        </p>
+    <div className="animate-fade-in-up space-y-7">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Projects</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Group and manage your project contexts in one place.
+          </p>
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          variant={showControlCenter ? "secondary" : "outline"}
+          className="h-9 rounded-full px-4 text-xs"
+          onClick={() => {
+            setShowControlCenter((current) => !current);
+          }}
+        >
+          {showControlCenter ? "Hide Codex control tools" : "Open Codex control tools"}
+        </Button>
       </div>
 
-      {mutationError ? <AlertMessage variant="error">{mutationError}</AlertMessage> : null}
+      {displayMutationError ? (
+        <AlertMessage variant="error">{displayMutationError}</AlertMessage>
+      ) : null}
 
-      <section className="space-y-4 rounded-xl border bg-card p-5">
+      {showControlCenter ? (
+      <section className="relative space-y-5 overflow-hidden rounded-[28px] border border-cyan-500/20 bg-[radial-gradient(140%_170%_at_0%_0%,rgba(56,189,248,0.16)_0%,rgba(7,12,24,0.92)_54%,rgba(3,8,18,0.98)_100%)] p-5 shadow-[0_12px_40px_-24px_rgba(56,189,248,0.45)] backdrop-blur-sm md:p-6">
+        <div
+          aria-hidden="true"
+            className="pointer-events-none absolute -right-14 -top-14 h-36 w-36 rounded-full bg-cyan-400/25 blur-3xl"
+          />
         <div className="flex items-center justify-between gap-2.5">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
-              <SendHorizontal className="h-4 w-4 text-primary" aria-hidden="true" />
+            <div className="flex h-9 w-9 items-center justify-center rounded-2xl border border-cyan-400/35 bg-cyan-400/15">
+              <SendHorizontal className="h-4.5 w-4.5 text-cyan-100" aria-hidden="true" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold">Codex control center</h3>
-              <p className="text-xs text-muted-foreground">
+              <h3 className="text-sm font-semibold tracking-tight text-cyan-50">Codex control center</h3>
+              <p className="text-xs text-cyan-100/70">
                 Dispatch prompts from the dashboard without opening CLI manually.
               </p>
             </div>
@@ -273,7 +320,7 @@ export function ProjectsPage() {
             type="button"
             size="sm"
             variant="outline"
-            className="h-8 text-xs"
+            className="h-9 rounded-full border-cyan-400/30 bg-cyan-400/10 px-4 text-xs text-cyan-50 hover:bg-cyan-400/15"
             onClick={() => {
               void overviewQuery.refetch();
             }}
@@ -283,9 +330,26 @@ export function ProjectsPage() {
           </Button>
         </div>
 
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex h-6 items-center rounded-full border border-cyan-400/35 bg-cyan-400/15 px-2.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-cyan-100">
+            iOS-friendly quick dispatch
+          </span>
+          {selectedAccount ? (
+            <span className="inline-flex h-6 items-center rounded-full border border-emerald-400/35 bg-emerald-400/15 px-2.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-100">
+              Active target: {selectedAccount.displayName}
+            </span>
+          ) : null}
+        </div>
+
+        {controlPanelError ? (
+          <div className="rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+            Couldn’t refresh account list right now ({controlPanelError}). You can still dispatch by manual account ID.
+          </div>
+        ) : null}
+
         <div className="grid gap-3 md:grid-cols-2">
           <div className="space-y-2">
-            <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+            <Label className="text-xs font-medium tracking-normal text-cyan-100/80">
               Target account
             </Label>
             <Select
@@ -293,21 +357,30 @@ export function ProjectsPage() {
               onValueChange={setControlAccountId}
               disabled={orderedAccounts.length === 0 || controlSending}
             >
-              <SelectTrigger className="h-8 text-xs">
+              <SelectTrigger className="h-10 rounded-2xl border-cyan-400/25 bg-black/20 px-3 text-xs">
                 <SelectValue placeholder="Select account" />
               </SelectTrigger>
               <SelectContent>
                 {orderedAccounts.map((account) => (
                   <SelectItem key={account.accountId} value={account.accountId}>
-                    {account.displayName} ({account.email})
+                    {formatAccountLabel(account)}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            {orderedAccounts.length === 0 ? (
+              <Input
+                value={manualAccountId}
+                onChange={(event) => setManualAccountId(event.target.value)}
+                placeholder="Manual account ID (e.g. acc_primary)"
+                className="h-10 rounded-2xl border-cyan-400/25 bg-black/20 text-xs"
+                disabled={controlSending}
+              />
+            ) : null}
           </div>
 
           <div className="space-y-2">
-            <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+            <Label className="text-xs font-medium tracking-normal text-cyan-100/80">
               Project context (optional)
             </Label>
             <Select
@@ -315,7 +388,7 @@ export function ProjectsPage() {
               onValueChange={setControlProjectId}
               disabled={entries.length === 0 || controlSending}
             >
-              <SelectTrigger className="h-8 text-xs">
+              <SelectTrigger className="h-10 rounded-2xl border-cyan-400/25 bg-black/20 px-3 text-xs">
                 <SelectValue placeholder="No project context" />
               </SelectTrigger>
               <SelectContent>
@@ -334,22 +407,24 @@ export function ProjectsPage() {
           value={controlPrompt}
           onChange={(event) => setControlPrompt(event.target.value)}
           placeholder="Describe exactly what this Codex account should implement next..."
-          className="min-h-28 text-xs"
+          className="min-h-32 rounded-2xl border-cyan-500/25 bg-black/25 text-sm leading-6 placeholder:text-cyan-100/40"
           disabled={controlSending}
         />
 
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-xs text-muted-foreground">
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-cyan-500/20 bg-black/20 px-3 py-2">
+          <p className="text-xs text-cyan-100/75">
             {selectedAccount
-              ? `Selected account: ${selectedAccount.displayName} (${selectedAccount.email})`
-              : "Pick a target account to enable dispatch."}
+              ? `Selected account: ${formatAccountLabel(selectedAccount)}`
+              : effectiveControlAccountId
+                ? `Selected account: ${effectiveControlAccountId}`
+                : "Pick a target account to enable dispatch."}
           </p>
           <div className="flex items-center gap-2">
             <Button
               type="button"
               size="sm"
               variant="outline"
-              className="h-8 text-xs"
+              className="h-9 rounded-full border-cyan-400/30 bg-transparent px-4 text-xs text-cyan-50 hover:bg-cyan-400/12"
               onClick={injectProjectContext}
               disabled={controlSending || selectedProject == null}
             >
@@ -358,7 +433,7 @@ export function ProjectsPage() {
             <Button
               type="button"
               size="sm"
-              className="h-8 text-xs"
+              className="h-9 rounded-full bg-cyan-500 px-4 text-xs font-semibold text-slate-950 hover:bg-cyan-400"
               onClick={() => {
                 void handleSendControlPrompt();
               }}
@@ -369,14 +444,15 @@ export function ProjectsPage() {
           </div>
         </div>
       </section>
+      ) : null}
 
-      <section className="space-y-4 rounded-xl border bg-card p-5">
+      <section className="space-y-4 rounded-[28px] border border-border/65 bg-card/85 p-5 shadow-[0_10px_30px_-24px_rgba(15,23,42,0.6)] backdrop-blur-sm md:p-6">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
+          <div className="flex h-9 w-9 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
             <FolderKanban className="h-4 w-4 text-primary" aria-hidden="true" />
           </div>
           <div>
-            <h3 className="text-sm font-semibold">Saved projects</h3>
+            <h3 className="text-sm font-semibold tracking-tight">Saved projects</h3>
             <p className="text-xs text-muted-foreground">Create and maintain reusable project contexts.</p>
           </div>
         </div>
@@ -387,14 +463,14 @@ export function ProjectsPage() {
               value={projectName}
               onChange={(event) => setProjectName(event.target.value)}
               placeholder="Project name (e.g. recodee-core)"
-              className="h-8 text-xs"
+              className="h-10 rounded-2xl text-xs"
               disabled={addDisabled}
             />
             <Input
               value={projectPath}
               onChange={(event) => setProjectPath(event.target.value)}
               placeholder="Absolute project path (optional)"
-              className="h-8 text-xs"
+              className="h-10 rounded-2xl text-xs"
               disabled={addDisabled}
             />
           </div>
@@ -403,7 +479,7 @@ export function ProjectsPage() {
               value={projectGitBranch}
               onChange={(event) => setProjectGitBranch(event.target.value)}
               placeholder="Git branch (optional)"
-              className="h-8 text-xs"
+              className="h-10 rounded-2xl text-xs"
               disabled={addDisabled}
             />
             <Select
@@ -411,7 +487,7 @@ export function ProjectsPage() {
               onValueChange={(value) => setProjectSandboxMode(value as ProjectSandboxMode)}
               disabled={addDisabled}
             >
-              <SelectTrigger className="h-8 text-xs">
+              <SelectTrigger className="h-10 rounded-2xl text-xs">
                 <SelectValue placeholder="Sandbox mode" />
               </SelectTrigger>
               <SelectContent>
@@ -425,7 +501,7 @@ export function ProjectsPage() {
             <Button
               type="button"
               size="sm"
-              className="h-8 text-xs"
+              className="h-10 rounded-2xl px-4 text-xs"
               onClick={() => {
                 void handleAdd();
               }}
@@ -438,7 +514,7 @@ export function ProjectsPage() {
             value={projectDescription}
             onChange={(event) => setProjectDescription(event.target.value)}
             placeholder="Optional description (max 512 characters)"
-            className="min-h-20 text-xs"
+            className="min-h-24 rounded-2xl text-xs"
             disabled={addDisabled}
             maxLength={512}
           />

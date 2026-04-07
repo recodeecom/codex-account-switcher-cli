@@ -69,10 +69,10 @@ export function MedusaAdminLoginDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <KeyRound className="h-4 w-4 text-primary" aria-hidden="true" />
-            Medusa Admin Sign In
+            Medusa Storefront Sign In
           </DialogTitle>
           <DialogDescription>
-            Authenticate against your Medusa backend admin user credentials.
+            Authenticate against your Medusa storefront customer credentials.
           </DialogDescription>
         </DialogHeader>
 
@@ -86,7 +86,7 @@ export function MedusaAdminLoginDialog({
               value={email}
               onChange={(event) => setEmail(event.currentTarget.value)}
               type="email"
-              placeholder="admin@example.com"
+              placeholder="customer@example.com"
               autoComplete="email"
               disabled={loading}
             />

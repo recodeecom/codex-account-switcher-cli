@@ -33,7 +33,7 @@ async function medusaAdminFetch(pathname: string, init?: RequestInit): Promise<u
   const rawBody = await response.text();
   if (!response.ok) {
     throw new MedusaClientError(
-      `Medusa admin request failed with status ${response.status}`,
+      `Medusa auth request failed with status ${response.status}`,
       response.status,
       rawBody,
     );
@@ -48,7 +48,7 @@ async function medusaAdminFetch(pathname: string, init?: RequestInit): Promise<u
 
 export async function loginMedusaAdmin(payload: MedusaAdminLoginRequest): Promise<string> {
   const validatedPayload = MedusaAdminLoginRequestSchema.parse(payload);
-  const response = await medusaAdminFetch("/auth/user/emailpass", {
+  const response = await medusaAdminFetch("/auth/customer/emailpass", {
     method: "POST",
     body: JSON.stringify(validatedPayload),
   });
@@ -63,12 +63,17 @@ export async function loginMedusaAdmin(payload: MedusaAdminLoginRequest): Promis
 }
 
 export async function getMedusaAdminUser(token: string): Promise<MedusaAdminUser> {
-  const response = await medusaAdminFetch("/admin/users/me", {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
+  const { publishableKey } = getMedusaRuntimeConfig();
+  const headers = new Headers({
+    Authorization: `Bearer ${token}`,
   });
 
+  if (publishableKey) {
+    headers.set("x-publishable-api-key", publishableKey);
+  }
+
+  const response = await medusaAdminFetch("/store/customers/me", { headers });
+
   const parsedResponse = MedusaAdminUserResponseSchema.parse(response);
-  return parsedResponse.user;
+  return parsedResponse.customer;
 }

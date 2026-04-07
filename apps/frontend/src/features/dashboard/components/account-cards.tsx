@@ -729,20 +729,30 @@ export function AccountCards({
   return (
     <div className="space-y-5">
       {groupedAccounts.working.length > 0 ? (
-        <section className="space-y-4 rounded-2xl border border-cyan-500/25 bg-gradient-to-b from-cyan-500/[0.05] via-background/80 to-background p-4 md:p-6">
-          <div className="flex flex-col gap-3 border-b border-border/70 pb-4 xl:flex-row xl:items-start xl:justify-between">
+        <section className="relative overflow-hidden space-y-4 rounded-2xl border border-cyan-500/30 bg-[radial-gradient(120%_135%_at_0%_0%,rgba(34,211,238,0.14)_0%,rgba(8,13,24,0.9)_48%,rgba(3,7,18,0.98)_100%)] p-4 shadow-[0_0_0_1px_rgba(34,211,238,0.06),0_18px_48px_-34px_rgba(34,211,238,0.4)] md:p-6">
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute -top-16 -right-16 h-40 w-40 rounded-full bg-cyan-400/25 blur-3xl"
+          />
+          <div className="relative flex flex-col gap-3 border-b border-cyan-500/20 pb-4 xl:flex-row xl:items-start xl:justify-between">
             <div className="min-w-0 space-y-1.5">
-              <h3 className="text-base font-semibold tracking-tight text-cyan-800 dark:text-cyan-200">
-                Working now
-              </h3>
-              <p className="text-xs text-muted-foreground">
+              <div className="inline-flex items-center gap-2.5">
+                <span className="relative inline-flex h-2.5 w-2.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400/70" />
+                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-300 shadow-[0_0_0_3px_rgba(16,185,129,0.16)]" />
+                </span>
+                <h3 className="text-base font-semibold tracking-tight text-cyan-100">
+                  Working now
+                </h3>
+              </div>
+              <p className="text-xs text-cyan-100/70">
                 Accounts with active CLI sessions are grouped first so you can
                 switch faster.
               </p>
             </div>
-            <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 xl:w-[34rem] xl:min-w-[34rem]">
-              <span className="inline-flex min-h-10 items-center justify-between rounded-xl border border-cyan-500/35 bg-cyan-500/12 px-3 py-1.5 text-cyan-800 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] dark:text-cyan-200">
-                <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-cyan-800/80 dark:text-cyan-200/80">
+            <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 xl:w-[36rem] xl:min-w-[36rem]">
+              <span className="inline-flex min-h-11 items-center justify-between rounded-xl border border-cyan-400/35 bg-cyan-400/12 px-3 py-2 text-cyan-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)]">
+                <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-cyan-100/70">
                   Active accounts
                 </span>
                 <span className="text-sm font-semibold tabular-nums">
@@ -750,8 +760,8 @@ export function AccountCards({
                 </span>
               </span>
               {workingSummary.liveSessions > 0 ? (
-                <span className="inline-flex min-h-10 items-center justify-between rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-3 py-1.5 text-cyan-800 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] dark:text-cyan-200">
-                  <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-cyan-800/80 dark:text-cyan-200/80">
+                <span className="inline-flex min-h-11 items-center justify-between rounded-xl border border-cyan-400/30 bg-cyan-400/10 px-3 py-2 text-cyan-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)]">
+                  <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-cyan-100/70">
                     CLI sessions
                   </span>
                   <span className="text-sm font-semibold tabular-nums">
@@ -760,8 +770,8 @@ export function AccountCards({
                 </span>
               ) : null}
               {workingSummary.avgPrimaryRemaining !== null ? (
-                <span className="inline-flex min-h-10 items-center justify-between rounded-xl border border-emerald-500/30 bg-emerald-500/12 px-3 py-1.5 text-emerald-800 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] dark:text-emerald-200">
-                  <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-emerald-800/80 dark:text-emerald-200/80">
+                <span className="inline-flex min-h-11 items-center justify-between rounded-xl border border-emerald-400/32 bg-emerald-400/12 px-3 py-2 text-emerald-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)]">
+                  <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-emerald-100/75">
                     {primaryWindowLabel} average
                   </span>
                   <span className="text-sm font-semibold tabular-nums">
@@ -770,8 +780,8 @@ export function AccountCards({
                 </span>
               ) : null}
               {workingSummary.avgSecondaryRemaining !== null ? (
-                <span className="inline-flex min-h-10 items-center justify-between rounded-xl border border-emerald-500/30 bg-emerald-500/12 px-3 py-1.5 text-emerald-800 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] dark:text-emerald-200">
-                  <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-emerald-800/80 dark:text-emerald-200/80">
+                <span className="inline-flex min-h-11 items-center justify-between rounded-xl border border-emerald-400/32 bg-emerald-400/12 px-3 py-2 text-emerald-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)]">
+                  <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-emerald-100/75">
                     Weekly average
                   </span>
                   <span className="text-sm font-semibold tabular-nums">

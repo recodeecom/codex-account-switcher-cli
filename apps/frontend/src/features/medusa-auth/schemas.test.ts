@@ -6,7 +6,7 @@ import {
   MedusaAdminUserResponseSchema,
 } from "@/features/medusa-auth/schemas";
 
-describe("Medusa admin auth schemas", () => {
+describe("Medusa storefront auth schemas", () => {
   it("validates email/password login payload", () => {
     expect(
       MedusaAdminLoginRequestSchema.safeParse({
@@ -32,17 +32,17 @@ describe("Medusa admin auth schemas", () => {
     ).toBe(true);
   });
 
-  it("parses admin user payload", () => {
+  it("parses customer payload", () => {
     const parsed = MedusaAdminUserResponseSchema.parse({
-      user: {
+      customer: {
         id: "user_123",
-        email: "admin@example.com",
-        first_name: "Admin",
+        email: "customer@example.com",
+        first_name: "Customer",
         last_name: "User",
         avatar_url: null,
       },
     });
 
-    expect(parsed.user.email).toBe("admin@example.com");
+    expect(parsed.customer.email).toBe("customer@example.com");
   });
 });
