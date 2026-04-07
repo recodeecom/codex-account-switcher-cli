@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from typing import Literal
 
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Project
@@ -21,6 +21,7 @@ class ProjectsRepository:
         self._session = session
 
     async def list_entries(self) -> Sequence[Project]:
+        await self._ensure_projects_table()
         result = await self._session.execute(select(Project).order_by(Project.created_at, Project.name))
         return list(result.scalars().all())
 
@@ -36,6 +37,7 @@ class ProjectsRepository:
         sandbox_mode: str,
         git_branch: str | None,
     ) -> Project:
+        await self._ensure_projects_table()
         row = Project(
             name=name,
             description=description,
@@ -61,6 +63,7 @@ class ProjectsRepository:
         sandbox_mode: str,
         git_branch: str | None,
     ) -> Project | None:
+        await self._ensure_projects_table()
         row = await self._session.get(Project, project_id)
         if row is None:
             return None
@@ -78,6 +81,7 @@ class ProjectsRepository:
         return row
 
     async def delete(self, project_id: str) -> bool:
+        await self._ensure_projects_table()
         row = await self._session.get(Project, project_id)
         if row is None:
             return False
@@ -85,9 +89,32 @@ class ProjectsRepository:
         await self._session.commit()
         return True
 
+    async def _ensure_projects_table(self) -> None:
+        try:
+            await self._session.execute(select(Project.id).limit(1))
+            return
+        except OperationalError as exc:
+            if not _is_missing_projects_table_error(exc):
+                raise
+            await self._session.rollback()
+
+        await self._session.run_sync(
+            lambda sync_session: Project.__table__.create(bind=sync_session.get_bind(), checkfirst=True)
+        )
+        await self._session.commit()
+
 
 def _detect_conflict_field(exc: IntegrityError) -> Literal["name", "unknown"]:
     message = str(getattr(exc, "orig", exc)).lower()
     if "projects.name" in message or "(name)" in message:
         return "name"
     return "unknown"
+
+
+def _is_missing_projects_table_error(exc: OperationalError) -> bool:
+    message = str(getattr(exc, "orig", exc)).lower()
+    return (
+        "no such table: projects" in message
+        or ('relation "projects" does not exist' in message)
+        or ("relation 'projects' does not exist" in message)
+    )

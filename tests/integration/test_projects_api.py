@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import pytest
+from sqlalchemy import text
+
+from app.db.session import engine
 
 pytestmark = pytest.mark.integration
 
@@ -189,3 +192,20 @@ async def test_projects_api_defaults_sandbox_mode(async_client):
     assert payload["projectPath"] is None
     assert payload["sandboxMode"] == "workspace-write"
     assert payload["gitBranch"] is None
+
+
+@pytest.mark.asyncio
+async def test_projects_api_recovers_when_projects_table_missing(async_client):
+    async with engine.begin() as conn:
+        await conn.execute(text("DROP TABLE IF EXISTS projects"))
+
+    listed = await async_client.get("/api/projects")
+    assert listed.status_code == 200
+    assert listed.json() == {"entries": []}
+
+    created = await async_client.post(
+        "/api/projects",
+        json={"name": "recovered-project"},
+    )
+    assert created.status_code == 200
+    assert created.json()["name"] == "recovered-project"
