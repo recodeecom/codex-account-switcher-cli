@@ -2,6 +2,13 @@ import { spawn } from "node:child_process";
 
 const SEMVER_TRIPLET = /^v?(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/;
 export const PACKAGE_NAME = "@imdeadpool/codex-account-switcher";
+export type UpdateState = "update-available" | "up-to-date" | "unknown";
+
+export interface UpdateSummary {
+  currentVersion: string;
+  latestVersion: string;
+  state: UpdateState;
+}
 
 export function parseVersionTriplet(version: string): [number, number, number] | null {
   const match = version.trim().match(SEMVER_TRIPLET);
@@ -21,6 +28,52 @@ export function isVersionNewer(currentVersion: string, latestVersion: string): b
   }
 
   return false;
+}
+
+export function getUpdateSummary(currentVersion: string, latestVersion: string): UpdateSummary {
+  const current = parseVersionTriplet(currentVersion);
+  const latest = parseVersionTriplet(latestVersion);
+  if (!current || !latest) {
+    return {
+      currentVersion,
+      latestVersion,
+      state: "unknown",
+    };
+  }
+
+  return {
+    currentVersion,
+    latestVersion,
+    state: isVersionNewer(currentVersion, latestVersion) ? "update-available" : "up-to-date",
+  };
+}
+
+export function formatUpdateSummaryCard(summary: UpdateSummary): string[] {
+  const statusLabel =
+    summary.state === "update-available"
+      ? "update available"
+      : summary.state === "up-to-date"
+        ? "up to date"
+        : "unknown";
+
+  return [
+    "┌─ codex-auth update",
+    `│  current: ${summary.currentVersion}`,
+    `│  latest : ${summary.latestVersion}`,
+    `└─ status : ${statusLabel}`,
+  ];
+}
+
+export function formatUpdateSummaryInline(summary: UpdateSummary): string {
+  if (summary.state === "update-available") {
+    return `⬆ Update available: ${summary.currentVersion} -> ${summary.latestVersion}`;
+  }
+
+  if (summary.state === "up-to-date") {
+    return `✓ Up to date: ${summary.currentVersion}`;
+  }
+
+  return `ℹ Update status unknown (current: ${summary.currentVersion}, latest: ${summary.latestVersion})`;
 }
 
 export async function fetchLatestNpmVersion(packageName: string, timeoutMs = 2_500): Promise<string | null> {

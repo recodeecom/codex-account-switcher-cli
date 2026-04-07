@@ -1,7 +1,13 @@
 import { Flags } from "@oclif/core";
 import prompts from "prompts";
 import { BaseCommand } from "../lib/base-command";
-import { fetchLatestNpmVersion, isVersionNewer, PACKAGE_NAME, runGlobalNpmInstall } from "../lib/update-check";
+import {
+  fetchLatestNpmVersion,
+  formatUpdateSummaryInline,
+  getUpdateSummary,
+  PACKAGE_NAME,
+  runGlobalNpmInstall,
+} from "../lib/update-check";
 
 export default class ListCommand extends BaseCommand {
   static description = "List accounts managed under ~/.codex";
@@ -61,9 +67,12 @@ export default class ListCommand extends BaseCommand {
     if (!currentVersion || typeof currentVersion !== "string") return;
 
     const latestVersion = await fetchLatestNpmVersion(PACKAGE_NAME);
-    if (!latestVersion || !isVersionNewer(currentVersion, latestVersion)) return;
+    if (!latestVersion) return;
 
-    this.log(`Update available for codex-auth: ${currentVersion} -> ${latestVersion}`);
+    const summary = getUpdateSummary(currentVersion, latestVersion);
+    if (summary.state !== "update-available") return;
+
+    this.log(formatUpdateSummaryInline(summary));
 
     const prompt = await prompts({
       type: "confirm",
