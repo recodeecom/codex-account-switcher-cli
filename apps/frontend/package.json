@@ -6,7 +6,9 @@
   "packageManager": "bun@1.3.7",
   "scripts": {
     "sync-version": "bun ./scripts/write-version-json.mjs",
-    "dev": "sh ./scripts/run-frontend-dev.sh",
+    "dev": "sh ./scripts/run-fullstack-dev.sh",
+    "dev:frontend": "START_APP_BACKEND=false sh ./scripts/run-fullstack-dev.sh",
+    "dev:fullstack": "sh ./scripts/run-fullstack-dev.sh",
     "build": "bun run sync-version && next build && bun run sync-static",
     "sync-static": "rm -rf ../app/static && mkdir -p ../app/static && cp -R out/. ../app/static/",
     "test": "vitest run",

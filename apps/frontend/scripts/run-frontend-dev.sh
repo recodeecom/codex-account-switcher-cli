@@ -10,7 +10,7 @@ normalize_bool() {
 
 script_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 frontend_dir="$(CDPATH= cd -- "${script_dir}/.." && pwd)"
-repo_root="$(CDPATH= cd -- "${frontend_dir}/.." && pwd)"
+repo_root="$(CDPATH= cd -- "${frontend_dir}/../.." && pwd)"
 lock_file="${frontend_dir}/.next/dev/lock"
 
 host="${NEXT_DEV_HOSTNAME:-0.0.0.0}"

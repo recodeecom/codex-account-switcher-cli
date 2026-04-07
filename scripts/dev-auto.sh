@@ -2,8 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-FRONTEND_DIR="$ROOT_DIR/frontend"
-FRONTEND_DEV_PORT="${NEXT_DEV_PORT:-5173}"
+FRONTEND_DIR="$ROOT_DIR/apps/frontend"
+FRONTEND_DEV_PORT="${NEXT_DEV_PORT:-5174}"
 
 port_in_use() {
   local port="$1"
@@ -24,7 +24,7 @@ Usage: ./scripts/dev-auto.sh
 
 Starts a local full-stack dev loop:
   - FastAPI backend with --reload on :2455
-  - Next.js dev server (HMR) on :5173
+  - Next.js dev server (HMR) on :5174
 USAGE
 }
 
