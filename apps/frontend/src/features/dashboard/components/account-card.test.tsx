@@ -442,6 +442,25 @@ describe("AccountCard", () => {
     expect(useButton).toHaveAttribute("title", "Weekly quota shown as 0%.");
   });
 
+  it("shows a success indicator on the use-local button while the switch is pending", () => {
+    const account = createAccountSummary({
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "different",
+        isActiveSnapshot: false,
+      },
+    });
+
+    render(<AccountCard account={account} useLocalBusy />);
+
+    const useButton = screen.getByRole("button", { name: "Use this account" });
+    expect(useButton).toBeDisabled();
+    expect(
+      within(useButton).getByTestId("use-local-success-icon"),
+    ).toBeInTheDocument();
+  });
+
   it("keeps use-local gating aligned with the displayed 5h value after floor-cache carryover", () => {
     const sharedAccountId = "acc_floor_cache_alignment";
     const sharedResetAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();

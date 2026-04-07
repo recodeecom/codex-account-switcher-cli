@@ -1093,7 +1093,7 @@ export function AccountCard(props: AccountCardProps) {
   });
   const useLocalButtonDisabled =
     !canUseLocally || useLocalBusy || useLocalBlockedByWeeklyQuota;
-  const useLocalButtonShowsSuccess = isActiveSnapshot;
+  const useLocalButtonShowsSuccess = isActiveSnapshot || useLocalBusy;
   const useLocalButtonDisabledReason = useLocalBlockedByWeeklyQuota
     ? "Weekly quota shown as 0%."
     : useLocalDisabledReason;
@@ -1996,7 +1996,10 @@ export function AccountCard(props: AccountCardProps) {
               onClick={() => onAction?.(account, "useLocal")}
             >
               {useLocalButtonShowsSuccess ? (
-                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-300" />
+                <CheckCircle2
+                  data-testid="use-local-success-icon"
+                  className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-300"
+                />
               ) : null}
               {primaryActionLabel}
             </Button>
