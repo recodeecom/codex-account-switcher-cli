@@ -1,9 +1,17 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
+import { XIcon } from "lucide-react";
 
 import { CodexLogo } from "@/components/brand/codex-logo";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { AccountCard } from "@/features/dashboard/components/account-card";
 import { TechStackStrip } from "@/features/coming-soon/components/tech-stack-strip";
@@ -197,25 +205,6 @@ function AmbientLights() {
   );
 }
 
-function ValueStrip() {
-  return (
-    <div className="mx-auto flex w-full max-w-3xl flex-wrap items-center justify-center gap-x-5 gap-y-2 text-center">
-      <div className="space-y-2">
-        <p className="text-2xl font-semibold tracking-tight text-white sm:text-3xl">
-          Make every token count.
-        </p>
-        <p className="mx-auto max-w-3xl text-sm leading-7 text-zinc-300 sm:text-base">
-          recodee keeps Codex account and session signals in one place, so you
-          can move faster when quotas get weird and sessions get noisy.
-        </p>
-        <p className="text-sm font-medium text-zinc-200 sm:text-base">
-          Stay in flow instead of babysitting status checks.
-        </p>
-      </div>
-    </div>
-  );
-}
-
 function FunFactCard() {
   return (
     <div className="mx-auto mt-4 w-full max-w-4xl">
@@ -347,6 +336,7 @@ function DemoCardAnnotations() {
 
 export function ComingSoonPage() {
   const [agentEmail, setAgentEmail] = useState("");
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
   const hasValidAgentEmail = isValidEmailAddress(agentEmail);
 
@@ -375,40 +365,94 @@ export function ComingSoonPage() {
 
         <div className="space-y-4">
           <div className="mx-auto mt-2 max-w-4xl text-center">
-            <h1 className="text-3xl font-semibold tracking-tight text-zinc-100 sm:text-4xl">
+            <h1 className="text-2xl font-extrabold tracking-tight text-zinc-100 sm:text-3xl">
               Coming Soon
             </h1>
-            <p className="mt-3 text-sm text-zinc-400 sm:text-base">
-              We’re building something useful.{" "}
-              <span className="text-base font-extrabold tracking-tight text-zinc-100 sm:text-lg">
-                DROP
-              </span>{" "}
-              your email here.
-            </p>
           </div>
 
-          <div className="hidden lg:block">
-            <div className="mb-2 flex w-full items-center justify-center gap-3 text-zinc-100">
-              <CodexLogo size={26} title="recodee.com logo" />
-              <p className="text-2xl font-semibold tracking-tight">
-                recodee.com
-              </p>
-            </div>
-
-            <div className="mx-auto w-full max-w-[1480px]">
-              <div className="relative overflow-hidden rounded-[24px] border border-white/12 bg-black/35 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-                <img
-                  src="/commingsoon.jpg"
-                  alt="Dashboard preview"
-                  className="h-auto w-full object-contain object-center"
-                  loading="lazy"
-                />
-                <div className="pointer-events-none absolute bottom-3 left-1/2 w-[96%] max-w-[980px] -translate-x-1/2 px-1 py-1">
-                  <TechStackStrip className="mt-0 space-y-1.5 [&>div:first-child]:text-[9px] [&>div:first-child]:tracking-[0.2em] [&>div:first-child]:text-zinc-300/90 [&>div:nth-child(2)]:gap-1.5 [&_a]:pointer-events-none [&_a]:h-8 [&_a]:rounded-lg [&_a]:border-white/15 [&_a]:bg-black/75 [&_a]:px-2.5 [&_a]:hover:bg-black/75" />
-                </div>
+          <div className="mx-auto w-full max-w-6xl">
+            <div className="rounded-[24px] bg-black/35 p-5 sm:p-7">
+              <div className="mb-4 flex flex-col items-center justify-center gap-3 text-center sm:flex-row sm:gap-4">
+                <CodexLogo size={64} title="recodee.com logo" />
+                <h2 className="text-2xl font-extrabold tracking-tight text-zinc-100 sm:text-3xl">
+                  recodee.com
+                </h2>
               </div>
+
+              <p className="mx-auto max-w-5xl text-center text-base leading-8 text-cyan-100 sm:text-xl sm:leading-9">
+                <strong className="font-extrabold text-cyan-50">
+                  recodee.com
+                </strong>{" "}
+                keeps{" "}
+                <strong className="font-extrabold text-cyan-50">Codex</strong>{" "}
+                account and session signals in one place, so you can move faster
+                when quotas get weird and sessions get noisy.
+              </p>
+              <p className="mt-4 text-center text-lg font-semibold text-zinc-100 sm:text-3xl">
+                Stay in flow instead of babysitting status checks.
+              </p>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsPreviewOpen(true);
+                }}
+                className="mt-6 block w-full text-left"
+                aria-label="Open Codex app screenshot fullscreen"
+              >
+                <div className="relative overflow-hidden rounded">
+                  <img
+                    src="/app.png"
+                    alt=""
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-35"
+                    loading="lazy"
+                  />
+                  <img
+                    src="/app.png"
+                    alt="Codex app screenshot"
+                    className="relative z-10 h-auto w-full rounded-[14px] border border-black/45 shadow-[0_24px_72px_rgba(6,10,25,0.62)]"
+                    loading="lazy"
+                  />
+                </div>
+              </button>
+
+              <TechStackStrip className="mt-4 space-y-2 [&>div:first-child]:text-[10px] [&>div:first-child]:tracking-[0.18em] [&>div:first-child]:text-zinc-300/80 [&>div:nth-child(2)]:gap-2 [&_a]:border-transparent" />
             </div>
           </div>
+
+          <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
+            <DialogContent
+              showCloseButton={false}
+              className="inset-0 h-screen w-screen max-w-none translate-x-0 translate-y-0 rounded-none border-none bg-black/96 p-2 shadow-none sm:max-w-none sm:p-6"
+            >
+              <DialogTitle className="sr-only">
+                Codex app screenshot preview
+              </DialogTitle>
+              <DialogDescription className="sr-only">
+                Fullscreen screenshot preview dialog.
+              </DialogDescription>
+              <DialogClose asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-4 top-4 z-10 h-10 w-10 rounded-full border border-white/15 bg-black/65 text-zinc-100 hover:bg-black/80"
+                  aria-label="Close fullscreen preview"
+                >
+                  <XIcon className="size-5" />
+                </Button>
+              </DialogClose>
+
+              <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-xl">
+                <img
+                  src="/app.png"
+                  alt="Codex app screenshot fullscreen"
+                  className="max-h-[92vh] w-full max-w-[98vw] rounded-xl border border-white/15 object-contain shadow-[0_30px_120px_rgba(0,0,0,0.65)]"
+                />
+              </div>
+            </DialogContent>
+          </Dialog>
 
           <div className="relative">
             <div className="relative z-10">
@@ -467,8 +511,6 @@ export function ComingSoonPage() {
           <div className="mx-auto w-full max-w-5xl px-1 py-1">
             <div className="flex min-h-[56vh] items-center justify-center">
               <div className="w-full max-w-4xl space-y-6">
-                <ValueStrip />
-
                 <div className="space-y-3">
                   <div className="space-y-2.5">
                     <SectionHeading

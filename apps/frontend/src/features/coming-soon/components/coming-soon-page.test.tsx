@@ -8,7 +8,21 @@ describe("ComingSoonPage", () => {
   it("renders full-width layout with left preview and right content", () => {
     render(<ComingSoonPage />);
 
-    expect(screen.getAllByText("recodee.com").length).toBeGreaterThan(0);
+    expect(
+      screen.getByRole("heading", { name: "recodee.com", level: 2 }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText((_, element) => {
+        return (
+          element?.tagName === "P" &&
+          Boolean(
+            element.textContent?.includes(
+              "recodee.com keeps Codex account and session signals in one place, so you can move faster when quotas get weird and sessions get noisy.",
+            ),
+          )
+        );
+      }),
+    ).toBeInTheDocument();
     expect(
       screen.getByRole("heading", { name: "Coming Soon" }),
     ).toBeInTheDocument();
@@ -17,7 +31,6 @@ describe("ComingSoonPage", () => {
         name: "What the dashboard currently does",
       }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Make every token count.")).toBeInTheDocument();
     expect(
       screen.getByText("Stay in flow instead of babysitting status checks."),
     ).toBeInTheDocument();
@@ -61,7 +74,7 @@ describe("ComingSoonPage", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("codex tokens used: 3B")).toBeInTheDocument();
     expect(screen.getByText("money saved: $10k+")).toBeInTheDocument();
-    expect(screen.getByAltText("Dashboard preview")).toBeInTheDocument();
+    expect(screen.getByAltText("Codex app screenshot")).toBeInTheDocument();
   });
 
   it("keeps only the in-card agent email field", () => {
@@ -83,5 +96,31 @@ describe("ComingSoonPage", () => {
       screen.getByRole("button", { name: "Submit account tutorial" }),
     ).toBeEnabled();
     expect(screen.queryByText("thinking")).not.toBeInTheDocument();
+  });
+
+  it("opens screenshot in fullscreen dialog and closes it", async () => {
+    const user = userEvent.setup();
+    render(<ComingSoonPage />);
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Open Codex app screenshot fullscreen",
+      }),
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Close fullscreen preview" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByAltText("Codex app screenshot fullscreen"),
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: "Close fullscreen preview" }),
+    );
+
+    expect(
+      screen.queryByAltText("Codex app screenshot fullscreen"),
+    ).not.toBeInTheDocument();
   });
 });

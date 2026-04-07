@@ -729,17 +729,10 @@ export function AccountCards({
   return (
     <div className="space-y-5">
       {groupedAccounts.working.length > 0 ? (
-        <section className="space-y-4 rounded-2xl border border-cyan-500/25 p-4 md:p-6">
+        <section className="space-y-4 rounded-2xl border border-cyan-500/25 bg-gradient-to-b from-cyan-500/[0.05] via-background/80 to-background p-4 md:p-6">
           <div className="flex flex-col gap-3 border-b border-border/70 pb-4 xl:flex-row xl:items-start xl:justify-between">
-            <div className="min-w-0 space-y-1">
-              <div className="inline-flex items-center gap-1.5 rounded-full border border-cyan-500/30 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-700 dark:text-cyan-300">
-                <span
-                  className="h-1.5 w-1.5 rounded-full bg-current"
-                  aria-hidden="true"
-                />
-                Live account group
-              </div>
-              <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-cyan-700 dark:text-cyan-300">
+            <div className="min-w-0 space-y-1.5">
+              <h3 className="text-base font-semibold tracking-tight text-cyan-800 dark:text-cyan-200">
                 Working now
               </h3>
               <p className="text-xs text-muted-foreground">
@@ -747,23 +740,43 @@ export function AccountCards({
                 switch faster.
               </p>
             </div>
-            <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 xl:w-[32rem] xl:min-w-[32rem]">
-              <span className="inline-flex min-h-8 items-center justify-center rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-1 text-[11px] font-semibold tabular-nums text-cyan-700 dark:text-cyan-300">
-                {groupedAccounts.working.length} working
+            <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 xl:w-[34rem] xl:min-w-[34rem]">
+              <span className="inline-flex min-h-10 items-center justify-between rounded-xl border border-cyan-500/35 bg-cyan-500/12 px-3 py-1.5 text-cyan-800 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] dark:text-cyan-200">
+                <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-cyan-800/80 dark:text-cyan-200/80">
+                  Active accounts
+                </span>
+                <span className="text-sm font-semibold tabular-nums">
+                  {groupedAccounts.working.length} working
+                </span>
               </span>
               {workingSummary.liveSessions > 0 ? (
-                <span className="inline-flex min-h-8 items-center justify-center rounded-lg border border-cyan-500/25 bg-cyan-500/10 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-cyan-700 dark:text-cyan-300">
-                  {workingSummary.liveSessions} live sessions
+                <span className="inline-flex min-h-10 items-center justify-between rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-3 py-1.5 text-cyan-800 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] dark:text-cyan-200">
+                  <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-cyan-800/80 dark:text-cyan-200/80">
+                    CLI sessions
+                  </span>
+                  <span className="text-sm font-semibold tabular-nums">
+                    {workingSummary.liveSessions} live sessions
+                  </span>
                 </span>
               ) : null}
               {workingSummary.avgPrimaryRemaining !== null ? (
-                <span className="inline-flex min-h-8 items-center justify-center rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-emerald-700 dark:text-emerald-300">
-                  {primaryWindowLabel} avg {workingSummary.avgPrimaryRemaining}%
+                <span className="inline-flex min-h-10 items-center justify-between rounded-xl border border-emerald-500/30 bg-emerald-500/12 px-3 py-1.5 text-emerald-800 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] dark:text-emerald-200">
+                  <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-emerald-800/80 dark:text-emerald-200/80">
+                    {primaryWindowLabel} average
+                  </span>
+                  <span className="text-sm font-semibold tabular-nums">
+                    {primaryWindowLabel} avg {workingSummary.avgPrimaryRemaining}%
+                  </span>
                 </span>
               ) : null}
               {workingSummary.avgSecondaryRemaining !== null ? (
-                <span className="inline-flex min-h-8 items-center justify-center rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-emerald-700 dark:text-emerald-300">
-                  Weekly avg {workingSummary.avgSecondaryRemaining}%
+                <span className="inline-flex min-h-10 items-center justify-between rounded-xl border border-emerald-500/30 bg-emerald-500/12 px-3 py-1.5 text-emerald-800 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] dark:text-emerald-200">
+                  <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-emerald-800/80 dark:text-emerald-200/80">
+                    Weekly average
+                  </span>
+                  <span className="text-sm font-semibold tabular-nums">
+                    Weekly avg {workingSummary.avgSecondaryRemaining}%
+                  </span>
                 </span>
               ) : null}
             </div>
