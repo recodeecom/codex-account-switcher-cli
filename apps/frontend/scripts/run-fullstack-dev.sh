@@ -42,6 +42,7 @@ frontend_dir="$(CDPATH= cd -- "${script_dir}/.." && pwd)"
 repo_root="$(CDPATH= cd -- "${frontend_dir}/../.." && pwd)"
 
 start_app_backend="${START_APP_BACKEND:-true}"
+wait_for_backend="${WAIT_FOR_APP_BACKEND:-false}"
 backend_host="${APP_BACKEND_HOST:-0.0.0.0}"
 backend_port="${APP_BACKEND_PORT:-2455}"
 backend_pid=""
@@ -75,11 +76,14 @@ if normalize_bool "$start_app_backend"; then
       ) &
     fi
     backend_pid="$!"
-
-    if wait_for_port "$backend_port" 8; then
-      echo "[codex-lb] /app backend is ready on :${backend_port}."
+    if normalize_bool "$wait_for_backend"; then
+      if wait_for_port "$backend_port" 8; then
+        echo "[codex-lb] /app backend is ready on :${backend_port}."
+      else
+        echo "[codex-lb] Warning: backend did not open :${backend_port} within timeout." >&2
+      fi
     else
-      echo "[codex-lb] Warning: backend did not open :${backend_port} within timeout." >&2
+      echo "[codex-lb] /app backend booting in background on :${backend_port}."
     fi
   fi
 fi

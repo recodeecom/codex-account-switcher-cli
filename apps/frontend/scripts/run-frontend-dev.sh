@@ -15,6 +15,7 @@ lock_file="${frontend_dir}/.next/dev/lock"
 
 host="${NEXT_DEV_HOSTNAME:-0.0.0.0}"
 port="${NEXT_DEV_PORT:-5174}"
+reuse_existing_next="${NEXT_DEV_REUSE_EXISTING:-true}"
 
 port_in_use() {
   ss -ltn "( sport = :$1 )" 2>/dev/null | grep -q LISTEN
@@ -87,6 +88,13 @@ collect_frontend_next_pids() {
   done | sort -u
 }
 
+wait_for_pid_exit() {
+  target_pid="$1"
+  while kill -0 "$target_pid" 2>/dev/null; do
+    sleep 1
+  done
+}
+
 if [ -f "$lock_file" ]; then
   existing_pid="$(python3 - "$lock_file" <<'PY'
 import json, pathlib, sys
@@ -107,6 +115,12 @@ PY
   if [ -n "$existing_pid" ] && kill -0 "$existing_pid" 2>/dev/null; then
     target_pid="$(resolve_frontend_next_dev_pid "$existing_pid")"
     if [ -n "$target_pid" ] && kill -0 "$target_pid" 2>/dev/null; then
+      target_cwd="$(readlink -f "/proc/$target_pid/cwd" 2>/dev/null || true)"
+      if normalize_bool "$reuse_existing_next" && [ "$target_cwd" = "$frontend_dir" ]; then
+        echo "[codex-lb] Reusing existing Next dev server (PID ${target_pid})."
+        wait_for_pid_exit "$target_pid"
+        exit 0
+      fi
       echo "[codex-lb] Stopping existing Next dev server (PID ${target_pid})."
       stop_pid_tree "$target_pid"
     fi
@@ -123,7 +137,7 @@ fi
 
 rm -f "$lock_file" 2>/dev/null || true
 
-if normalize_bool "${NEXT_DEV_CLEAR_CACHE_ON_START:-true}"; then
+if normalize_bool "${NEXT_DEV_CLEAR_CACHE_ON_START:-false}"; then
   rm -rf "${frontend_dir}/.next/dev/cache" 2>/dev/null || true
 fi
 
@@ -135,7 +149,11 @@ if port_in_use "$port"; then
   echo "[codex-lb] Port ${original_port} is busy. Falling back to ${port}."
 fi
 
-bun install --frozen-lockfile
+if [ ! -d "${frontend_dir}/node_modules" ] || normalize_bool "${FRONTEND_FORCE_INSTALL:-false}"; then
+  bun install --frozen-lockfile
+else
+  echo "[codex-lb] Reusing existing frontend dependencies (skip bun install)."
+fi
 bun run sync-version
 
 logging_to_file="${LOGGING_TO_FILE:-true}"
