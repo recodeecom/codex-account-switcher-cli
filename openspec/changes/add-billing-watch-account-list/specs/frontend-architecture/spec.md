@@ -12,3 +12,16 @@ The Billing page SHALL provide a business-plan seat management surface that show
 - **THEN** each row includes an `Accounts list` action with a `Watch` button
 - **AND** clicking `Watch` opens an account-scoped list dialog
 - **AND** the dialog shows member rows with `Name`, `Role`, `Seat type`, and `Date added` columns.
+
+#### Scenario: Member seat actions update account seat usage
+- **WHEN** a user opens the account-scoped list dialog from `Watch`
+- **AND** uses row actions to change a member from `Codex` to `ChatGPT`
+- **THEN** the member row seat type updates immediately
+- **AND** the business-account row updates ChatGPT/Codex seat counts accordingly
+- **AND** the total monthly ChatGPT cost updates immediately
+
+#### Scenario: Removing a member updates account seat usage
+- **WHEN** a user opens row actions for a member in the account-scoped list dialog
+- **AND** chooses `Remove account`
+- **THEN** that member row is removed from the dialog
+- **AND** the business-account row updates ChatGPT/Codex seat counts accordingly.

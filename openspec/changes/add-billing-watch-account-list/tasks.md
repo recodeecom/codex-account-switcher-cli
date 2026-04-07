@@ -2,4 +2,7 @@
 - [x] Add `Watch` action column/button in the Billing business-account table.
 - [x] Add account list dialog UI with member rows (name, role, seat type, date added).
 - [x] Add/adjust billing component tests for watch button + account list dialog rendering.
+- [x] Add member row action menu for seat-type change and remove-account actions in the watch dialog.
+- [x] Recompute business-account and page-level seat totals from member-level edits/removals.
+- [x] Add billing component test coverage for seat-type change + remove-account behavior.
 - [x] Validate specs with `openspec validate --specs`.

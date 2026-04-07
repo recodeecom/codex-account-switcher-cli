@@ -2,7 +2,6 @@ import { format } from "date-fns";
 import {
   Building2,
   CalendarClock,
-  ChevronDown,
   Euro,
   Eye,
   MoreHorizontal,
@@ -21,6 +20,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
 import {
   Table,
@@ -248,10 +255,32 @@ function getInitials(value: string): string {
   return `${words[0][0]}${words[1][0]}`.toUpperCase();
 }
 
+function countSeatsInUse(members: BusinessPlanMember[]): Pick<BusinessPlanAccount, "chatgptSeatsInUse" | "codexSeatsInUse"> {
+  return members.reduce(
+    (accumulator, member) => {
+      if (member.seatType === "ChatGPT") {
+        accumulator.chatgptSeatsInUse += 1;
+      } else {
+        accumulator.codexSeatsInUse += 1;
+      }
+
+      return accumulator;
+    },
+    { chatgptSeatsInUse: 0, codexSeatsInUse: 0 },
+  );
+}
+
 export function BillingPage() {
+  const [businessPlanAccounts, setBusinessPlanAccounts] = useState(BUSINESS_PLAN_ACCOUNTS);
   const [businessPlanDetailsOpen, setBusinessPlanDetailsOpen] = useState(false);
-  const [selectedBusinessAccount, setSelectedBusinessAccount] = useState<BusinessPlanAccount | null>(
-    null,
+  const [selectedBusinessAccountId, setSelectedBusinessAccountId] = useState<string | null>(null);
+
+  const selectedBusinessAccount = useMemo(
+    () =>
+      selectedBusinessAccountId === null
+        ? null
+        : businessPlanAccounts.find((account) => account.id === selectedBusinessAccountId) ?? null,
+    [businessPlanAccounts, selectedBusinessAccountId],
   );
 
   const cycleLabel = useMemo(
@@ -261,25 +290,66 @@ export function BillingPage() {
 
   const businessPlanTotals = useMemo(
     () =>
-      BUSINESS_PLAN_ACCOUNTS.reduce(
+      businessPlanAccounts.reduce(
         (accumulator, account) => ({
           chatgptSeatsInUse: accumulator.chatgptSeatsInUse + account.chatgptSeatsInUse,
           codexSeatsInUse: accumulator.codexSeatsInUse + account.codexSeatsInUse,
         }),
         { chatgptSeatsInUse: 0, codexSeatsInUse: 0 },
       ),
-    [],
+    [businessPlanAccounts],
   );
 
   const businessPlanTotalMonthlyCost = useMemo(
     () =>
-      BUSINESS_PLAN_ACCOUNTS.reduce(
+      businessPlanAccounts.reduce(
         (accumulator, account) =>
           accumulator + account.chatgptSeatsInUse * CHATGPT_MONTHLY_SEAT_PRICE_EUR,
         0,
       ),
-    [],
+    [businessPlanAccounts],
   );
+
+  function updateMemberSeatType(
+    accountId: string,
+    memberId: string,
+    nextSeatType: BusinessPlanMember["seatType"],
+  ) {
+    setBusinessPlanAccounts((previousAccounts) =>
+      previousAccounts.map((account) => {
+        if (account.id !== accountId) {
+          return account;
+        }
+
+        const members = account.members.map((member) =>
+          member.id === memberId ? { ...member, seatType: nextSeatType } : member,
+        );
+
+        return {
+          ...account,
+          members,
+          ...countSeatsInUse(members),
+        };
+      }),
+    );
+  }
+
+  function removeMemberAccount(accountId: string, memberId: string) {
+    setBusinessPlanAccounts((previousAccounts) =>
+      previousAccounts.map((account) => {
+        if (account.id !== accountId) {
+          return account;
+        }
+
+        const members = account.members.filter((member) => member.id !== memberId);
+        return {
+          ...account,
+          members,
+          ...countSeatsInUse(members),
+        };
+      }),
+    );
+  }
 
   return (
     <div className="animate-fade-in-up space-y-6">
@@ -332,7 +402,7 @@ export function BillingPage() {
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-xl border border-border/70 bg-muted/30 p-4">
               <p className="text-xs uppercase tracking-wide text-muted-foreground">Business accounts</p>
-              <p className="mt-2 text-2xl font-semibold">{BUSINESS_PLAN_ACCOUNTS.length}</p>
+              <p className="mt-2 text-2xl font-semibold">{businessPlanAccounts.length}</p>
             </div>
             <div className="rounded-xl border border-border/70 bg-muted/30 p-4">
               <p className="text-xs uppercase tracking-wide text-muted-foreground">ChatGPT seats in use</p>
@@ -364,7 +434,7 @@ export function BillingPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {BUSINESS_PLAN_ACCOUNTS.map((account) => {
+                {businessPlanAccounts.map((account) => {
                   const accountMonthlyCost = account.chatgptSeatsInUse * CHATGPT_MONTHLY_SEAT_PRICE_EUR;
                   return (
                     <TableRow key={account.id}>
@@ -386,7 +456,7 @@ export function BillingPage() {
                           size="sm"
                           className="h-8 rounded-full px-3"
                           aria-label={`Watch ${account.domain} accounts list`}
-                          onClick={() => setSelectedBusinessAccount(account)}
+                          onClick={() => setSelectedBusinessAccountId(account.id)}
                         >
                           <Eye className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
                           Watch
@@ -423,7 +493,7 @@ export function BillingPage() {
                 <Building2 className="h-3.5 w-3.5" />
                 Accounts
               </p>
-              <p className="mt-1.5 text-xl font-semibold">{BUSINESS_PLAN_ACCOUNTS.length}</p>
+              <p className="mt-1.5 text-xl font-semibold">{businessPlanAccounts.length}</p>
             </div>
             <div className="rounded-xl border border-border/70 bg-muted/30 p-3">
               <p className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-muted-foreground">
@@ -460,7 +530,7 @@ export function BillingPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {BUSINESS_PLAN_ACCOUNTS.map((account) => {
+                  {businessPlanAccounts.map((account) => {
                     const accountMonthlyCost =
                       account.chatgptSeatsInUse * CHATGPT_MONTHLY_SEAT_PRICE_EUR;
                     return (
@@ -493,10 +563,10 @@ export function BillingPage() {
       </Dialog>
 
       <Dialog
-        open={selectedBusinessAccount !== null}
+        open={selectedBusinessAccountId !== null}
         onOpenChange={(open) => {
           if (!open) {
-            setSelectedBusinessAccount(null);
+            setSelectedBusinessAccountId(null);
           }
         }}
       >
@@ -520,45 +590,69 @@ export function BillingPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {selectedBusinessAccount?.members.map((member) => (
-                  <TableRow key={member.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-[11px] font-semibold uppercase text-white">
-                          {getInitials(member.name)}
-                        </div>
-                        <div>
-                          <p className="font-medium">{member.name}</p>
-                          <p className="text-sm text-muted-foreground">{member.email}</p>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <span className="inline-flex items-center gap-1 text-base">
-                        {member.role}
-                        <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <span className="inline-flex items-center gap-1 text-base">
-                        {member.seatType}
-                        <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
-                      </span>
-                    </TableCell>
-                    <TableCell>{member.dateAdded}</TableCell>
-                    <TableCell>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        className="h-8 w-8 text-muted-foreground"
-                        aria-label={`Open actions for ${member.name}`}
-                      >
-                        <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
-                      </Button>
+                {selectedBusinessAccount
+                  ? selectedBusinessAccount.members.map((member) => (
+                      <TableRow key={member.id}>
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-[11px] font-semibold uppercase text-white">
+                              {getInitials(member.name)}
+                            </div>
+                            <div>
+                              <p className="font-medium">{member.name}</p>
+                              <p className="text-sm text-muted-foreground">{member.email}</p>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>{member.role}</TableCell>
+                        <TableCell>{member.seatType}</TableCell>
+                        <TableCell>{member.dateAdded}</TableCell>
+                        <TableCell>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon-sm"
+                                className="h-8 w-8 text-muted-foreground"
+                                aria-label={`Open actions for ${member.name}`}
+                              >
+                                <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-56">
+                              <DropdownMenuLabel>{member.name}</DropdownMenuLabel>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onSelect={() =>
+                                  updateMemberSeatType(
+                                    selectedBusinessAccount.id,
+                                    member.id,
+                                    member.seatType === "Codex" ? "ChatGPT" : "Codex",
+                                  )
+                                }
+                              >
+                                Change seat type to {member.seatType === "Codex" ? "ChatGPT" : "Codex"}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                variant="destructive"
+                                onSelect={() => removeMemberAccount(selectedBusinessAccount.id, member.id)}
+                              >
+                                Remove account
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  : null}
+                {selectedBusinessAccount && selectedBusinessAccount.members.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="py-8 text-center text-sm text-muted-foreground">
+                      This business account has no members.
                     </TableCell>
                   </TableRow>
-                ))}
+                ) : null}
               </TableBody>
             </Table>
           </div>

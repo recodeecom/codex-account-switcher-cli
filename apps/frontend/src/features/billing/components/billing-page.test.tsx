@@ -50,4 +50,37 @@ describe("BillingPage", () => {
     expect(within(accountListDialog).getByText("Bianka Belovics")).toBeInTheDocument();
     expect(within(accountListDialog).getByText("bia@edixai.com")).toBeInTheDocument();
   });
+
+  it("lets me change seat type and remove member accounts from the row action button", async () => {
+    const user = userEvent.setup({ delay: null });
+
+    renderWithProviders(<BillingPage />);
+
+    await user.click(screen.getByRole("button", { name: "Watch kozpontihusbolt.hu accounts list" }));
+
+    const accountListDialog = await screen.findByRole("dialog", {
+      name: "kozpontihusbolt.hu · Accounts list",
+    });
+
+    await user.click(within(accountListDialog).getByRole("button", { name: "Open actions for Automation 1" }));
+    await user.click(screen.getByRole("menuitem", { name: "Change seat type to ChatGPT" }));
+
+    const automationOneRow = screen.getByText("Automation 1").closest("tr");
+    expect(automationOneRow).not.toBeNull();
+    expect(within(automationOneRow as HTMLTableRowElement).getByText("ChatGPT")).toBeInTheDocument();
+
+    await user.click(within(accountListDialog).getByRole("button", { name: "Open actions for Automation 2" }));
+    await user.click(screen.getByRole("menuitem", { name: "Remove account" }));
+
+    expect(within(accountListDialog).queryByText("Automation 2")).not.toBeInTheDocument();
+
+    const businessAccountRow = screen.getByText("kozpontihusbolt.hu").closest("tr");
+    expect(businessAccountRow).not.toBeNull();
+    expect(within(businessAccountRow as HTMLTableRowElement).getByText("6 seats in use")).toBeInTheDocument();
+    expect(within(businessAccountRow as HTMLTableRowElement).getByText("3 seats in use")).toBeInTheDocument();
+
+    expect(
+      screen.getByText("Total business plan monthly cost: €286/month · Renews on Apr 23"),
+    ).toBeInTheDocument();
+  });
 });
