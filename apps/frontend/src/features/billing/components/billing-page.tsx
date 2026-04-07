@@ -28,6 +28,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import {
   Table,
@@ -56,6 +63,7 @@ type BusinessPlanMember = {
 };
 
 const CHATGPT_MONTHLY_SEAT_PRICE_EUR = 26;
+const CODEX_MONTHLY_SEAT_PRICE_EUR = 0;
 const BILLING_CYCLE_START = new Date(2026, 2, 23);
 const BILLING_CYCLE_END = new Date(2026, 3, 23);
 
@@ -268,6 +276,12 @@ function countSeatsInUse(members: BusinessPlanMember[]): Pick<BusinessPlanAccoun
     },
     { chatgptSeatsInUse: 0, codexSeatsInUse: 0 },
   );
+}
+
+function formatSeatPriceLabel(seatType: BusinessPlanMember["seatType"]): string {
+  const monthlySeatPrice =
+    seatType === "ChatGPT" ? CHATGPT_MONTHLY_SEAT_PRICE_EUR : CODEX_MONTHLY_SEAT_PRICE_EUR;
+  return `${monthlySeatPrice} euro`;
 }
 
 export function BillingPage() {
@@ -605,7 +619,35 @@ export function BillingPage() {
                           </div>
                         </TableCell>
                         <TableCell>{member.role}</TableCell>
-                        <TableCell>{member.seatType}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <Select
+                              value={member.seatType}
+                              onValueChange={(nextSeatType) =>
+                                updateMemberSeatType(
+                                  selectedBusinessAccount.id,
+                                  member.id,
+                                  nextSeatType === "Codex" ? "Codex" : "ChatGPT",
+                                )
+                              }
+                            >
+                              <SelectTrigger
+                                size="sm"
+                                className="h-8 w-[140px]"
+                                aria-label={`Seat type for ${member.name}`}
+                              >
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="ChatGPT">ChatGPT</SelectItem>
+                                <SelectItem value="Codex">Codex</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <span className="whitespace-nowrap text-xs text-muted-foreground">
+                              {formatSeatPriceLabel(member.seatType)}
+                            </span>
+                          </div>
+                        </TableCell>
                         <TableCell>{member.dateAdded}</TableCell>
                         <TableCell>
                           <DropdownMenu>

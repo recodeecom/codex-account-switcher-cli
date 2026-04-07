@@ -49,6 +49,14 @@ describe("BillingPage", () => {
     expect(within(accountListDialog).getByRole("columnheader", { name: "Date added" })).toBeInTheDocument();
     expect(within(accountListDialog).getByText("Bianka Belovics")).toBeInTheDocument();
     expect(within(accountListDialog).getByText("bia@edixai.com")).toBeInTheDocument();
+
+    const biankaRow = within(accountListDialog).getByText("Bianka Belovics").closest("tr");
+    expect(biankaRow).not.toBeNull();
+    expect(within(biankaRow as HTMLTableRowElement).getByText("26 euro")).toBeInTheDocument();
+
+    const csovesRow = within(accountListDialog).getByText("Csoves").closest("tr");
+    expect(csovesRow).not.toBeNull();
+    expect(within(csovesRow as HTMLTableRowElement).getByText("0 euro")).toBeInTheDocument();
   });
 
   it("lets me change seat type and remove member accounts from the row action button", async () => {
@@ -68,6 +76,7 @@ describe("BillingPage", () => {
     const automationOneRow = screen.getByText("Automation 1").closest("tr");
     expect(automationOneRow).not.toBeNull();
     expect(within(automationOneRow as HTMLTableRowElement).getByText("ChatGPT")).toBeInTheDocument();
+    expect(within(automationOneRow as HTMLTableRowElement).getByText("26 euro")).toBeInTheDocument();
 
     await user.click(within(accountListDialog).getByRole("button", { name: "Open actions for Automation 2" }));
     await user.click(screen.getByRole("menuitem", { name: "Remove account" }));
