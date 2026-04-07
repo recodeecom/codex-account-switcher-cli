@@ -246,6 +246,13 @@ function ThinkingTaskPill({ className }: { className?: string }) {
 }
 
 type SessionTaskState = "finished" | "waiting" | "thinking";
+type SessionTaskRow = {
+  sessionKey: string;
+  taskPreview: string;
+  taskUpdatedAt: string | null;
+  ordinal: number;
+  synthetic: boolean;
+};
 
 function isWaitingTaskPreview(taskPreview: string): boolean {
   const normalized = taskPreview.trim().toLowerCase();
@@ -294,14 +301,37 @@ function resolveSessionTaskState(taskPreview: string): SessionTaskState {
   return "thinking";
 }
 
+function resolveSessionTaskStateForRow(
+  row: SessionTaskRow,
+  {
+    hasLiveCliSessions,
+  }: {
+    hasLiveCliSessions: boolean;
+  },
+): SessionTaskState {
+  const baseState = resolveSessionTaskState(row.taskPreview);
+  if (baseState !== "thinking") {
+    return baseState;
+  }
+  if (row.synthetic) {
+    return "waiting";
+  }
+  if (hasLiveCliSessions) {
+    return "thinking";
+  }
+  return "finished";
+}
+
 function SessionTaskStatePill({
   taskPreview,
   className,
+  stateOverride,
 }: {
   taskPreview: string;
   className?: string;
+  stateOverride?: SessionTaskState;
 }) {
-  const state = resolveSessionTaskState(taskPreview);
+  const state = stateOverride ?? resolveSessionTaskState(taskPreview);
   if (state === "finished") {
     return <TaskFinishedPill className={className} />;
   }
@@ -1074,17 +1104,6 @@ export function AccountCard(props: AccountCardProps) {
   const waitingTaskPillLabel = resolveWaitingTaskPillLabel(
     displayCurrentTaskPreview,
   );
-  const hasThinkingSessionTaskPreview = (account.codexSessionTaskPreviews ?? []).some(
-    (preview) =>
-      resolveSessionTaskState(resolveSessionTaskPreview(preview.taskPreview)) ===
-      "thinking",
-  );
-  const showWorkingIndicator =
-    forceWorkingIndicator ||
-    hasThinkingSessionTaskPreview ||
-    (isWorkingNow && !isCurrentTaskWaiting);
-  const showWaitingForTaskIndicator =
-    !showWorkingIndicator && isWorkingNow && isCurrentTaskWaiting;
   const hideTaskContainerChrome = hideCurrentTaskPreview && Boolean(taskPanelAddon);
   const sessionTaskPreviews = useMemo(() => {
     const seenSessionKeys = new Set<string>();
@@ -1100,11 +1119,12 @@ export function AccountCard(props: AccountCardProps) {
       .map((preview) => ({
         sessionKey: preview.sessionKey.trim(),
         taskPreview: resolveSessionTaskPreview(preview.taskPreview),
+        taskUpdatedAt: preview.taskUpdatedAt ?? null,
       }));
     return normalized;
   }, [account.codexSessionTaskPreviews]);
   const sessionTaskRows = useMemo(() => {
-    const rows = sessionTaskPreviews.map((preview, index) => ({
+    const rows: SessionTaskRow[] = sessionTaskPreviews.map((preview, index) => ({
       ...preview,
       ordinal: index + 1,
       synthetic: false,
@@ -1114,6 +1134,7 @@ export function AccountCard(props: AccountCardProps) {
       rows.push({
         sessionKey: `live-session-${index + 1}`,
         taskPreview: WAITING_FOR_NEW_TASK_LABEL,
+        taskUpdatedAt: null,
         ordinal: index + 1,
         synthetic: true,
       });
@@ -1121,25 +1142,43 @@ export function AccountCard(props: AccountCardProps) {
     return rows;
   }, [codexLiveSessionCount, sessionTaskPreviews]);
   const hasSessionTaskRows = sessionTaskRows.length > 0;
+  const hasLiveCliSessions = codexLiveSessionCount > 0;
+  const sessionTaskStates = useMemo(
+    () =>
+      sessionTaskRows.map((row) =>
+        resolveSessionTaskStateForRow(row, {
+          hasLiveCliSessions,
+        }),
+      ),
+    [hasLiveCliSessions, sessionTaskRows],
+  );
+  const hasThinkingSessionTaskPreview = sessionTaskStates.some(
+    (state) => state === "thinking",
+  );
+  const showWorkingIndicator =
+    forceWorkingIndicator ||
+    hasThinkingSessionTaskPreview ||
+    (isWorkingNow && !isCurrentTaskWaiting);
+  const showWaitingForTaskIndicator =
+    !showWorkingIndicator && isWorkingNow && isCurrentTaskWaiting;
   const sessionTaskSummary = useMemo(() => {
-    const waitingCount = sessionTaskRows.filter(
-      (row) => resolveSessionTaskState(row.taskPreview) === "waiting",
+    const waitingCount = sessionTaskStates.filter(
+      (state) => state === "waiting",
     ).length;
-    const finishedCount = sessionTaskRows.filter(
-      (row) => resolveSessionTaskState(row.taskPreview) === "finished",
+    const finishedCount = sessionTaskStates.filter(
+      (state) => state === "finished",
     ).length;
-    const thinkingCount = Math.max(
-      sessionTaskRows.length - waitingCount - finishedCount,
-      0,
-    );
-    const assignedCount = Math.max(sessionTaskRows.length - waitingCount, 0);
+    const thinkingCount = sessionTaskStates.filter(
+      (state) => state === "thinking",
+    ).length;
+    const assignedCount = Math.max(sessionTaskStates.length - waitingCount, 0);
     return {
       waitingCount,
       finishedCount,
       thinkingCount,
       assignedCount,
     };
-  }, [sessionTaskRows]);
+  }, [sessionTaskStates]);
   const quotaDebugLogText = liveQuotaDebug
     ? buildQuotaDebugLogLines(
         liveQuotaDebug,
@@ -1492,10 +1531,8 @@ export function AccountCard(props: AccountCardProps) {
                     </div>
                     {!sessionTasksCollapsed ? (
                       <ul className="space-y-1.5">
-                        {sessionTaskRows.map((preview) => {
-                          const sessionTaskState = resolveSessionTaskState(
-                            preview.taskPreview,
-                          );
+                        {sessionTaskRows.map((preview, index) => {
+                          const sessionTaskState = sessionTaskStates[index] ?? "waiting";
                           return (
                             <li
                               key={`${preview.sessionKey}-${preview.ordinal}`}
@@ -1522,6 +1559,7 @@ export function AccountCard(props: AccountCardProps) {
                                   ) : null}
                                   <SessionTaskStatePill
                                     taskPreview={preview.taskPreview}
+                                    stateOverride={sessionTaskState}
                                     className="h-5 px-2 text-[9px]"
                                   />
                                 </div>

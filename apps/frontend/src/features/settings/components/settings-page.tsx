@@ -8,6 +8,7 @@ import { FirewallSection } from "@/features/firewall/components/firewall-section
 import { buildSettingsUpdateRequest } from "@/features/settings/payload";
 import { AppearanceSettings } from "@/features/settings/components/appearance-settings";
 import { ImportSettings } from "@/features/settings/components/import-settings";
+import { MedusaConnectionSettings } from "@/features/settings/components/medusa-connection-settings";
 import { PasswordSettings } from "@/features/settings/components/password-settings";
 import { RoutingSettings } from "@/features/settings/components/routing-settings";
 import { SettingsSkeleton } from "@/features/settings/components/settings-skeleton";
@@ -50,6 +51,7 @@ export function SettingsPage() {
 
           <div className="space-y-4">
             <AppearanceSettings />
+            <MedusaConnectionSettings />
             <RoutingSettings
               key={`${settings.openaiCacheAffinityMaxAgeSeconds}-${settings.stickyReallocationBudgetThresholdPct}`}
               settings={settings}

@@ -840,6 +840,87 @@ describe("AccountCards", () => {
     expect(cardText[2]).toContain("stable-third");
   });
 
+  it("filters Other accounts by email search", () => {
+    const first = createAccountSummary({
+      accountId: "acc_filter_first",
+      email: "stable-first@example.com",
+      displayName: "stable-first@example.com",
+    });
+    const second = createAccountSummary({
+      accountId: "acc_filter_second",
+      email: "stable-second@example.com",
+      displayName: "stable-second@example.com",
+    });
+    const third = createAccountSummary({
+      accountId: "acc_filter_third",
+      email: "stable-third@example.com",
+      displayName: "stable-third@example.com",
+    });
+
+    const { container } = render(
+      <AccountCards
+        accounts={[first, second, third]}
+        primaryWindow={null}
+        secondaryWindow={null}
+      />,
+    );
+
+    const searchInput = screen.getByRole("combobox", {
+      name: "Search other accounts by email",
+    });
+    fireEvent.change(searchInput, { target: { value: "stable-second" } });
+
+    let cards = Array.from(container.querySelectorAll(".card-hover"));
+    expect(cards).toHaveLength(1);
+    expect(screen.queryByText(/No account email matched/i)).not.toBeInTheDocument();
+
+    fireEvent.change(searchInput, { target: { value: "missing@example.com" } });
+    expect(screen.getByText(/No account email matched/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
+    expect((searchInput as HTMLInputElement).value).toBe("");
+    cards = Array.from(container.querySelectorAll(".card-hover"));
+    expect(cards).toHaveLength(3);
+  });
+
+  it("offers email suggestions and autocorrects close email typos", () => {
+    const first = createAccountSummary({
+      accountId: "acc_autocorrect_first",
+      email: "stable-first@example.com",
+      displayName: "stable-first@example.com",
+    });
+    const second = createAccountSummary({
+      accountId: "acc_autocorrect_second",
+      email: "stable-second@example.com",
+      displayName: "stable-second@example.com",
+    });
+
+    const { container } = render(
+      <AccountCards
+        accounts={[first, second]}
+        primaryWindow={null}
+        secondaryWindow={null}
+      />,
+    );
+
+    const searchInput = screen.getByRole("combobox", {
+      name: "Search other accounts by email",
+    }) as HTMLInputElement;
+    const suggestionValues = Array.from(
+      container.querySelectorAll("datalist#other-accounts-email-suggestions option"),
+    ).map((option) => (option as HTMLOptionElement).value);
+
+    expect(suggestionValues).toContain("stable-first@example.com");
+    expect(suggestionValues).toContain("stable-second@example.com");
+
+    fireEvent.change(searchInput, {
+      target: { value: "stble-first@exampl.com" },
+    });
+    fireEvent.blur(searchInput);
+
+    expect(searchInput.value).toBe("stable-first@example.com");
+  });
+
   it("can prioritize usage-limit available accounts at the top of Other accounts", () => {
     const normalHigh = createAccountSummary({
       accountId: "acc_normal_high",

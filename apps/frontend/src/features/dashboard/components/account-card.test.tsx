@@ -1666,6 +1666,36 @@ describe("AccountCard", () => {
     expect(screen.getByText("1 finished")).toBeInTheDocument();
   });
 
+  it("marks thinking session tasks as finished after CLI sessions disconnect", () => {
+    const account = createAccountSummary({
+      codexCurrentTaskPreview: null,
+      codexSessionTaskPreviews: [
+        {
+          sessionKey: "sess-disconnected",
+          taskPreview: "Investigate backend routing failure",
+          taskUpdatedAt: "2026-04-05T10:00:00.000Z",
+        },
+      ],
+      codexLiveSessionCount: 0,
+      codexSessionCount: 1,
+      codexTrackedSessionCount: 1,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
+        hasLiveSession: false,
+      },
+    });
+
+    render(<AccountCard account={account} />);
+
+    expect(screen.getByText("sess-disconnected")).toBeInTheDocument();
+    expect(screen.getByText("task finished")).toBeInTheDocument();
+    expect(screen.getByText("1 finished")).toBeInTheDocument();
+    expect(screen.queryByText("thinking")).not.toBeInTheDocument();
+  });
+
   it("treats waiting-for-user task previews as waiting instead of thinking", () => {
     const account = createAccountSummary({
       codexCurrentTaskPreview: "Waiting for user to press Submit.",

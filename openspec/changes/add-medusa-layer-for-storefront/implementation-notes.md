@@ -10,13 +10,17 @@
    - `backend/apps/backend/`
    - Source copied from `WEBU/apps/backend` and normalized for codex-lb usage.
 2. Added storefront integration boundary in Next.js frontend:
-   - `frontend/src/lib/medusa/config.ts`
-   - `frontend/src/lib/medusa/client.ts`
-3. Added local runtime orchestration:
+   - `apps/frontend/src/lib/medusa/config.ts`
+   - `apps/frontend/src/lib/medusa/client.ts`
+3. Added frontend Medusa connectivity snapshot + settings card:
+   - `apps/frontend/src/lib/medusa/store.ts`
+   - `apps/frontend/src/features/settings/hooks/use-medusa-connection.ts`
+   - `apps/frontend/src/features/settings/components/medusa-connection-settings.tsx`
+4. Added local runtime orchestration:
    - `docker-compose.yml` now contains optional `medusa` profile services:
      - `medusa-backend`
      - `medusa-redis`
-4. Added environment templates:
+5. Added environment templates:
    - `.env.example` Medusa section
    - `backend/apps/backend/.env.template`
 

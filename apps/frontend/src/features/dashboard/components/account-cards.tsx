@@ -1,8 +1,9 @@
 import { type CSSProperties, useEffect, useMemo, useState } from "react";
-import { Users } from "lucide-react";
+import { Search, Users } from "lucide-react";
 
 import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   AccountCard,
   type AccountCardProps,
@@ -30,11 +31,103 @@ const RECENT_LAST_SEEN_SORT_WINDOW_MS = 30 * 60 * 1000;
 const WEEKLY_DEPLETED_SORT_THRESHOLD_PERCENT = 5;
 const QUOTA_SORT_BUCKET_PERCENT = 5;
 const ACCOUNT_CARDS_CLOCK_TICK_MS = 5_000;
+const EMAIL_AUTOCORRECT_MAX_DISTANCE = 3;
 
 type OtherAccountsSortMode =
   | "available-first"
   | "usage-limit-available-first"
   | "stable";
+
+function normalizeEmailSearchValue(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function matchesOtherAccountEmailQuery(
+  account: AccountSummary,
+  normalizedQuery: string,
+): boolean {
+  if (!normalizedQuery) {
+    return true;
+  }
+  return normalizeEmailSearchValue(account.email).includes(normalizedQuery);
+}
+
+function computeLevenshteinDistance(source: string, target: string): number {
+  if (source === target) {
+    return 0;
+  }
+  if (source.length === 0) {
+    return target.length;
+  }
+  if (target.length === 0) {
+    return source.length;
+  }
+
+  const previousRow = Array.from({ length: target.length + 1 }, (_, index) => index);
+  const currentRow = new Array<number>(target.length + 1);
+
+  for (let sourceIndex = 1; sourceIndex <= source.length; sourceIndex += 1) {
+    currentRow[0] = sourceIndex;
+    for (let targetIndex = 1; targetIndex <= target.length; targetIndex += 1) {
+      const substitutionCost =
+        source[sourceIndex - 1] === target[targetIndex - 1] ? 0 : 1;
+      currentRow[targetIndex] = Math.min(
+        previousRow[targetIndex] + 1,
+        currentRow[targetIndex - 1] + 1,
+        previousRow[targetIndex - 1] + substitutionCost,
+      );
+    }
+    previousRow.splice(0, previousRow.length, ...currentRow);
+  }
+
+  return previousRow[target.length] ?? 0;
+}
+
+function resolveEmailAutocorrection(
+  value: string,
+  emailOptions: string[],
+): string | null {
+  const normalizedValue = normalizeEmailSearchValue(value);
+  if (!normalizedValue) {
+    return null;
+  }
+
+  const normalizedOptions = emailOptions
+    .map((email) => ({ email, normalizedEmail: normalizeEmailSearchValue(email) }))
+    .filter((option) => option.normalizedEmail.length > 0);
+
+  if (normalizedOptions.length === 0) {
+    return null;
+  }
+  if (normalizedOptions.some((option) => option.normalizedEmail === normalizedValue)) {
+    return null;
+  }
+
+  let bestMatch: { email: string; distance: number } | null = null;
+  for (const option of normalizedOptions) {
+    const [localPart = option.normalizedEmail] = option.normalizedEmail.split("@");
+    const distance = Math.min(
+      computeLevenshteinDistance(normalizedValue, option.normalizedEmail),
+      computeLevenshteinDistance(normalizedValue, localPart),
+    );
+    if (!bestMatch || distance < bestMatch.distance) {
+      bestMatch = { email: option.email, distance };
+    }
+  }
+
+  if (!bestMatch) {
+    return null;
+  }
+
+  const maxDistance = Math.min(
+    EMAIL_AUTOCORRECT_MAX_DISTANCE,
+    Math.max(1, Math.floor(normalizedValue.length * 0.25)),
+  );
+  if (bestMatch.distance <= maxDistance) {
+    return bestMatch.email;
+  }
+  return null;
+}
 
 function roundAveragePercent(
   values: Array<number | null | undefined>,
@@ -442,6 +535,7 @@ export function AccountCards({
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [otherAccountsSortMode, setOtherAccountsSortMode] =
     useState<OtherAccountsSortMode>("available-first");
+  const [otherAccountsEmailSearch, setOtherAccountsEmailSearch] = useState("");
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -559,6 +653,28 @@ export function AccountCards({
       ),
     };
   }, [groupedAccounts.working, nowMs]);
+  const otherAccountsEmailSuggestions = useMemo(() => {
+    const emailSet = new Set<string>();
+    for (const account of groupedAccounts.remaining) {
+      const normalizedEmail = account.email.trim();
+      if (normalizedEmail) {
+        emailSet.add(normalizedEmail);
+      }
+    }
+    return Array.from(emailSet).sort((left, right) => left.localeCompare(right));
+  }, [groupedAccounts.remaining]);
+  const filteredRemainingAccounts = useMemo(() => {
+    const normalizedQuery = normalizeEmailSearchValue(otherAccountsEmailSearch);
+    if (!normalizedQuery) {
+      return groupedAccounts.remaining;
+    }
+    return groupedAccounts.remaining.filter((account) =>
+      matchesOtherAccountEmailQuery(account, normalizedQuery),
+    );
+  }, [groupedAccounts.remaining, otherAccountsEmailSearch]);
+  const hasOtherAccountsEmailSearch = normalizeEmailSearchValue(
+    otherAccountsEmailSearch,
+  ).length > 0;
 
   if (accounts.length === 0) {
     return (
@@ -657,62 +773,120 @@ export function AccountCards({
               </h3>
               <div className="h-px w-12 bg-border/70 sm:w-24" />
             </div>
-            <div
-              className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-background/70 p-1"
-              role="group"
-              aria-label="Other accounts order"
-            >
-              <Button
-                type="button"
-                size="sm"
-                variant={
-                  otherAccountsSortMode === "available-first"
-                    ? "secondary"
-                    : "ghost"
-                }
-                className="h-7 px-2.5 text-[11px]"
-                aria-pressed={otherAccountsSortMode === "available-first"}
-                onClick={() => {
-                  setOtherAccountsSortMode("available-first");
-                }}
+            <div className="flex flex-1 flex-wrap items-center justify-end gap-2">
+              <div className="relative min-w-[14rem] max-w-xs flex-1 sm:w-72 sm:max-w-none sm:flex-none">
+                <Search
+                  className="pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/60"
+                  aria-hidden="true"
+                />
+                <Input
+                  type="search"
+                  value={otherAccountsEmailSearch}
+                  onChange={(event) => {
+                    setOtherAccountsEmailSearch(event.target.value);
+                  }}
+                  onBlur={() => {
+                    const correctedEmail = resolveEmailAutocorrection(
+                      otherAccountsEmailSearch,
+                      otherAccountsEmailSuggestions,
+                    );
+                    if (correctedEmail && correctedEmail !== otherAccountsEmailSearch) {
+                      setOtherAccountsEmailSearch(correctedEmail);
+                    }
+                  }}
+                  className="h-7 pl-8 text-[11px]"
+                  placeholder="Search by email address"
+                  aria-label="Search other accounts by email"
+                  list="other-accounts-email-suggestions"
+                  spellCheck
+                  autoCorrect="on"
+                  autoComplete="email"
+                  autoCapitalize="none"
+                />
+                <datalist id="other-accounts-email-suggestions">
+                  {otherAccountsEmailSuggestions.map((email) => (
+                    <option key={email} value={email} />
+                  ))}
+                </datalist>
+              </div>
+              <div
+                className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-background/70 p-1"
+                role="group"
+                aria-label="Other accounts order"
               >
-                Available first
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={
-                  otherAccountsSortMode === "usage-limit-available-first"
-                    ? "secondary"
-                    : "ghost"
-                }
-                className="h-7 px-2.5 text-[11px]"
-                aria-pressed={
-                  otherAccountsSortMode === "usage-limit-available-first"
-                }
-                onClick={() => {
-                  setOtherAccountsSortMode("usage-limit-available-first");
-                }}
-              >
-                Usage-limit available
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={
-                  otherAccountsSortMode === "stable" ? "secondary" : "ghost"
-                }
-                className="h-7 px-2.5 text-[11px]"
-                aria-pressed={otherAccountsSortMode === "stable"}
-                onClick={() => {
-                  setOtherAccountsSortMode("stable");
-                }}
-              >
-                Stable order
-              </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={
+                    otherAccountsSortMode === "available-first"
+                      ? "secondary"
+                      : "ghost"
+                  }
+                  className="h-7 px-2.5 text-[11px]"
+                  aria-pressed={otherAccountsSortMode === "available-first"}
+                  onClick={() => {
+                    setOtherAccountsSortMode("available-first");
+                  }}
+                >
+                  Available first
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={
+                    otherAccountsSortMode === "usage-limit-available-first"
+                      ? "secondary"
+                      : "ghost"
+                  }
+                  className="h-7 px-2.5 text-[11px]"
+                  aria-pressed={
+                    otherAccountsSortMode === "usage-limit-available-first"
+                  }
+                  onClick={() => {
+                    setOtherAccountsSortMode("usage-limit-available-first");
+                  }}
+                >
+                  Usage-limit available
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={
+                    otherAccountsSortMode === "stable" ? "secondary" : "ghost"
+                  }
+                  className="h-7 px-2.5 text-[11px]"
+                  aria-pressed={otherAccountsSortMode === "stable"}
+                  onClick={() => {
+                    setOtherAccountsSortMode("stable");
+                  }}
+                >
+                  Stable order
+                </Button>
+              </div>
             </div>
           </div>
-          {renderGrid(groupedAccounts.remaining, "remaining")}
+          {filteredRemainingAccounts.length > 0 ? (
+            renderGrid(filteredRemainingAccounts, "remaining")
+          ) : (
+            <div className="flex items-center justify-between rounded-lg border border-dashed border-border/70 px-3 py-2">
+              <p className="text-xs text-muted-foreground">
+                No account email matched “{otherAccountsEmailSearch.trim()}”.
+              </p>
+              {hasOtherAccountsEmailSearch ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-[11px]"
+                  onClick={() => {
+                    setOtherAccountsEmailSearch("");
+                  }}
+                >
+                  Clear search
+                </Button>
+              ) : null}
+            </div>
+          )}
         </section>
       ) : null}
     </div>
