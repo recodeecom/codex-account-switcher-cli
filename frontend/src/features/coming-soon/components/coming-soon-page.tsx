@@ -87,20 +87,50 @@ export function ComingSoonPage() {
   );
 
   return (
-    <main className="min-h-screen bg-background p-4 sm:p-6">
-      <section className="flex min-h-[calc(100vh-2rem)] w-full flex-col rounded-2xl border border-border/70 bg-card p-4 shadow-sm sm:min-h-[calc(100vh-3rem)] sm:p-6">
-        <div className="grid gap-6 xl:grid-cols-[1.45fr_1fr] xl:items-stretch">
-          <div className="overflow-hidden rounded-xl border border-border/60 bg-black/30 xl:min-h-[760px]">
-            <img
-              src="/commingsoon.jpg"
-              alt="Dashboard preview"
-              className="h-full w-full object-cover object-top"
-              loading="lazy"
-            />
+    <main className="h-screen overflow-hidden bg-background p-3 sm:p-4">
+      <section className="flex h-full w-full flex-col rounded-2xl border border-border/70 bg-card p-4 shadow-sm sm:p-5">
+        <div className="grid gap-6 xl:grid-cols-[1.45fr_1fr]">
+          <div className="xl:h-full">
+            <div className="h-[260px] overflow-hidden rounded-xl bg-black/30 sm:h-[300px] lg:h-[340px] xl:h-full">
+              <img
+                src="/commingsoon.jpg"
+                alt="Dashboard preview"
+                className="h-full w-full object-cover object-top"
+                loading="lazy"
+              />
+            </div>
           </div>
 
-          <div className="space-y-6">
-            <div className="rounded-2xl border border-cyan-400/20 bg-[linear-gradient(180deg,rgba(8,18,36,0.7)_0%,rgba(4,10,22,0.9)_100%)] p-4 sm:p-5">
+          <div className="relative space-y-4">
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 420 1480"
+              className="pointer-events-none absolute top-6 right-0 z-0 h-[960px] w-[min(72%,420px)] text-white/70"
+            >
+              <defs>
+                <marker
+                  id="email-arrowhead"
+                  markerWidth="10"
+                  markerHeight="10"
+                  refX="8"
+                  refY="5"
+                  orient="auto"
+                >
+                  <path d="M0,0 L10,5 L0,10 Z" fill="currentColor" />
+                </marker>
+              </defs>
+              <path
+                d="M36 34 C152 4 324 18 358 118 C394 254 384 510 258 748 C176 906 124 994 96 1082 C82 1122 72 1142 60 1162"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="3"
+                strokeLinecap="round"
+                strokeDasharray="1 0"
+                markerEnd="url(#email-arrowhead)"
+              />
+            </svg>
+
+            <div className="relative z-10 rounded-2xl p-4 sm:p-5">
               <div className="flex flex-wrap items-center gap-4 sm:gap-6">
                 <div className="inline-flex items-center gap-3">
                   <CodexLogo size={62} title="recodee.com logo" />
@@ -114,11 +144,12 @@ export function ComingSoonPage() {
               </div>
 
               <p className="mt-4 text-sm leading-relaxed text-muted-foreground sm:text-base">
-                We’re building something dangerously useful. Drop your email and
-                we’ll let you know when it’s ready.
+                We’re building something dangerously useful.{" "}
+                <span className="font-medium text-zinc-100">Drop</span> your
+                email and we’ll let you know when it’s ready.
               </p>
 
-              <div className="mt-4 rounded-xl border border-cyan-400/20 bg-cyan-500/[0.06] px-4 py-3">
+              <div className="mt-4 rounded-xl px-4 py-3">
                 <p className="text-base font-semibold tracking-tight text-zinc-100 sm:text-lg">
                   May your tokens last forever.
                 </p>
@@ -128,12 +159,12 @@ export function ComingSoonPage() {
               </div>
             </div>
 
-            <div className="space-y-4">
+            <div className="relative z-10 space-y-4">
               <div>
                 <h2 className="text-base font-semibold text-foreground sm:text-lg">
                   What the dashboard currently does
                 </h2>
-                <ul className="mt-2 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
+                <ul className="mt-2 list-disc space-y-1.5 pl-5 text-sm text-muted-foreground">
                   <li>
                     Detects official Codex CLI login/session signals so you can
                     see account state in one place.
@@ -157,7 +188,7 @@ export function ComingSoonPage() {
                 <h2 className="text-base font-semibold text-foreground sm:text-lg">
                   Why this improves daily work
                 </h2>
-                <ul className="mt-2 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
+                <ul className="mt-2 list-disc space-y-1.5 pl-5 text-sm text-muted-foreground">
                   <li>
                     More uninterrupted work time across multiple accounts.
                   </li>
@@ -188,7 +219,7 @@ export function ComingSoonPage() {
                         }}
                         placeholder="Enter email address"
                         aria-label="Agent email address"
-                        className="h-8 border-white/14 bg-black/55 text-zinc-100 placeholder:text-zinc-500 focus-visible:border-cyan-400/35 focus-visible:ring-cyan-500/20"
+                        className="h-10 border-white/14 bg-black/55 text-zinc-100 placeholder:text-zinc-500 focus-visible:border-cyan-400/35 focus-visible:ring-cyan-500/20"
                       />
                     </div>
                   }
@@ -208,7 +239,7 @@ export function ComingSoonPage() {
           </div>
         </div>
 
-        <div className="mt-auto pt-10">
+        <div className="pt-4">
           <div className="mx-auto w-full max-w-4xl rounded-2xl border border-cyan-400/25 bg-[linear-gradient(180deg,rgba(8,16,30,0.92)_0%,rgba(5,10,20,0.98)_100%)] p-1 shadow-[0_14px_34px_rgba(0,0,0,0.4)]">
             <div className="rounded-[14px] border border-white/8 bg-[radial-gradient(circle_at_20%_-30%,rgba(34,211,238,0.14),transparent_55%),linear-gradient(180deg,rgba(9,18,34,0.9)_0%,rgba(6,12,24,0.98)_100%)] px-6 py-5 text-center">
               <div className="mb-3 flex justify-center">

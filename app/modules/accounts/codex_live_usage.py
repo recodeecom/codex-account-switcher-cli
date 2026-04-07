@@ -499,7 +499,6 @@ def read_live_codex_process_session_attribution() -> LocalCodexProcessSessionAtt
     mapped_session_pids_by_snapshot: dict[str, list[int]] = {}
     task_preview_by_pid: dict[int, str] = {}
     task_previews_by_pid: dict[int, list[str]] = {}
-    missing_task_preview_pids: list[int] = []
     for pid, env in processes:
         snapshot_name = _resolve_process_snapshot_name_for_accounting(
             pid,
@@ -514,22 +513,11 @@ def read_live_codex_process_session_attribution() -> LocalCodexProcessSessionAtt
         if task_previews:
             task_previews_by_pid[pid] = task_previews
             task_preview_by_pid[pid] = task_previews[0]
-        else:
-            missing_task_preview_pids.append(pid)
         if not snapshot_name:
             unattributed_session_pids.append(pid)
             continue
         counts[snapshot_name] = counts.get(snapshot_name, 0) + 1
         mapped_session_pids_by_snapshot.setdefault(snapshot_name, []).append(pid)
-
-    fallback_task_previews_by_pid = _resolve_fallback_process_task_previews(
-        missing_task_preview_pids
-    )
-    for pid, previews in fallback_task_previews_by_pid.items():
-        if not previews:
-            continue
-        task_previews_by_pid[pid] = previews
-        task_preview_by_pid[pid] = previews[0]
 
     for session_pids in mapped_session_pids_by_snapshot.values():
         session_pids.sort()
@@ -541,68 +529,6 @@ def read_live_codex_process_session_attribution() -> LocalCodexProcessSessionAtt
         task_preview_by_pid=task_preview_by_pid,
         task_previews_by_pid=task_previews_by_pid,
     )
-
-
-def _resolve_fallback_process_task_previews(pids: list[int]) -> dict[int, list[str]]:
-    if not pids:
-        return {}
-
-    previews_by_session_id = read_local_codex_task_previews_by_session_id()
-    if not previews_by_session_id:
-        return {}
-
-    available_previews: list[tuple[LocalCodexTaskPreview, float | None]] = []
-    for session_id, preview in previews_by_session_id.items():
-        if not isinstance(preview.text, str) or not preview.text.strip():
-            continue
-        available_previews.append(
-            (
-                preview,
-                _resolve_session_rollout_started_at(session_id),
-            )
-        )
-    if not available_previews:
-        return {}
-
-    available_previews.sort(
-        key=lambda item: (
-            item[1] if item[1] is not None else item[0].recorded_at.timestamp()
-        ),
-        reverse=True,
-    )
-    candidates_by_pid = sorted(
-        ((pid, _read_process_started_at(pid)) for pid in pids),
-        key=lambda item: item[1] if item[1] is not None else float("-inf"),
-        reverse=True,
-    )
-    unassigned_pids = list(candidates_by_pid)
-
-    assigned: dict[int, list[str]] = {}
-    for preview, preview_started_at in available_previews:
-        if not unassigned_pids:
-            break
-
-        reference_ts = (
-            preview_started_at
-            if preview_started_at is not None
-            else preview.recorded_at.timestamp()
-        )
-        best_pid_index = 0
-        best_distance: float | None = None
-        for index, (_pid, started_at) in enumerate(unassigned_pids):
-            distance = (
-                abs(reference_ts - started_at)
-                if started_at is not None
-                else float("inf")
-            )
-            if best_distance is None or distance < best_distance:
-                best_distance = distance
-                best_pid_index = index
-
-        pid, _started_at = unassigned_pids.pop(best_pid_index)
-        assigned[pid] = [preview.text]
-
-    return assigned
 
 
 def _resolve_session_rollout_started_at(session_id: str) -> float | None:

@@ -1163,7 +1163,7 @@ def test_resolve_session_rollout_started_at_reads_start_from_rollout_filename(
     ) == "2026-04-05T10-07-46"
 
 
-def test_read_live_codex_process_session_attribution_falls_back_to_recent_session_previews_when_proc_fd_rollout_is_unavailable(
+def test_read_live_codex_process_session_attribution_does_not_reuse_recent_session_previews_when_proc_fd_rollout_is_unavailable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     base_time = datetime(2026, 4, 5, 9, 50, tzinfo=timezone.utc)
@@ -1210,13 +1210,6 @@ def test_read_live_codex_process_session_attribution_falls_back_to_recent_sessio
             ),
         },
     )
-    monkeypatch.setattr(
-        "app.modules.accounts.codex_live_usage._resolve_session_rollout_started_at",
-        lambda session_id: {
-            "019d5d03-6ce7-7632-8fae-cba240fc8774": started_at_by_pid[408006],
-            "019d5d0c-c00f-7b91-802e-ccce1b6074bd": started_at_by_pid[450971],
-        }.get(session_id),
-    )
 
     attribution = read_live_codex_process_session_attribution()
 
@@ -1224,9 +1217,8 @@ def test_read_live_codex_process_session_attribution_falls_back_to_recent_sessio
         "odin@edixai.com": 1,
         "viktor@edixai.com": 2,
     }
-    assert attribution.task_preview_by_pid[450971] == "Task from Viktor session #2"
-    assert attribution.task_preview_by_pid[408006] == "Task from Viktor session #1"
-    assert 393963 not in attribution.task_preview_by_pid
+    assert attribution.task_preview_by_pid == {}
+    assert attribution.task_previews_by_pid == {}
 
 
 def test_terminate_live_codex_processes_for_snapshot_only_targets_matching_snapshot(
