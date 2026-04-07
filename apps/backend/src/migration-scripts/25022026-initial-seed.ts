@@ -19,6 +19,8 @@ import {
 } from "@medusajs/medusa/core-flows";
 
 export default async function initialSeed({ container }: ExecArgs) {
+  const BRANDED_STORE_NAME = "Recodee.com";
+
   if (process.env.SKIP_INITIAL_SEED === "true") {
     return;
   }
@@ -40,7 +42,7 @@ export default async function initialSeed({ container }: ExecArgs) {
         input: {
           selector: { id: existingStore.id },
           update: {
-            name: "WEBU",
+            name: BRANDED_STORE_NAME,
           },
         },
       });
@@ -66,7 +68,7 @@ export default async function initialSeed({ container }: ExecArgs) {
       input: {
         selector: { id: store.id },
         update: {
-          name: "WEBU",
+          name: BRANDED_STORE_NAME,
         },
       },
     });
@@ -102,7 +104,7 @@ export default async function initialSeed({ container }: ExecArgs) {
     input: {
       selector: { id: store.id },
       update: {
-        name: "WEBU",
+        name: BRANDED_STORE_NAME,
         supported_currencies: [
           { currency_code: "eur", is_default: true, is_tax_inclusive: true },
         ],

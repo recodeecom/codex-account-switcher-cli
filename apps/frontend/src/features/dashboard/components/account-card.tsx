@@ -3,6 +3,7 @@ import {
   ChevronDown,
   Clock,
   Download,
+  Eye,
   ExternalLink,
   Lock,
   Play,
@@ -68,6 +69,11 @@ type AccountAction =
   | "repairSnapshotReadd"
   | "repairSnapshotRename";
 
+export type AccountActionContext = {
+  focusSessionKey?: string;
+  source?: "session-panel";
+};
+
 export type AccountCardProps = {
   account: AccountSummary;
   tokensUsed?: number | null;
@@ -83,7 +89,11 @@ export type AccountCardProps = {
   taskPanelAddon?: ReactNode;
   primaryActionLabel?: string;
   primaryActionAriaLabel?: string;
-  onAction?: (account: AccountSummary, action: AccountAction) => void;
+  onAction?: (
+    account: AccountSummary,
+    action: AccountAction,
+    context?: AccountActionContext,
+  ) => void;
 };
 
 function formatPlanWithSnapshot(
@@ -137,6 +147,7 @@ const UNKNOWN_TOKENS_SYNC_LABEL = "syncing…";
 const NEXT_TASK_PREVIEW_PATTERN = /\bnext(?:\.?js)?\b|\bturbopack\b/i;
 const CURRENT_TASK_PREVIEW_EXPANSION_KEY = "__current_task_preview__";
 const LAST_TASK_PREVIEW_EXPANSION_KEY = "__last_task_preview__";
+const STALE_SESSION_TASK_MS = 90_000;
 
 function hasNextTaskHint(taskPreview: string | null | undefined): boolean {
   const normalized = taskPreview?.trim();
@@ -330,7 +341,19 @@ function resolveSessionTaskStateForRow(
   },
 ): SessionTaskState {
   const baseState = resolveSessionTaskState(row.taskPreview);
+  const hasFreshTaskTimestamp =
+    row.taskUpdatedAt != null &&
+    Number.isFinite(Date.parse(row.taskUpdatedAt)) &&
+    Date.now() - Date.parse(row.taskUpdatedAt) <= STALE_SESSION_TASK_MS;
   if (baseState !== "thinking") {
+    if (
+      !hasLiveCliSessions &&
+      !row.synthetic &&
+      baseState === "waiting" &&
+      !hasFreshTaskTimestamp
+    ) {
+      return "finished";
+    }
     return baseState;
   }
   if (row.synthetic) {
@@ -722,6 +745,51 @@ function saveQuotaDebugLogToFile(accountId: string, logs: string): void {
   }, 0);
 }
 
+function buildSessionTaskLogLines({
+  accountId,
+  row,
+  state,
+  quotaDebugLogText,
+}: {
+  accountId: string;
+  row: SessionTaskRow;
+  state: SessionTaskState;
+  quotaDebugLogText: string | null;
+}): string[] {
+  const lines: string[] = [
+    `$ account=${accountId}`,
+    `$ session=${row.sessionKey}`,
+    `$ state=${state}`,
+    `$ task_updated_at=${row.taskUpdatedAt ?? "unknown"}`,
+    `$ task_preview=${row.taskPreview}`,
+  ];
+  if (!quotaDebugLogText) {
+    lines.push("$ debug=unavailable");
+    return lines;
+  }
+  const debugLines = quotaDebugLogText
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  const scopedLines = debugLines.filter((line) => line.includes(row.sessionKey));
+  if (scopedLines.length > 0) {
+    lines.push(...scopedLines.slice(0, 16));
+    return lines;
+  }
+  lines.push("$ scoped_logs=not_found_for_session");
+  lines.push(
+    ...debugLines
+      .filter(
+        (line) =>
+          line.startsWith("$ cli_session_counts") ||
+          line.startsWith("$ mapped_cli_sessions") ||
+          line.startsWith("$ live_sessions_without_quota_rows"),
+      )
+      .slice(0, 4),
+  );
+  return lines;
+}
+
 function isLiveUsageLimitHit(input: {
   status: string;
   hasLiveSession: boolean;
@@ -777,6 +845,9 @@ export function AccountCard(props: AccountCardProps) {
   const [sessionTasksCollapsed, setSessionTasksCollapsed] = useState(
     initialSessionTasksCollapsed,
   );
+  const [expandedSessionLogRowKey, setExpandedSessionLogRowKey] = useState<
+    string | null
+  >(null);
   const [expandedTaskPreviewKeys, setExpandedTaskPreviewKeys] = useState<
     string[]
   >([]);
@@ -1587,7 +1658,7 @@ export function AccountCard(props: AccountCardProps) {
                 ) : null}
 
                 {hasSessionTaskRows ? (
-                  <div className="mt-2 border-t border-white/10 pt-2">
+                  <div className="mt-2 border-t border-white/15 pt-2.5">
                     <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
                       <button
                         type="button"
@@ -1642,13 +1713,13 @@ export function AccountCard(props: AccountCardProps) {
                             <li
                               key={sessionTaskRowKey}
                               className={cn(
-                                "relative overflow-hidden space-y-1.5 rounded-lg border border-white/10 bg-black/25 px-2.5 py-2 transition-all duration-200",
+                                "relative overflow-hidden space-y-1.5 rounded-xl border border-white/15 bg-white/[0.03] px-2.5 py-2 backdrop-blur-[1.5px] transition-all duration-200",
                                 sessionTaskState === "waiting" &&
-                                  "ring-1 ring-cyan-500/10 hover:border-cyan-300/30 hover:bg-black/35",
+                                  "ring-1 ring-cyan-500/12 hover:border-cyan-300/35 hover:bg-white/[0.05]",
                                 sessionTaskState === "thinking" &&
-                                  "border-indigo-300/35 bg-[linear-gradient(155deg,rgba(34,211,238,0.1)_0%,rgba(99,102,241,0.24)_45%,rgba(15,23,42,0.9)_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_10px_18px_rgba(6,24,44,0.45)] hover:border-cyan-300/40",
+                                  "border-indigo-300/35 bg-indigo-500/[0.14] shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_10px_18px_rgba(6,24,44,0.35)] hover:border-cyan-300/40",
                                 sessionTaskState === "finished" &&
-                                  "border-emerald-400/22 bg-emerald-500/[0.1] hover:border-emerald-300/35",
+                                  "border-emerald-400/25 bg-emerald-500/[0.11] hover:border-emerald-300/35",
                               )}
                             >
                               {sessionTaskState === "thinking" ? (
@@ -1720,6 +1791,68 @@ export function AccountCard(props: AccountCardProps) {
                                       preview.taskPreview,
                                     )}
                                   </p>
+                                ) : null}
+                                <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2">
+                                  <button
+                                    type="button"
+                                    className="inline-flex h-6 items-center gap-1 rounded-md border border-cyan-400/30 bg-cyan-500/10 px-2 text-[9px] font-semibold uppercase tracking-[0.12em] text-cyan-100 transition-colors hover:border-cyan-300/45 hover:bg-cyan-500/15"
+                                    aria-expanded={
+                                      expandedSessionLogRowKey ===
+                                      sessionTaskRowKey
+                                    }
+                                    onClick={() =>
+                                      setExpandedSessionLogRowKey((current) =>
+                                        current === sessionTaskRowKey
+                                          ? null
+                                          : sessionTaskRowKey,
+                                      )
+                                    }
+                                  >
+                                    <Eye className="h-3 w-3" />
+                                    Watch logs
+                                  </button>
+                                  {!preview.synthetic ? (
+                                    <button
+                                      type="button"
+                                      className="inline-flex h-6 items-center rounded-md border border-white/15 bg-black/25 px-2 text-[9px] font-semibold uppercase tracking-[0.12em] text-zinc-300 transition-colors hover:border-white/25 hover:text-zinc-100"
+                                      onClick={() =>
+                                        onAction?.(account, "sessions", {
+                                          focusSessionKey: preview.sessionKey,
+                                          source: "session-panel",
+                                        })
+                                      }
+                                    >
+                                      Open session view
+                                    </button>
+                                  ) : null}
+                                </div>
+                                {expandedSessionLogRowKey ===
+                                sessionTaskRowKey ? (
+                                  <div className="mt-1.5 rounded-lg border border-cyan-500/25 bg-[#020812]/90 p-1.5">
+                                    <ol className="max-h-40 overflow-y-auto font-mono text-[10px] leading-5 text-cyan-100">
+                                      {buildSessionTaskLogLines({
+                                        accountId: account.accountId,
+                                        row: preview,
+                                        state: sessionTaskState,
+                                        quotaDebugLogText,
+                                      }).map((line, lineIndex) => (
+                                        <li
+                                          key={`${sessionTaskRowKey}-log-${lineIndex}`}
+                                          className="grid grid-cols-[2rem_minmax(0,1fr)] gap-2 rounded-sm px-1.5 even:bg-cyan-500/[0.05]"
+                                        >
+                                          <span className="select-none text-right text-cyan-400/55">
+                                            {String(lineIndex + 1).padStart(
+                                              2,
+                                              "0",
+                                            )}
+                                          </span>
+                                          <span className="break-all">
+                                            {line}
+                                          </span>
+                                        </li>
+                                      ))}
+                                    </ol>
+                                  </div>
                                 ) : null}
                               </div>
                             </li>

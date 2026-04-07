@@ -64,7 +64,11 @@ export function DashboardPage() {
   }, [queryClient]);
 
   const handleAccountAction = useCallback(
-    (account: AccountSummary, action: string) => {
+    (
+      account: AccountSummary,
+      action: string,
+      context?: { focusSessionKey?: string },
+    ) => {
       switch (action) {
         case "details":
           navigate(`/accounts?selected=${encodeURIComponent(account.accountId)}`);
@@ -92,9 +96,16 @@ export function DashboardPage() {
           openTerminalMutation.mutate(account.accountId);
           break;
         case "sessions":
-          navigate(
-            `/sessions?accountId=${encodeURIComponent(account.accountId)}`,
-          );
+          {
+            const searchParams = new URLSearchParams({
+              accountId: account.accountId,
+            });
+            const focusSessionKey = context?.focusSessionKey?.trim();
+            if (focusSessionKey) {
+              searchParams.set("sessionKey", focusSessionKey);
+            }
+            navigate(`/sessions?${searchParams.toString()}`);
+          }
           break;
         case "delete":
           deleteDialog.show({

@@ -1602,6 +1602,99 @@ describe("AccountCard", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows per-session logs inline when watch logs is clicked", async () => {
+    const user = userEvent.setup();
+    const account = createAccountSummary({
+      codexCurrentTaskPreview: "Investigate websocket sticky routing",
+      codexSessionTaskPreviews: [
+        {
+          sessionKey: "sess-alpha-123456",
+          taskPreview: "Investigate websocket sticky routing",
+          taskUpdatedAt: "2026-04-05T10:00:00.000Z",
+        },
+      ],
+      codexLiveSessionCount: 1,
+      codexSessionCount: 1,
+      codexTrackedSessionCount: 1,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+      liveQuotaDebug: {
+        snapshotsConsidered: ["main"],
+        overrideApplied: true,
+        overrideReason: "applied",
+        merged: null,
+        rawSamples: [
+          {
+            source: "sess-alpha-123456/log.jsonl",
+            snapshotName: "main",
+            recordedAt: "2026-04-05T10:00:00.000Z",
+            stale: false,
+            primary: {
+              usedPercent: 20,
+              remainingPercent: 80,
+              resetAt: 1760000000,
+              windowMinutes: 300,
+            },
+            secondary: {
+              usedPercent: 10,
+              remainingPercent: 90,
+              resetAt: 1760600000,
+              windowMinutes: 10080,
+            },
+          },
+        ],
+      },
+    });
+
+    render(<AccountCard account={account} />);
+
+    await user.click(screen.getByRole("button", { name: "Watch logs" }));
+
+    expect(screen.getByText(/\$ account=acc_123/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/\$ session=sess-alpha-123456/i),
+    ).toBeInTheDocument();
+  });
+
+  it("opens focused session view from a session task panel row", async () => {
+    const user = userEvent.setup();
+    const onAction = vi.fn();
+    const account = createAccountSummary({
+      codexCurrentTaskPreview: "Investigate websocket sticky routing",
+      codexSessionTaskPreviews: [
+        {
+          sessionKey: "sess-alpha-123456",
+          taskPreview: "Investigate websocket sticky routing",
+          taskUpdatedAt: "2026-04-05T10:00:00.000Z",
+        },
+      ],
+      codexLiveSessionCount: 1,
+      codexSessionCount: 1,
+      codexTrackedSessionCount: 1,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+    });
+
+    render(<AccountCard account={account} onAction={onAction} />);
+
+    await user.click(screen.getByRole("button", { name: "Open session view" }));
+
+    expect(onAction).toHaveBeenCalledWith(account, "sessions", {
+      focusSessionKey: "sess-alpha-123456",
+      source: "session-panel",
+    });
+  });
+
   it("truncates long current task previews and allows expanding them", async () => {
     const user = userEvent.setup();
     const longTaskPreview = `Task trace ${"x".repeat(130)}`;

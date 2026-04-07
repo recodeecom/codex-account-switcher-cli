@@ -345,8 +345,7 @@ async def test_usage_updater_avoids_invalidated_token_sibling_spam(monkeypatch) 
     await updater.refresh_accounts([acc_a, acc_b], latest_usage={})
 
     assert fetch_calls == [shared, shared]
-    assert len(accounts_repo.status_updates) == 1
-    assert accounts_repo.status_updates[0]["account_id"] == acc_a.id
+    assert len(accounts_repo.status_updates) == 0
 
     await updater.refresh_accounts([acc_a, acc_b], latest_usage={})
 
@@ -637,11 +636,51 @@ async def test_usage_updater_does_not_deactivate_on_401(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_usage_updater_deactivates_on_invalidated_401_when_refresh_fails_transiently(monkeypatch) -> None:
+    monkeypatch.setenv("CODEX_LB_USAGE_REFRESH_ENABLED", "true")
+    monkeypatch.setattr("app.modules.usage.updater._DEACTIVATION_FAILURE_THRESHOLD", 1)
+    from app.core.clients.usage import UsageFetchError
+    from app.core.config.settings import get_settings
+
+    get_settings.cache_clear()
+
+    async def stub_fetch_usage_401(**_: Any) -> UsagePayload:
+        raise UsageFetchError(
+            401,
+            "Your authentication token has been invalidated. Please try signing in again.",
+        )
+
+    monkeypatch.setattr("app.modules.usage.updater.fetch_usage", stub_fetch_usage_401)
+
+    usage_repo = StubUsageRepository()
+    accounts_repo = StubAccountsRepository()
+    updater = UsageUpdater(usage_repo, accounts_repo=accounts_repo)
+    assert updater._auth_manager is not None
+
+    async def stub_ensure_fresh(account: Account, *, force: bool = False) -> Account:
+        raise RefreshError(code="temporarily_unavailable", message="retry later", is_permanent=False)
+
+    monkeypatch.setattr(updater._auth_manager, "ensure_fresh", stub_ensure_fresh)
+
+    acc = _make_account("acc_401_invalidated_refresh_temp", "workspace_401_invalidated_refresh_temp")
+    accounts_repo.accounts_by_id[acc.id] = acc
+
+    await updater.refresh_accounts([acc], latest_usage={})
+
+    assert len(accounts_repo.status_updates) == 1
+    update = accounts_repo.status_updates[0]
+    assert update["account_id"] == acc.id
+    assert update["status"] == AccountStatus.DEACTIVATED
+    assert "401" in (update["deactivation_reason"] or "")
+    assert "invalidated" in (update["deactivation_reason"] or "").lower()
+
+
+@pytest.mark.asyncio
 async def test_usage_updater_retries_forced_refresh_before_deactivating_invalidated_token_401(
     monkeypatch,
 ) -> None:
     monkeypatch.setenv("CODEX_LB_USAGE_REFRESH_ENABLED", "true")
-    monkeypatch.setattr("app.modules.usage.updater._DEACTIVATION_FAILURE_THRESHOLD", 3)
+    monkeypatch.setattr("app.modules.usage.updater._DEACTIVATION_FAILURE_THRESHOLD", 1)
     from app.core.clients.usage import UsageFetchError
     from app.core.config.settings import get_settings
 
@@ -680,6 +719,54 @@ async def test_usage_updater_retries_forced_refresh_before_deactivating_invalida
 
     assert calls == 2
     assert ensure_fresh_calls == 1
+    assert len(accounts_repo.status_updates) == 1
+    update = accounts_repo.status_updates[0]
+    assert update["account_id"] == acc.id
+    assert update["status"] == AccountStatus.DEACTIVATED
+    assert "401" in (update["deactivation_reason"] or "")
+    assert "invalidated" in (update["deactivation_reason"] or "").lower()
+
+
+@pytest.mark.asyncio
+async def test_usage_updater_defers_invalidated_token_deactivation_until_threshold(monkeypatch) -> None:
+    monkeypatch.setenv("CODEX_LB_USAGE_REFRESH_ENABLED", "true")
+    monkeypatch.setattr("app.modules.usage.updater._DEACTIVATION_FAILURE_THRESHOLD", 3)
+    monkeypatch.setattr("app.modules.usage.updater._FAILED_REFRESH_BACKOFF_SECONDS", 0)
+    from app.core.clients.usage import UsageFetchError
+    from app.core.config.settings import get_settings
+
+    get_settings.cache_clear()
+
+    async def stub_fetch_usage_401(**_: Any) -> UsagePayload:
+        raise UsageFetchError(
+            401,
+            "Your authentication token has been invalidated. Please try signing in again.",
+        )
+
+    monkeypatch.setattr("app.modules.usage.updater.fetch_usage", stub_fetch_usage_401)
+
+    usage_repo = StubUsageRepository()
+    accounts_repo = StubAccountsRepository()
+    updater = UsageUpdater(usage_repo, accounts_repo=accounts_repo)
+    assert updater._auth_manager is not None
+
+    async def stub_ensure_fresh(account: Account, *, force: bool = False) -> Account:
+        assert force is True
+        return account
+
+    monkeypatch.setattr(updater._auth_manager, "ensure_fresh", stub_ensure_fresh)
+
+    acc = _make_account("acc_401_invalidated_deferred", "workspace_401_invalidated_deferred")
+    accounts_repo.accounts_by_id[acc.id] = acc
+
+    await updater.refresh_accounts([acc], latest_usage={})
+    await updater.refresh_accounts([acc], latest_usage={})
+
+    assert len(accounts_repo.status_updates) == 0
+    assert acc.status == AccountStatus.ACTIVE
+
+    await updater.refresh_accounts([acc], latest_usage={})
+
     assert len(accounts_repo.status_updates) == 1
     update = accounts_repo.status_updates[0]
     assert update["account_id"] == acc.id

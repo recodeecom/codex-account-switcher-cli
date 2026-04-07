@@ -334,10 +334,19 @@ class UsageUpdater:
             try:
                 account = await self._auth_manager.ensure_fresh(account, force=True)
             except RefreshError as refresh_exc:
-                if _should_deactivate_for_refresh_error(refresh_exc):
+                should_deactivate_after_refresh_failure = (
+                    _should_deactivate_for_refresh_error(refresh_exc)
+                    or initial_invalidated_token_error
+                )
+                if should_deactivate_after_refresh_failure:
+                    deactivation_message = (
+                        exc.message
+                        if initial_invalidated_token_error and exc.message
+                        else (refresh_exc.message or "Token refresh failed")
+                    )
                     await self._maybe_deactivate_for_client_error(
                         account,
-                        UsageFetchError(401, refresh_exc.message or "Token refresh failed"),
+                        UsageFetchError(401, deactivation_message),
                     )
                 return AccountRefreshResult(
                     usage_written=False,
@@ -501,17 +510,6 @@ class UsageUpdater:
 
     async def _maybe_deactivate_for_client_error(self, account: Account, exc: UsageFetchError) -> None:
         if not self._auth_manager:
-            return
-
-        if exc.status_code == 401 and _is_invalidated_token_error(exc.message):
-            _deactivation_failure_streak.pop(account.id, None)
-            logger.warning(
-                "Deactivating account immediately due to invalidated token account_id=%s message=%s request_id=%s",
-                account.id,
-                exc.message,
-                get_request_id(),
-            )
-            await self._deactivate_for_client_error(account, exc, skip_log=True)
             return
 
         attempts = _deactivation_failure_streak.get(account.id, 0) + 1

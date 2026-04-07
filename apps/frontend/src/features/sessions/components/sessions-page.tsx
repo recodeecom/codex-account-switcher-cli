@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Pin } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "@/lib/router-compat";
@@ -166,6 +166,8 @@ export function SessionsPage() {
   const [searchParams] = useSearchParams();
   const blurred = usePrivacyStore((s) => s.blurred);
   const selectedAccountId = searchParams.get("accountId");
+  const selectedSessionKey = searchParams.get("sessionKey")?.trim() ?? null;
+  const focusedSessionRowRef = useRef<HTMLTableRowElement | null>(null);
 
   const sessionsQuery = useQuery({
     queryKey: ["sticky-sessions", "codex-sessions", { offset, limit, activeOnly: false }],
@@ -284,9 +286,22 @@ export function SessionsPage() {
   const hasSessionRows = total > 0;
   const waitingForOverviewFallback = (sessionsQuery.data?.total ?? 0) === 0 && overviewQuery.isLoading && !overviewQuery.data;
   const isLoading = (sessionsQuery.isLoading && !sessionsQuery.data) || waitingForOverviewFallback;
+  const hasFocusedSessionRow = selectedSessionKey
+    ? activityRows.some((row) => row.identity === selectedSessionKey)
+    : false;
   const emptyDescription = selectedAccountId
     ? "No Codex sessions were found for the selected account."
     : "Codex sessions will appear here once routed requests create sticky session mappings.";
+
+  useEffect(() => {
+    if (!selectedSessionKey || !hasFocusedSessionRow) {
+      return;
+    }
+    focusedSessionRowRef.current?.scrollIntoView({
+      block: "center",
+      behavior: "smooth",
+    });
+  }, [hasFocusedSessionRow, selectedSessionKey]);
 
   return (
     <div className="animate-fade-in-up space-y-6">
@@ -327,6 +342,33 @@ export function SessionsPage() {
           </section>
 
           <section className="space-y-4">
+            {selectedSessionKey ? (
+              <div
+                className={cn(
+                  "rounded-xl border px-4 py-3 text-xs",
+                  hasFocusedSessionRow
+                    ? "border-cyan-500/35 bg-cyan-500/10 text-cyan-700 dark:text-cyan-200"
+                    : "border-amber-500/35 bg-amber-500/10 text-amber-700 dark:text-amber-200",
+                )}
+              >
+                {hasFocusedSessionRow ? (
+                  <p>
+                    Focused session:{" "}
+                    <span className="font-mono font-semibold">
+                      {selectedSessionKey}
+                    </span>
+                  </p>
+                ) : (
+                  <p>
+                    Session{" "}
+                    <span className="font-mono font-semibold">
+                      {selectedSessionKey}
+                    </span>{" "}
+                    was not found on this page.
+                  </p>
+                )}
+              </div>
+            ) : null}
             {hasSessionRows ? (
               <div className="rounded-xl border bg-card">
                 <div className="flex items-center justify-between border-b px-4 py-3">
@@ -352,8 +394,19 @@ export function SessionsPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {activityRows.map((row) => (
-                        <TableRow key={row.rowKey}>
+                      {activityRows.map((row) => {
+                        const isFocusedSessionRow =
+                          selectedSessionKey != null &&
+                          row.identity === selectedSessionKey;
+                        return (
+                        <TableRow
+                          key={row.rowKey}
+                          ref={isFocusedSessionRow ? focusedSessionRowRef : null}
+                          className={cn(
+                            isFocusedSessionRow &&
+                              "bg-cyan-500/[0.08] ring-1 ring-cyan-500/30",
+                          )}
+                        >
                           <TableCell>
                             <p className="text-sm font-medium">
                               {blurred ? <span className="privacy-blur">{row.displayName}</span> : row.displayName}
@@ -411,7 +464,7 @@ export function SessionsPage() {
                             {row.progressLabel}
                           </TableCell>
                         </TableRow>
-                      ))}
+                      )})}
                     </TableBody>
                   </Table>
                 </div>
