@@ -67,35 +67,35 @@ type InfoItem = {
 
 const WHAT_IT_DOES: InfoItem[] = [
   {
-    title: "See account state in one place",
-    body: "Detect official Codex CLI login and session signals so your dashboard matches reality without manual detective work.",
+    title: "See live account state in one glance",
+    body: "Track official Codex CLI login and session signals in one place so the dashboard reflects what is happening right now.",
   },
   {
-    title: "Stop checking /status every five minutes",
-    body: "Live account visibility means fewer terminal detours and less context switching while you are in the middle of real work.",
+    title: "Stop polling /status all day",
+    body: "Always-on visibility cuts the constant terminal detours and keeps your attention on the task you are already in.",
   },
   {
-    title: "Rotate faster when a quota gets tight",
-    body: "Fast account switching for 5-hour limits makes it easier to keep moving when one account starts running out of room.",
+    title: "Switch accounts before work stalls",
+    body: "When a 5-hour limit gets tight, rotate early and keep moving instead of waiting for a hard stop.",
   },
   {
-    title: "Plan reset windows with less guessing",
-    body: "Visible usage windows make multi-account setups easier to reason about, especially when the day gets chaotic.",
+    title: "Plan reset windows with confidence",
+    body: "Clear usage windows make multi-account planning predictable, even when the day turns chaotic.",
   },
 ];
 
 const WHY_IT_HELPS: InfoItem[] = [
   {
-    title: "More uninterrupted work time",
-    body: "The goal is not just better stats. The goal is protecting long, useful stretches of work across multiple accounts.",
+    title: "Protect deep work blocks",
+    body: "This is not about prettier stats. It is about preserving long, useful stretches of uninterrupted work.",
   },
   {
     title: "Less dashboard-terminal ping-pong",
-    body: "You should not need a dozen tiny checks to decide what to do next. recodee gives you the next useful view faster.",
+    body: "You should not need ten micro-checks to decide what to do next. recodee gives you the next useful view quickly.",
   },
   {
-    title: "Clearer timing decisions",
-    body: "When to wait, when to switch, and when to push ahead should feel obvious instead of approximate.",
+    title: "Clear timing decisions under pressure",
+    body: "When to wait, when to switch, and when to push should feel obvious instead of approximate.",
   },
 ];
 
@@ -106,14 +106,23 @@ function isValidEmailAddress(value: string): boolean {
 function BulletList({
   items,
   compact = false,
+  centered = false,
 }: {
   items: InfoItem[];
   compact?: boolean;
+  centered?: boolean;
 }) {
   return (
     <div className={compact ? "space-y-2.5" : "space-y-3"}>
       {items.map((item) => (
-        <div key={item.title} className="flex gap-3">
+        <div
+          key={item.title}
+          className={
+            centered
+              ? "mx-auto flex w-full max-w-3xl items-start gap-3 text-left"
+              : "flex gap-3"
+          }
+        >
           <div className="pt-2">
             <span className="block h-1.5 w-1.5 rounded-full bg-zinc-500" />
           </div>
@@ -121,7 +130,7 @@ function BulletList({
             <p
               className={
                 compact
-                  ? "text-sm font-medium text-zinc-100"
+                  ? "text-base font-medium text-zinc-100"
                   : "text-sm font-medium text-zinc-100 sm:text-[15px]"
               }
             >
@@ -130,7 +139,7 @@ function BulletList({
             <p
               className={
                 compact
-                  ? "mt-1 text-xs leading-6 text-zinc-400 sm:text-sm sm:leading-6"
+                  ? "mt-1 text-sm leading-7 text-zinc-300"
                   : "mt-1 text-sm leading-7 text-zinc-400"
               }
             >
@@ -147,13 +156,15 @@ function SectionHeading({
   title,
   description,
   compact = false,
+  centered = false,
 }: {
   title: string;
   description: string;
   compact?: boolean;
+  centered?: boolean;
 }) {
   return (
-    <div className="space-y-2">
+    <div className={`space-y-2 ${centered ? "text-center" : ""}`}>
       <h2
         className={
           compact
@@ -166,7 +177,7 @@ function SectionHeading({
       <p
         className={
           compact
-            ? "max-w-2xl text-xs leading-6 text-zinc-400 sm:text-sm sm:leading-6"
+            ? "mx-auto max-w-3xl text-sm leading-7 text-zinc-300"
             : "max-w-2xl text-sm leading-7 text-zinc-400"
         }
       >
@@ -188,18 +199,17 @@ function AmbientLights() {
 
 function ValueStrip() {
   return (
-    <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-      <div>
-        <p className="text-lg font-semibold tracking-tight text-white sm:text-xl">
-          May your tokens last forever.
+    <div className="mx-auto flex w-full max-w-3xl flex-wrap items-center justify-center gap-x-5 gap-y-2 text-center">
+      <div className="space-y-2">
+        <p className="text-2xl font-semibold tracking-tight text-white sm:text-3xl">
+          Make every token count.
         </p>
-        <p className="mt-1 max-w-2xl text-xs leading-5 text-zinc-400 sm:text-sm sm:leading-6">
-          recodee is the dashboard you wish you already had when quotas get
-          weird, sessions get messy, and you just want the next useful answer
-          fast.
+        <p className="mx-auto max-w-3xl text-sm leading-7 text-zinc-300 sm:text-base">
+          recodee keeps Codex account and session signals in one place, so you
+          can move faster when quotas get weird and sessions get noisy.
         </p>
-        <p className="mt-1 text-xs font-medium text-zinc-300 sm:text-sm">
-          A dashboard that helps them go a lot further.
+        <p className="text-sm font-medium text-zinc-200 sm:text-base">
+          Stay in flow instead of babysitting status checks.
         </p>
       </div>
     </div>
@@ -246,6 +256,99 @@ function FunFactCard() {
   );
 }
 
+function DemoCardAnnotations() {
+  return (
+    <div
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-0 hidden xl:block"
+    >
+      <div className="absolute left-[-210px] top-[212px]">
+        <p className="font-[cursive] text-lg italic text-cyan-200/90">
+          Your tokens left
+        </p>
+        <p className="-mt-1 font-[cursive] text-lg italic text-cyan-200/90">
+          on the other site
+        </p>
+        <svg
+          viewBox="0 0 170 70"
+          className="ml-[112px] mt-1 h-[70px] w-[170px]"
+          fill="none"
+        >
+          <path
+            d="M4 10 C 56 14, 96 30, 144 54"
+            stroke="rgb(103 232 249 / 0.75)"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeDasharray="4 5"
+          />
+          <path
+            d="M136 47 L 147 55 L 132 57"
+            stroke="rgb(103 232 249 / 0.75)"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </div>
+
+      <div className="absolute right-[-230px] top-[212px] text-right">
+        <p className="font-[cursive] text-lg italic text-emerald-200/90">
+          Your active Codex
+        </p>
+        <p className="-mt-1 font-[cursive] text-lg italic text-emerald-200/90">
+          CLI sessions
+        </p>
+        <svg
+          viewBox="0 0 180 70"
+          className="mt-1 h-[70px] w-[180px]"
+          fill="none"
+        >
+          <path
+            d="M176 10 C 126 15, 88 33, 34 54"
+            stroke="rgb(167 243 208 / 0.75)"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeDasharray="4 5"
+          />
+          <path
+            d="M42 47 L 30 55 L 45 57"
+            stroke="rgb(167 243 208 / 0.75)"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </div>
+
+      <div className="absolute right-[-210px] top-[456px] text-right">
+        <p className="font-[cursive] text-lg italic text-sky-200/90">
+          Drop your email here
+        </p>
+        <svg
+          viewBox="0 0 150 64"
+          className="mt-1 h-16 w-[150px]"
+          fill="none"
+        >
+          <path
+            d="M146 10 C 110 18, 82 32, 24 52"
+            stroke="rgb(125 211 252 / 0.75)"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeDasharray="4 5"
+          />
+          <path
+            d="M32 45 L 20 53 L 35 55"
+            stroke="rgb(125 211 252 / 0.75)"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </div>
+    </div>
+  );
+}
+
 export function ComingSoonPage() {
   const [agentEmail, setAgentEmail] = useState("");
 
@@ -275,6 +378,19 @@ export function ComingSoonPage() {
         <AmbientLights />
 
         <div className="space-y-4">
+          <div className="mx-auto mt-2 max-w-4xl text-center">
+            <h1 className="text-3xl font-semibold tracking-tight text-zinc-100 sm:text-4xl">
+              Coming Soon
+            </h1>
+            <p className="mt-3 text-sm text-zinc-400 sm:text-base">
+              We’re building something useful.{" "}
+              <span className="text-base font-extrabold tracking-tight text-zinc-100 sm:text-lg">
+                DROP
+              </span>{" "}
+              your email here.
+            </p>
+          </div>
+
           <div className="hidden lg:block">
             <div className="mb-2 flex w-full items-center justify-center gap-3 text-zinc-100">
               <CodexLogo size={26} title="recodee.com logo" />
@@ -298,22 +414,9 @@ export function ComingSoonPage() {
 
           <div className="relative">
             <div className="relative z-10">
-              <div className="mx-auto mt-4 max-w-4xl text-center">
-                <h1 className="text-3xl font-semibold tracking-tight text-zinc-100 sm:text-4xl">
-                  Coming Soon
-                </h1>
-                <p className="mt-3 text-sm text-zinc-400 sm:text-base">
-                  We’re building something useful.{" "}
-                  <span className="text-base font-extrabold tracking-tight text-zinc-100 sm:text-lg">
-                    DROP
-                  </span>{" "}
-                  your email here.
-                </p>
-              </div>
-
-              <div className="relative z-10 mt-5 flex flex-col items-center space-y-4 sm:mt-6">
+              <div className="relative z-10 mt-3 flex flex-col items-center space-y-4 sm:mt-4">
                 <div className="space-y-3">
-                  <div className="w-full max-w-[560px]">
+                  <div className="relative w-full max-w-[560px]">
                     <AccountCard
                       account={demoAccount}
                       useLocalBusy={!hasValidAgentEmail}
@@ -347,6 +450,7 @@ export function ComingSoonPage() {
                       }
                       onAction={() => {}}
                     />
+                    <DemoCardAnnotations />
                   </div>
                 </div>
 
@@ -363,26 +467,30 @@ export function ComingSoonPage() {
           </div>
 
           <div className="mx-auto w-full max-w-5xl px-1 py-1">
-            <div className="flex min-h-[56vh] flex-col justify-center gap-3">
-              <ValueStrip />
+            <div className="flex min-h-[56vh] items-center justify-center">
+              <div className="w-full max-w-4xl space-y-6">
+                <ValueStrip />
 
-              <div className="space-y-3">
-                <div className="space-y-2.5">
-                  <SectionHeading
-                    compact
-                    title="What the dashboard currently does"
-                    description="Built around official Codex account and session signals so you can decide faster and rotate accounts with less friction."
-                  />
-                  <BulletList compact items={WHAT_IT_DOES} />
-                </div>
+                <div className="space-y-3">
+                  <div className="space-y-2.5">
+                    <SectionHeading
+                      compact
+                      centered
+                      title="What the dashboard currently does"
+                      description="Built around official Codex account and session signals so you can decide faster and rotate accounts with less friction."
+                    />
+                    <BulletList compact centered items={WHAT_IT_DOES} />
+                  </div>
 
-                <div className="space-y-2.5">
-                  <SectionHeading
-                    compact
-                    title="Why this improves daily work"
-                    description="This is about protecting focused work blocks, not just making a prettier dashboard."
-                  />
-                  <BulletList compact items={WHY_IT_HELPS} />
+                  <div className="space-y-2.5">
+                    <SectionHeading
+                      compact
+                      centered
+                      title="Why this improves daily work"
+                      description="This is about protecting focused work blocks, not just making a prettier dashboard."
+                    />
+                    <BulletList compact centered items={WHY_IT_HELPS} />
+                  </div>
                 </div>
               </div>
             </div>

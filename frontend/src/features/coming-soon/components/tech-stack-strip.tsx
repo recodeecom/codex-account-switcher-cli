@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -9,25 +9,31 @@ type TechStackItem = {
 };
 
 export function TechStackStrip({ className }: { className?: string }) {
+  const loopedItems = [...TECH_STACK_ITEMS, ...TECH_STACK_ITEMS];
+
   return (
     <div className={cn("mt-4 space-y-2.5", className)}>
       <div className="text-[11px] font-semibold tracking-[0.24em] text-zinc-400 uppercase">
         TECH STACK
       </div>
 
-      <div className="flex flex-wrap gap-2.5 sm:gap-3">
-        {TECH_STACK_ITEMS.map((item) => (
-          <a
-            key={item.label}
-            href={item.href}
-            target="_blank"
-            rel="noreferrer"
-            aria-label={item.label}
-            className="inline-flex h-11 items-center rounded-xl border border-white/15 bg-black/30 px-3.5 backdrop-blur-sm transition hover:bg-black/45"
-          >
-            {item.wordmark}
-          </a>
-        ))}
+      <div className="tech-stack-strip-fade-mask overflow-hidden">
+        <div className="tech-stack-strip-marquee flex w-max items-center gap-2.5 sm:gap-3">
+          {loopedItems.map((item, index) => (
+            <a
+              key={`${item.label}-${index}`}
+              href={item.href}
+              target="_blank"
+              rel="noreferrer"
+              aria-label={item.label}
+              aria-hidden={index >= TECH_STACK_ITEMS.length}
+              tabIndex={index >= TECH_STACK_ITEMS.length ? -1 : undefined}
+              className="inline-flex h-11 shrink-0 items-center rounded-xl border border-white/15 bg-black/30 px-3.5 backdrop-blur-sm transition hover:bg-black/45"
+            >
+              {item.wordmark}
+            </a>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -113,55 +119,61 @@ const ResendWordmark = () => (
   </span>
 );
 
-const SupabaseWordmark = () => (
-  <span className="inline-flex items-center gap-1.5 text-white">
-    <svg
-      viewBox="0 0 109 113"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-      className="h-[14px] w-auto"
-    >
-      <path
-        d="M63.7076 110.284C60.8481 113.885 55.0502 111.912 54.9813 107.314L53.9738 40.0627L99.1935 40.0627C107.384 40.0627 111.952 49.5228 106.859 55.9374L63.7076 110.284Z"
-        fill="url(#supabase-logo-gradient-a)"
-      />
-      <path
-        d="M63.7076 110.284C60.8481 113.885 55.0502 111.912 54.9813 107.314L53.9738 40.0627L99.1935 40.0627C107.384 40.0627 111.952 49.5228 106.859 55.9374L63.7076 110.284Z"
-        fill="url(#supabase-logo-gradient-b)"
-        fillOpacity="0.2"
-      />
-      <path
-        d="M45.317 2.07103C48.1765 -1.53037 53.9745 0.442937 54.0434 5.041L54.4849 72.2922H9.83113C1.64038 72.2922 -2.92775 62.8321 2.1655 56.4175L45.317 2.07103Z"
-        fill="#3ECF8E"
-      />
-      <defs>
-        <linearGradient
-          id="supabase-logo-gradient-a"
-          x1="53.9738"
-          y1="54.974"
-          x2="94.1635"
-          y2="71.8295"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop stopColor="#249361" />
-          <stop offset="1" stopColor="#3ECF8E" />
-        </linearGradient>
-        <linearGradient
-          id="supabase-logo-gradient-b"
-          x1="36.1558"
-          y1="30.578"
-          x2="54.4844"
-          y2="65.0806"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop />
-          <stop offset="1" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-    </svg>
-    <span className="text-[13px] font-semibold leading-none">supabase</span>
-  </span>
-);
+const SupabaseWordmark = () => {
+  const gradientIdBase = useId().replace(/:/g, "");
+  const gradientAId = `${gradientIdBase}-supabase-logo-gradient-a`;
+  const gradientBId = `${gradientIdBase}-supabase-logo-gradient-b`;
+
+  return (
+    <span className="inline-flex items-center gap-1.5 text-white">
+      <svg
+        viewBox="0 0 109 113"
+        xmlns="http://www.w3.org/2000/svg"
+        aria-hidden="true"
+        className="h-[14px] w-auto"
+      >
+        <path
+          d="M63.7076 110.284C60.8481 113.885 55.0502 111.912 54.9813 107.314L53.9738 40.0627L99.1935 40.0627C107.384 40.0627 111.952 49.5228 106.859 55.9374L63.7076 110.284Z"
+          fill={`url(#${gradientAId})`}
+        />
+        <path
+          d="M63.7076 110.284C60.8481 113.885 55.0502 111.912 54.9813 107.314L53.9738 40.0627L99.1935 40.0627C107.384 40.0627 111.952 49.5228 106.859 55.9374L63.7076 110.284Z"
+          fill={`url(#${gradientBId})`}
+          fillOpacity="0.2"
+        />
+        <path
+          d="M45.317 2.07103C48.1765 -1.53037 53.9745 0.442937 54.0434 5.041L54.4849 72.2922H9.83113C1.64038 72.2922 -2.92775 62.8321 2.1655 56.4175L45.317 2.07103Z"
+          fill="#3ECF8E"
+        />
+        <defs>
+          <linearGradient
+            id={gradientAId}
+            x1="53.9738"
+            y1="54.974"
+            x2="94.1635"
+            y2="71.8295"
+            gradientUnits="userSpaceOnUse"
+          >
+            <stop stopColor="#249361" />
+            <stop offset="1" stopColor="#3ECF8E" />
+          </linearGradient>
+          <linearGradient
+            id={gradientBId}
+            x1="36.1558"
+            y1="30.578"
+            x2="54.4844"
+            y2="65.0806"
+            gradientUnits="userSpaceOnUse"
+          >
+            <stop />
+            <stop offset="1" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+      </svg>
+      <span className="text-[13px] font-semibold leading-none">supabase</span>
+    </span>
+  );
+};
 
 const OpenAIWordmark = () => (
   <span className="inline-flex items-center gap-1.5 text-white">
@@ -228,35 +240,39 @@ const ClaudeWordmark = () => (
   </span>
 );
 
-const OpenRouterWordmark = () => (
-  <span className="inline-flex items-center gap-1.5 text-white">
-    <svg
-      viewBox="0 0 512 512"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-      className="h-[14px] w-auto fill-current stroke-current"
-    >
-      <g clipPath="url(#openrouter-logo-clip)">
-        <path
-          d="M3 248.945C18 248.945 76 236 106 219C136 202 136 202 198 158C276.497 102.293 332 120.945 423 120.945"
-          strokeWidth="90"
-        />
-        <path d="M511 121.5L357.25 210.268L357.25 32.7324L511 121.5Z" />
-        <path
-          d="M0 249C15 249 73 261.945 103 278.945C133 295.945 133 295.945 195 339.945C273.497 395.652 329 377 420 377"
-          strokeWidth="90"
-        />
-        <path d="M508 376.445L354.25 287.678L354.25 465.213L508 376.445Z" />
-      </g>
-      <defs>
-        <clipPath id="openrouter-logo-clip">
-          <rect width="512" height="512" />
-        </clipPath>
-      </defs>
-    </svg>
-    <span className="text-[13px] font-semibold leading-none">OpenRouter</span>
-  </span>
-);
+const OpenRouterWordmark = () => {
+  const clipPathId = `${useId().replace(/:/g, "")}-openrouter-logo-clip`;
+
+  return (
+    <span className="inline-flex items-center gap-1.5 text-white">
+      <svg
+        viewBox="0 0 512 512"
+        xmlns="http://www.w3.org/2000/svg"
+        aria-hidden="true"
+        className="h-[14px] w-auto fill-current stroke-current"
+      >
+        <g clipPath={`url(#${clipPathId})`}>
+          <path
+            d="M3 248.945C18 248.945 76 236 106 219C136 202 136 202 198 158C276.497 102.293 332 120.945 423 120.945"
+            strokeWidth="90"
+          />
+          <path d="M511 121.5L357.25 210.268L357.25 32.7324L511 121.5Z" />
+          <path
+            d="M0 249C15 249 73 261.945 103 278.945C133 295.945 133 295.945 195 339.945C273.497 395.652 329 377 420 377"
+            strokeWidth="90"
+          />
+          <path d="M508 376.445L354.25 287.678L354.25 465.213L508 376.445Z" />
+        </g>
+        <defs>
+          <clipPath id={clipPathId}>
+            <rect width="512" height="512" />
+          </clipPath>
+        </defs>
+      </svg>
+      <span className="text-[13px] font-semibold leading-none">OpenRouter</span>
+    </span>
+  );
+};
 
 const FreestyleWordmark = () => (
   <span className="inline-flex items-center gap-1.5 text-white">
@@ -376,4 +392,3 @@ const TECH_STACK_ITEMS: TechStackItem[] = [
     wordmark: <CoolifyWordmark />,
   },
 ];
-

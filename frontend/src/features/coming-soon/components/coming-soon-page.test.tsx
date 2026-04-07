@@ -17,9 +17,9 @@ describe("ComingSoonPage", () => {
         name: "What the dashboard currently does",
       }),
     ).toBeInTheDocument();
-    expect(screen.getByText("May your tokens last forever.")).toBeInTheDocument();
+    expect(screen.getByText("Make every token count.")).toBeInTheDocument();
     expect(
-      screen.getByText("A dashboard that helps them go a lot further."),
+      screen.getByText("Stay in flow instead of babysitting status checks."),
     ).toBeInTheDocument();
     expect(
       screen.getAllByText("Please enter your email address").length,

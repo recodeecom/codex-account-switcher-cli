@@ -195,6 +195,37 @@
 .animate-delay-225 { animation-delay: 225ms; }
 .animate-delay-300 { animation-delay: 300ms; }
 
+@keyframes tech-stack-marquee {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.tech-stack-strip-fade-mask {
+  mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    black 7%,
+    black 93%,
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    black 7%,
+    black 93%,
+    transparent 100%
+  );
+}
+
+.tech-stack-strip-marquee {
+  animation: tech-stack-marquee 34s linear infinite;
+  will-change: transform;
+}
+
 .press-scale {
   transition: transform 0.12s ease;
 }
@@ -253,6 +284,9 @@
   }
   .animate-delay-75, .animate-delay-150, .animate-delay-225, .animate-delay-300 {
     animation-delay: 0ms;
+  }
+  .tech-stack-strip-marquee {
+    animation: none;
   }
   .card-hover {
     transition: none;
