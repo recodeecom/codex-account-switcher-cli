@@ -79,6 +79,7 @@ export type AccountCardProps = {
   initialSessionTasksCollapsed?: boolean;
   disableSecondaryActions?: boolean;
   forceWorkingIndicator?: boolean;
+  hideCurrentTaskPreview?: boolean;
   taskPanelAddon?: ReactNode;
   primaryActionLabel?: string;
   primaryActionAriaLabel?: string;
@@ -169,7 +170,39 @@ function TaskFinishedPill({ className }: { className?: string }) {
   );
 }
 
-function WaitingForTaskPill({ className }: { className?: string }) {
+function resolveWaitingTaskPillLabel(
+  taskPreview: string | null | undefined,
+): string {
+  const normalized = taskPreview?.trim().toLowerCase() ?? "";
+  if (!normalized) {
+    return "waiting";
+  }
+  if (normalized.includes("email")) {
+    return "waiting for email";
+  }
+  if (normalized.includes("submit")) {
+    return "waiting for submit";
+  }
+  if (
+    normalized.includes("input") ||
+    normalized.includes("confirm") ||
+    normalized.includes("interrupt")
+  ) {
+    return "waiting for input";
+  }
+  if (normalized.startsWith("waiting") || normalized.startsWith("awaiting")) {
+    return normalized;
+  }
+  return "waiting";
+}
+
+function WaitingForTaskPill({
+  className,
+  label = "waiting",
+}: {
+  className?: string;
+  label?: string;
+}) {
   return (
     <div
       className={cn(
@@ -182,8 +215,8 @@ function WaitingForTaskPill({ className }: { className?: string }) {
         <span className="absolute inline-flex h-full w-full rounded-full bg-cyan-300/55 animate-ping [animation-duration:1.4s]" />
         <span className="relative inline-flex h-2 w-2 rounded-full bg-cyan-200" />
       </span>
-      <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-100/95">
-        waiting
+      <span className="max-w-[156px] truncate text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-100/95">
+        {label}
       </span>
     </div>
   );
@@ -220,6 +253,7 @@ function isWaitingTaskPreview(taskPreview: string): boolean {
   return (
     normalized.startsWith("waiting") ||
     normalized.startsWith("awaiting") ||
+    normalized.includes("waiting for") ||
     normalized.includes("wait for user") ||
     normalized.includes("waiting for user") ||
     normalized.includes("awaiting user")
@@ -665,6 +699,7 @@ export function AccountCard(props: AccountCardProps) {
     initialSessionTasksCollapsed = false,
     disableSecondaryActions = false,
     forceWorkingIndicator = false,
+    hideCurrentTaskPreview = false,
     taskPanelAddon,
     primaryActionLabel = "Use this account",
     primaryActionAriaLabel,
@@ -809,6 +844,11 @@ export function AccountCard(props: AccountCardProps) {
   const weeklyOnly =
     account.windowMinutesPrimary == null &&
     account.windowMinutesSecondary != null;
+  const codexOnlyQuotaStatusUnknown =
+    isCodexOnlyPlanType(account.planType) &&
+    !hasLiveSession &&
+    primaryRemainingRaw == null &&
+    secondaryRemainingRaw == null;
   const usageLimitHit = isLiveUsageLimitHit({
     status: account.status,
     hasLiveSession,
@@ -932,6 +972,11 @@ export function AccountCard(props: AccountCardProps) {
   const staleSecondaryLastSeen = !hasLiveSession
     ? secondaryLastSeenDisplay
     : { label: null, upToDate: false };
+  const weeklyFallbackStateLabel =
+    codexOnlyQuotaStatusUnknown && !staleSecondaryLastSeen.label
+      ? `Last known: ${STATUS_LABELS[status] ?? status}`
+      : null;
+  const showPrimaryQuotaBar = !weeklyOnly && !codexOnlyQuotaStatusUnknown;
   const deactivatedLastSeenDisplay =
     isDeactivated &&
     (primaryLastSeenDisplay.label || secondaryLastSeenDisplay.label)
@@ -1018,13 +1063,17 @@ export function AccountCard(props: AccountCardProps) {
     codexLastTaskPreview != null &&
     codexLastTaskPreview !== WAITING_FOR_NEW_TASK_LABEL;
   const displayCurrentTaskPreview = effectiveCurrentTaskPreview;
-  const isCurrentTaskWaiting =
-    displayCurrentTaskPreview === WAITING_FOR_NEW_TASK_LABEL;
+  const isCurrentTaskWaiting = displayCurrentTaskPreview
+    ? isWaitingTaskPreview(displayCurrentTaskPreview)
+    : false;
+  const waitingTaskPillLabel = resolveWaitingTaskPillLabel(
+    displayCurrentTaskPreview,
+  );
   const showWorkingIndicator =
-    (forceWorkingIndicator || isWorkingNow) &&
-    effectiveCurrentTaskPreview !== WAITING_FOR_NEW_TASK_LABEL;
+    (forceWorkingIndicator || isWorkingNow) && !isCurrentTaskWaiting;
   const showWaitingForTaskIndicator =
-    isWorkingNow && effectiveCurrentTaskPreview === WAITING_FOR_NEW_TASK_LABEL;
+    isWorkingNow && isCurrentTaskWaiting;
+  const hideTaskContainerChrome = hideCurrentTaskPreview && Boolean(taskPanelAddon);
   const sessionTaskPreviews = useMemo(() => {
     const seenSessionKeys = new Set<string>();
     const normalized = (account.codexSessionTaskPreviews ?? [])
@@ -1079,33 +1128,19 @@ export function AccountCard(props: AccountCardProps) {
       assignedCount,
     };
   }, [sessionTaskRows]);
-  const quotaDebugLogText = useMemo(
-    () =>
-      liveQuotaDebug
-        ? buildQuotaDebugLogLines(
-            liveQuotaDebug,
-            account.codexAuth?.snapshotName ?? null,
-            account.codexAuth?.activeSnapshotName ?? null,
-            account.accountId,
-            codexLiveSessionCountRaw,
-            codexTrackedSessionCount,
-            codexLiveSessionCount,
-            Boolean(account.codexAuth?.hasLiveSession),
-            effectiveCurrentTaskPreview,
-          ).join("\n")
-        : "",
-    [
-      account.accountId,
-      account.codexAuth?.activeSnapshotName,
-      account.codexAuth?.hasLiveSession,
-      account.codexAuth?.snapshotName,
-      codexLiveSessionCount,
-      codexLiveSessionCountRaw,
-      codexTrackedSessionCount,
-      effectiveCurrentTaskPreview,
-      liveQuotaDebug,
-    ],
-  );
+  const quotaDebugLogText = liveQuotaDebug
+    ? buildQuotaDebugLogLines(
+        liveQuotaDebug,
+        account.codexAuth?.snapshotName ?? null,
+        account.codexAuth?.activeSnapshotName ?? null,
+        account.accountId,
+        codexLiveSessionCountRaw,
+        codexTrackedSessionCount,
+        codexLiveSessionCount,
+        Boolean(account.codexAuth?.hasLiveSession),
+        effectiveCurrentTaskPreview,
+      ).join("\n")
+    : "";
   const lockedAccountIdentity =
     account.email?.trim() || account.displayName?.trim() || title.trim();
   const lockedAccountIdentityBlurred =
@@ -1201,7 +1236,7 @@ export function AccountCard(props: AccountCardProps) {
                   </span>
                 </div>
               ) : showWaitingForTaskIndicator ? (
-                <WaitingForTaskPill />
+                <WaitingForTaskPill label={waitingTaskPillLabel} />
               ) : null}
               {showWeeklyUsageLimitDetailBadge ? (
                 <Badge
@@ -1299,10 +1334,10 @@ export function AccountCard(props: AccountCardProps) {
               <div
                 className={cn(
                   "grid gap-2.5",
-                  weeklyOnly ? "grid-cols-1" : "grid-cols-2",
+                  showPrimaryQuotaBar ? "grid-cols-2" : "grid-cols-1",
                 )}
               >
-                {!weeklyOnly && (
+                {showPrimaryQuotaBar && (
                   <QuotaBar
                     label={primaryWindowLabel}
                     percent={primaryRemaining}
@@ -1320,7 +1355,9 @@ export function AccountCard(props: AccountCardProps) {
                   label="Weekly"
                   percent={secondaryRemaining}
                   resetLabel={secondaryReset}
-                  lastSeenLabel={staleSecondaryLastSeen.label}
+                  lastSeenLabel={
+                    staleSecondaryLastSeen.label ?? weeklyFallbackStateLabel
+                  }
                   lastSeenUpToDate={staleSecondaryLastSeen.upToDate}
                   isLive={hasLiveSession}
                   telemetryPending={secondaryTelemetryPending}
@@ -1341,36 +1378,49 @@ export function AccountCard(props: AccountCardProps) {
               <div className="space-y-1.5">
                 <div
                   className={cn(
-                    "relative rounded-lg border px-2.5 py-2 transition-all duration-200",
-                    isCurrentTaskWaiting
-                      ? "border-cyan-400/20 bg-black/55 hover:border-cyan-300/35 hover:bg-black/65 hover:shadow-[0_0_0_1px_rgba(34,211,238,0.14),0_8px_18px_rgba(0,0,0,0.35)]"
-                      : "border-white/10 bg-black/25 hover:border-white/20 hover:bg-black/35",
+                    "relative transition-all duration-200",
+                    hideTaskContainerChrome
+                      ? "px-0 py-0"
+                      : cn(
+                          "rounded-lg border px-2.5 py-2",
+                          isCurrentTaskWaiting
+                            ? "border-cyan-400/20 bg-black/55 hover:border-cyan-300/35 hover:bg-black/65 hover:shadow-[0_0_0_1px_rgba(34,211,238,0.14),0_8px_18px_rgba(0,0,0,0.35)]"
+                            : "border-white/10 bg-black/25 hover:border-white/20 hover:bg-black/35",
+                        ),
                   )}
                 >
-                  <div
-                    className={cn(
-                      "pointer-events-none absolute inset-0 -z-10 rounded-lg",
-                      isCurrentTaskWaiting
-                        ? "bg-[linear-gradient(90deg,rgba(15,23,42,0.72)_0%,rgba(2,8,23,0.4)_100%)]"
-                        : "bg-[linear-gradient(90deg,rgba(34,211,238,0.08)_0%,rgba(34,211,238,0)_65%)] animate-pulse",
-                    )}
-                    aria-hidden
-                  />
-                  <p
-                    className="break-words whitespace-pre-wrap text-sm leading-relaxed text-zinc-100/95"
-                    title={effectiveCurrentTaskPreview ?? undefined}
-                  >
-                    <span className="inline-flex items-center gap-1.5">
-                      {hasNextTaskHint(effectiveCurrentTaskPreview) ? (
-                        <NextTaskBadge />
-                      ) : null}
-                      <span>
-                        {displayCurrentTaskPreview ??
-                          "No active task reported"}
+                  {!hideTaskContainerChrome ? (
+                    <div
+                      className={cn(
+                        "pointer-events-none absolute inset-0 -z-10 rounded-lg",
+                        isCurrentTaskWaiting
+                          ? "bg-[linear-gradient(90deg,rgba(15,23,42,0.72)_0%,rgba(2,8,23,0.4)_100%)]"
+                          : "bg-[linear-gradient(90deg,rgba(34,211,238,0.08)_0%,rgba(34,211,238,0)_65%)] animate-pulse",
+                      )}
+                      aria-hidden
+                    />
+                  ) : null}
+                  {!hideCurrentTaskPreview ? (
+                    <p
+                      className="break-words whitespace-pre-wrap text-sm leading-relaxed text-zinc-100/95"
+                      title={effectiveCurrentTaskPreview ?? undefined}
+                    >
+                      <span className="inline-flex items-center gap-1.5">
+                        {hasNextTaskHint(effectiveCurrentTaskPreview) ? (
+                          <NextTaskBadge />
+                        ) : null}
+                        <span>
+                          {displayCurrentTaskPreview ??
+                            "No active task reported"}
+                        </span>
                       </span>
-                    </span>
-                  </p>
-                  {taskPanelAddon ? <div className="mt-2">{taskPanelAddon}</div> : null}
+                    </p>
+                  ) : null}
+                  {taskPanelAddon ? (
+                    <div className={cn(!hideCurrentTaskPreview && "mt-2")}>
+                      {taskPanelAddon}
+                    </div>
+                  ) : null}
                 </div>
 
                 {showLastTaskPreview ? (

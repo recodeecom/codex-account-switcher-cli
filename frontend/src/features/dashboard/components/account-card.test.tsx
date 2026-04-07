@@ -258,6 +258,31 @@ describe("AccountCard", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("hides the 5h bar and shows last-known weekly state for codex-only accounts with unknown quota telemetry", () => {
+    const account = createAccountSummary({
+      planType: "self_serve_business_usage_based",
+      usage: {
+        primaryRemainingPercent: null,
+        secondaryRemainingPercent: null,
+      },
+      lastUsageRecordedAtPrimary: null,
+      lastUsageRecordedAtSecondary: null,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "codexina@edixai.com",
+        activeSnapshotName: "codexina@edixai.com",
+        isActiveSnapshot: true,
+        hasLiveSession: false,
+      },
+    });
+
+    render(<AccountCard account={account} />);
+
+    expect(screen.queryByText("5h")).not.toBeInTheDocument();
+    expect(screen.getByText("Weekly")).toBeInTheDocument();
+    expect(screen.getByText("Last known: Active")).toBeInTheDocument();
+  });
+
   it("calls reauth action when unlock is clicked for a missing snapshot", async () => {
     const user = userEvent.setup({ delay: null });
     const account = createAccountSummary({
@@ -1604,6 +1629,7 @@ describe("AccountCard", () => {
     expect(screen.getByText("sess-user-submit")).toBeInTheDocument();
     expect(screen.getByText("waiting")).toBeInTheDocument();
     expect(screen.queryByText("thinking")).not.toBeInTheDocument();
+    expect(screen.queryByText("working...")).not.toBeInTheDocument();
     expect(screen.getByText("Waiting for user to press submit.")).toBeInTheDocument();
   });
 

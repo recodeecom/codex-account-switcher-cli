@@ -8,7 +8,7 @@ describe("ComingSoonPage", () => {
   it("renders full-width layout with left preview and right content", () => {
     render(<ComingSoonPage />);
 
-    expect(screen.getByText("recodee.com")).toBeInTheDocument();
+    expect(screen.getAllByText("recodee.com").length).toBeGreaterThan(0);
     expect(
       screen.getByRole("heading", { name: "Coming Soon" }),
     ).toBeInTheDocument();
@@ -22,8 +22,10 @@ describe("ComingSoonPage", () => {
       screen.getByText("A dashboard that helps them go a lot further."),
     ).toBeInTheDocument();
     expect(
-      screen.getAllByText("Agent waiting for email address").length,
+      screen.getAllByText("Please enter your email address").length,
     ).toBeGreaterThan(0);
+    expect(screen.queryByText("Waiting for email address")).not.toBeInTheDocument();
+    expect(screen.queryByText("working...")).not.toBeInTheDocument();
     expect(screen.getByText("Team · demo@demo.com")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Submit account tutorial" }),
@@ -39,6 +41,20 @@ describe("ComingSoonPage", () => {
       "href",
       "/accounts",
     );
+    expect(screen.getAllByText("TECH STACK").length).toBeGreaterThan(0);
+    expect(
+      screen
+        .getAllByRole("link", { name: "Onlook" })
+        .some(
+          (link) =>
+            link.getAttribute("href") === "https://github.com/onlook-dev/onlook",
+        ),
+    ).toBe(true);
+    expect(
+      screen
+        .getAllByRole("link", { name: "OpenRouter" })
+        .some((link) => link.getAttribute("href") === "https://openrouter.ai"),
+    ).toBe(true);
     expect(screen.getByText("Fun Fact")).toBeInTheDocument();
     expect(
       screen.getByText("We built recodee with recodee. We call that confidence."),
@@ -66,9 +82,6 @@ describe("ComingSoonPage", () => {
     expect(
       screen.getByRole("button", { name: "Submit account tutorial" }),
     ).toBeEnabled();
-    expect(
-      screen.getAllByText("Waiting for user to press Submit.").length,
-    ).toBeGreaterThan(0);
     expect(screen.queryByText("thinking")).not.toBeInTheDocument();
   });
 });

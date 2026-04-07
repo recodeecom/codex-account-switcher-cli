@@ -52,3 +52,6 @@ dev = [
   "ruff>=0.14.13",
   "ty>=0.0.12",
 ]
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]

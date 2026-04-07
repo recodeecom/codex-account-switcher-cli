@@ -28,6 +28,73 @@ function buildWindow(
 }
 
 describe("AccountCards", () => {
+  it("keeps card DOM nodes stable when account ordering changes", () => {
+    const alpha = createAccountSummary({
+      accountId: "acc_alpha",
+      email: "alpha@example.com",
+      displayName: "alpha@example.com",
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "alpha",
+        activeSnapshotName: "alpha",
+        isActiveSnapshot: true,
+        hasLiveSession: false,
+      },
+    });
+    const beta = createAccountSummary({
+      accountId: "acc_beta",
+      email: "beta@example.com",
+      displayName: "beta@example.com",
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "beta",
+        activeSnapshotName: "beta",
+        isActiveSnapshot: true,
+        hasLiveSession: false,
+      },
+    });
+
+    const { rerender } = render(
+      <AccountCards
+        accounts={[alpha, beta]}
+        primaryWindow={{
+          windowKey: "primary",
+          windowMinutes: 300,
+          accounts: [
+            { accountId: "acc_alpha", remainingPercentAvg: 80, capacityCredits: 1000, remainingCredits: 800 },
+            { accountId: "acc_beta", remainingPercentAvg: 60, capacityCredits: 1000, remainingCredits: 600 },
+          ],
+        }}
+        secondaryWindow={null}
+      />,
+    );
+
+    const alphaCardBefore = screen.getByText("Plus · alpha").closest(".card-hover");
+    const betaCardBefore = screen.getByText("Plus · beta").closest(".card-hover");
+    expect(alphaCardBefore).not.toBeNull();
+    expect(betaCardBefore).not.toBeNull();
+
+    rerender(
+      <AccountCards
+        accounts={[alpha, beta]}
+        primaryWindow={{
+          windowKey: "primary",
+          windowMinutes: 300,
+          accounts: [
+            { accountId: "acc_alpha", remainingPercentAvg: 40, capacityCredits: 1000, remainingCredits: 400 },
+            { accountId: "acc_beta", remainingPercentAvg: 90, capacityCredits: 1000, remainingCredits: 900 },
+          ],
+        }}
+        secondaryWindow={null}
+      />,
+    );
+
+    const alphaCardAfter = screen.getByText("Plus · alpha").closest(".card-hover");
+    const betaCardAfter = screen.getByText("Plus · beta").closest(".card-hover");
+    expect(alphaCardAfter).toBe(alphaCardBefore);
+    expect(betaCardAfter).toBe(betaCardBefore);
+  });
+
   it("renders working accounts in a dedicated top section before other accounts", () => {
     const nowIso = new Date().toISOString();
     const idle = createAccountSummary({
