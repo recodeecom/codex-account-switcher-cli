@@ -1577,6 +1577,36 @@ describe("AccountCard", () => {
     expect(screen.getByText("task finished")).toBeInTheDocument();
   });
 
+  it("treats waiting-for-user task previews as waiting instead of thinking", () => {
+    const account = createAccountSummary({
+      codexCurrentTaskPreview: "Waiting for user to press Submit.",
+      codexSessionTaskPreviews: [
+        {
+          sessionKey: "sess-user-submit",
+          taskPreview: "Waiting for user to press Submit",
+          taskUpdatedAt: "2026-04-05T10:00:00.000Z",
+        },
+      ],
+      codexLiveSessionCount: 1,
+      codexSessionCount: 1,
+      codexTrackedSessionCount: 1,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+    });
+
+    render(<AccountCard account={account} />);
+
+    expect(screen.getByText("sess-user-submit")).toBeInTheDocument();
+    expect(screen.getByText("waiting")).toBeInTheDocument();
+    expect(screen.queryByText("thinking")).not.toBeInTheDocument();
+    expect(screen.getByText("Waiting for user to press submit.")).toBeInTheDocument();
+  });
+
   it("allows collapsing and expanding CLI session tasks list", async () => {
     const user = userEvent.setup();
     const account = createAccountSummary({

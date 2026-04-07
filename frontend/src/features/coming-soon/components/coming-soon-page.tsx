@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { CodexLogo } from "@/components/brand/codex-logo";
 import { Button } from "@/components/ui/button";
@@ -67,6 +67,24 @@ export function ComingSoonPage() {
   const [agentEmail, setAgentEmail] = useState("");
 
   const hasValidAgentEmail = isValidEmailAddress(agentEmail);
+  const demoAccount = useMemo<AccountSummary>(
+    () => ({
+      ...DEMO_ACCOUNT_CARD,
+      codexCurrentTaskPreview: hasValidAgentEmail
+        ? "Waiting for user to press Submit."
+        : "Agent waiting for email address",
+      codexSessionTaskPreviews: [
+        {
+          sessionKey: "demo-session-1",
+          taskPreview: hasValidAgentEmail
+            ? "Waiting for user to press Submit"
+            : "Waiting for email address",
+          taskUpdatedAt: new Date().toISOString(),
+        },
+      ],
+    }),
+    [hasValidAgentEmail],
+  );
 
   return (
     <main className="min-h-screen bg-background p-4 sm:p-6">
@@ -82,22 +100,33 @@ export function ComingSoonPage() {
           </div>
 
           <div className="space-y-6">
-            <div className="flex flex-wrap items-center gap-4 sm:gap-6">
-              <div className="inline-flex items-center gap-3">
-                <CodexLogo size={62} title="recodee.com logo" />
-                <p className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
-                  recodee.com
+            <div className="rounded-2xl border border-cyan-400/20 bg-[linear-gradient(180deg,rgba(8,18,36,0.7)_0%,rgba(4,10,22,0.9)_100%)] p-4 sm:p-5">
+              <div className="flex flex-wrap items-center gap-4 sm:gap-6">
+                <div className="inline-flex items-center gap-3">
+                  <CodexLogo size={62} title="recodee.com logo" />
+                  <p className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+                    recodee.com
+                  </p>
+                </div>
+                <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+                  Coming Soon
+                </h1>
+              </div>
+
+              <p className="mt-4 text-sm leading-relaxed text-muted-foreground sm:text-base">
+                We’re building something dangerously useful. Drop your email and
+                we’ll let you know when it’s ready.
+              </p>
+
+              <div className="mt-4 rounded-xl border border-cyan-400/20 bg-cyan-500/[0.06] px-4 py-3">
+                <p className="text-base font-semibold tracking-tight text-zinc-100 sm:text-lg">
+                  May your tokens last forever.
+                </p>
+                <p className="mt-1 text-sm text-zinc-300 sm:text-base">
+                  A dashboard that helps them go a lot further.
                 </p>
               </div>
-              <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
-                Coming Soon
-              </h1>
             </div>
-
-            <p className="text-sm leading-relaxed text-muted-foreground sm:text-base">
-              We’re building something dangerously useful. Drop your email and we’ll
-              let you know when it’s ready.
-            </p>
 
             <div className="space-y-4">
               <div>
@@ -114,8 +143,8 @@ export function ComingSoonPage() {
                     checks.
                   </li>
                   <li>
-                    Fast account switching for 5-hour limits when one account hits
-                    quota.
+                    Fast account switching for 5-hour limits when one account
+                    hits quota.
                   </li>
                   <li>
                     Reset-window planning for multi-account setups with visible
@@ -129,15 +158,19 @@ export function ComingSoonPage() {
                   Why this improves daily work
                 </h2>
                 <ul className="mt-2 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
-                  <li>More uninterrupted work time across multiple accounts.</li>
-                  <li>Less context-switching between terminals and dashboard.</li>
+                  <li>
+                    More uninterrupted work time across multiple accounts.
+                  </li>
+                  <li>
+                    Less context-switching between terminals and dashboard.
+                  </li>
                   <li>Clearer view of when to rotate accounts.</li>
                 </ul>
               </div>
 
               <div className="w-full max-w-[520px]">
                 <AccountCard
-                  account={DEMO_ACCOUNT_CARD}
+                  account={demoAccount}
                   useLocalBusy={!hasValidAgentEmail}
                   deleteBusy
                   initialSessionTasksCollapsed
@@ -179,20 +212,30 @@ export function ComingSoonPage() {
           <div className="mx-auto w-full max-w-4xl rounded-2xl border border-cyan-400/25 bg-[linear-gradient(180deg,rgba(8,16,30,0.92)_0%,rgba(5,10,20,0.98)_100%)] p-1 shadow-[0_14px_34px_rgba(0,0,0,0.4)]">
             <div className="rounded-[14px] border border-white/8 bg-[radial-gradient(circle_at_20%_-30%,rgba(34,211,238,0.14),transparent_55%),linear-gradient(180deg,rgba(9,18,34,0.9)_0%,rgba(6,12,24,0.98)_100%)] px-6 py-5 text-center">
               <div className="mb-3 flex justify-center">
-                <CodexLogo size={42} title="recodee.com logo" className="opacity-95" />
+                <CodexLogo
+                  size={42}
+                  title="recodee.com logo"
+                  className="opacity-95"
+                />
               </div>
               <div className="inline-flex items-center gap-2 rounded-full border border-cyan-400/30 bg-cyan-500/12 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-cyan-200">
-                <span className="h-1.5 w-1.5 rounded-full bg-cyan-200" aria-hidden />
+                <span
+                  className="h-1.5 w-1.5 rounded-full bg-cyan-200"
+                  aria-hidden
+                />
                 Fun Fact
               </div>
 
               <p className="mt-3 text-xl font-semibold tracking-tight text-zinc-100 sm:text-3xl">
-                recodee.com was built with recodee.com too.
+                We built recodee with recodee. We call that confidence.
               </p>
 
-              <div className="mt-4 flex justify-center">
-                <p className="inline-flex items-center rounded-full border border-white/10 bg-black/25 px-4 py-1.5 text-xs tracking-[0.16em] text-zinc-300 sm:text-sm">
-                  tokens spent: 3000M
+              <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                <p className="inline-flex items-center rounded-full border border-cyan-400/25 bg-cyan-500/10 px-4 py-1.5 text-xs tracking-[0.14em] text-cyan-100 sm:text-sm">
+                  codex tokens used: 3B
+                </p>
+                <p className="inline-flex items-center rounded-full border border-emerald-400/30 bg-emerald-500/12 px-4 py-1.5 text-xs font-semibold tracking-[0.12em] text-emerald-100 sm:text-sm">
+                  money saved: $10k+
                 </p>
               </div>
             </div>

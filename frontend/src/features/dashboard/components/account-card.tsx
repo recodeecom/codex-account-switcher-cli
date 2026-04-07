@@ -212,12 +212,44 @@ function ThinkingTaskPill({ className }: { className?: string }) {
 
 type SessionTaskState = "finished" | "waiting" | "thinking";
 
+function isWaitingTaskPreview(taskPreview: string): boolean {
+  const normalized = taskPreview.trim().toLowerCase();
+  if (normalized === WAITING_FOR_NEW_TASK_LABEL.toLowerCase()) {
+    return true;
+  }
+  return (
+    normalized.startsWith("waiting") ||
+    normalized.startsWith("awaiting") ||
+    normalized.includes("wait for user") ||
+    normalized.includes("waiting for user") ||
+    normalized.includes("awaiting user")
+  );
+}
+
+function resolveWaitingTaskHelperText(taskPreview: string): string {
+  const normalized = taskPreview.trim().toLowerCase();
+  if (normalized.includes("submit")) {
+    return "Waiting for user to press submit.";
+  }
+  if (normalized.includes("email")) {
+    return "Waiting for user email input.";
+  }
+  if (
+    normalized.includes("input") ||
+    normalized.includes("interrupt") ||
+    normalized.includes("confirm")
+  ) {
+    return "Waiting for user input.";
+  }
+  return "No task assigned yet for this account.";
+}
+
 function resolveSessionTaskState(taskPreview: string): SessionTaskState {
   const normalized = taskPreview.trim().toLowerCase();
   if (normalized === TASK_FINISHED_LABEL.toLowerCase()) {
     return "finished";
   }
-  if (normalized === WAITING_FOR_NEW_TASK_LABEL.toLowerCase()) {
+  if (isWaitingTaskPreview(taskPreview)) {
     return "waiting";
   }
   return "thinking";
@@ -1436,7 +1468,9 @@ export function AccountCard(props: AccountCardProps) {
                                 </span>
                                 {sessionTaskState === "waiting" ? (
                                   <p className="mt-1 text-[10px] leading-relaxed text-cyan-200/85">
-                                    No task assigned yet for this account.
+                                    {resolveWaitingTaskHelperText(
+                                      preview.taskPreview,
+                                    )}
                                   </p>
                                 ) : null}
                               </div>
