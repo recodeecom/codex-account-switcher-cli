@@ -271,6 +271,7 @@ export function DashboardPage() {
               accounts={overview?.accounts ?? []}
               primaryWindow={overview?.windows.primary ?? null}
               secondaryWindow={overview?.windows.secondary ?? null}
+              primaryUsageSummary={mergedUsageSummary.usageSummary.last5h}
               useLocalBusy={useLocalMutation.isPending}
               useLocalBusyAccountId={useLocalBusyAccountId}
               deleteBusy={deleteMutation.isPending}

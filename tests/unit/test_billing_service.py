@@ -56,6 +56,8 @@ async def test_get_accounts_reads_medusa_summary_without_python_seed_defaults() 
     summary_provider = SimpleNamespace(
         fetch_accounts=AsyncMock(return_value=[_account()]),
         update_accounts=AsyncMock(),
+        add_account=AsyncMock(),
+        delete_account=AsyncMock(),
     )
     service = BillingService(repository, summary_provider)
 
@@ -80,6 +82,8 @@ async def test_get_accounts_marks_degraded_and_raises_when_medusa_summary_is_una
             side_effect=BillingSummaryUnavailableError("Medusa billing summary is unavailable")
         ),
         update_accounts=AsyncMock(),
+        add_account=AsyncMock(),
+        delete_account=AsyncMock(),
     )
     service = BillingService(repository, summary_provider)
 
@@ -183,3 +187,24 @@ async def test_add_account_propagates_validation_errors() -> None:
             await service.add_account(payload)
 
     set_normal.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_delete_account_passes_deletion_to_summary_provider() -> None:
+    repository = SimpleNamespace(
+        list_accounts=AsyncMock(return_value=[]),
+        replace_accounts=AsyncMock(),
+    )
+    summary_provider = SimpleNamespace(
+        fetch_accounts=AsyncMock(return_value=[]),
+        update_accounts=AsyncMock(return_value=[]),
+        add_account=AsyncMock(),
+        delete_account=AsyncMock(return_value=None),
+    )
+    service = BillingService(repository, summary_provider)
+
+    with patch("app.modules.billing.service.set_normal") as set_normal:
+        await service.delete_account("business-plan-edixai")
+
+    summary_provider.delete_account.assert_awaited_once_with("business-plan-edixai")
+    set_normal.assert_called_once_with()

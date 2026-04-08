@@ -1,7 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-import { createBillingAccount, getBillingAccounts, updateBillingAccounts } from "@/features/billing/api";
+import {
+  createBillingAccount,
+  deleteBillingAccount,
+  getBillingAccounts,
+  updateBillingAccounts,
+} from "@/features/billing/api";
 
 export function useBilling() {
   const queryClient = useQueryClient();
@@ -33,9 +38,21 @@ export function useBilling() {
     },
   });
 
+  const deleteAccountMutation = useMutation({
+    mutationFn: deleteBillingAccount,
+    onSuccess: async () => {
+      toast.success("Subscription account deleted");
+      await queryClient.invalidateQueries({ queryKey: ["billing", "summary"] });
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Failed to delete subscription account");
+    },
+  });
+
   return {
     billingQuery,
     updateAccountsMutation,
     createAccountMutation,
+    deleteAccountMutation,
   };
 }

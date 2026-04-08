@@ -9,6 +9,7 @@ import {
   Plus,
   ShieldCheck,
   Sparkles,
+  Trash2,
   Users2,
 } from "lucide-react";
 import { type FormEvent, useMemo, useState } from "react";
@@ -48,6 +49,7 @@ import {
 import { useBilling } from "@/features/billing/hooks/use-billing";
 import type { BillingAccount, BillingAccountCreateRequest } from "@/features/billing/schemas";
 import { getErrorMessageOrNull } from "@/utils/errors";
+import { formatEuro } from "@/utils/formatters";
 
 const SUBSCRIPTION_STATUS_OPTIONS: BillingAccount["subscriptionStatus"][] = [
   "trialing",
@@ -62,6 +64,8 @@ const PAYMENT_STATUS_OPTIONS: BillingAccount["paymentStatus"][] = [
   "past_due",
   "unpaid",
 ];
+const CHATGPT_SEAT_MONTHLY_PRICE_EUR = 26;
+const CODEX_SEAT_MONTHLY_PRICE_EUR = 0;
 
 type EditAccountForm = {
   planName: string;
@@ -149,7 +153,12 @@ const DEFAULT_EDIT_ACCOUNT_FORM: EditAccountForm = {
 };
 
 export function BillingPage() {
-  const { billingQuery, updateAccountsMutation, createAccountMutation } = useBilling();
+  const {
+    billingQuery,
+    updateAccountsMutation,
+    createAccountMutation,
+    deleteAccountMutation,
+  } = useBilling();
   const [selectedBusinessAccountId, setSelectedBusinessAccountId] = useState<string | null>(null);
   const [editingBusinessAccountId, setEditingBusinessAccountId] = useState<string | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -158,6 +167,9 @@ export function BillingPage() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [createForm, setCreateForm] = useState(DEFAULT_CREATE_ACCOUNT_FORM);
   const [createFormError, setCreateFormError] = useState<string | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deletingBusinessAccountId, setDeletingBusinessAccountId] = useState<string | null>(null);
+  const [deleteFormError, setDeleteFormError] = useState<string | null>(null);
 
   const accounts = useMemo(() => billingQuery.data?.accounts ?? [], [billingQuery.data]);
   const selectedBusinessAccount = useMemo(
@@ -174,6 +186,13 @@ export function BillingPage() {
         : accounts.find((account) => account.id === editingBusinessAccountId) ?? null,
     [accounts, editingBusinessAccountId],
   );
+  const deletingBusinessAccount = useMemo(
+    () =>
+      deletingBusinessAccountId === null
+        ? null
+        : accounts.find((account) => account.id === deletingBusinessAccountId) ?? null,
+    [accounts, deletingBusinessAccountId],
+  );
 
   const entitledCount = useMemo(
     () => accounts.filter((account) => account.entitled).length,
@@ -187,6 +206,12 @@ export function BillingPage() {
     () => accounts.reduce((sum, account) => sum + account.codexSeatsInUse, 0),
     [accounts],
   );
+  const totalMonthlySpendEuro = useMemo(
+    () =>
+      totalChatgptSeats * CHATGPT_SEAT_MONTHLY_PRICE_EUR +
+      totalCodexSeats * CODEX_SEAT_MONTHLY_PRICE_EUR,
+    [totalChatgptSeats, totalCodexSeats],
+  );
   const notEntitledCount = accounts.length - entitledCount;
   const errorMessage = getErrorMessageOrNull(
     billingQuery.error,
@@ -194,6 +219,7 @@ export function BillingPage() {
   );
   const editPending = updateAccountsMutation.isPending;
   const createPending = createAccountMutation.isPending;
+  const deletePending = deleteAccountMutation.isPending;
 
   function openEditDialog(account: BillingAccount) {
     setEditingBusinessAccountId(account.id);
@@ -207,6 +233,18 @@ export function BillingPage() {
     setEditingBusinessAccountId(null);
     setEditForm(DEFAULT_EDIT_ACCOUNT_FORM);
     setEditFormError(null);
+  }
+
+  function openDeleteDialog(account: BillingAccount) {
+    setDeletingBusinessAccountId(account.id);
+    setDeleteFormError(null);
+    setDeleteDialogOpen(true);
+  }
+
+  function resetDeleteDialog() {
+    setDeleteDialogOpen(false);
+    setDeletingBusinessAccountId(null);
+    setDeleteFormError(null);
   }
 
   async function handleEditSubscriptionAccount(event: FormEvent<HTMLFormElement>) {
@@ -299,6 +337,28 @@ export function BillingPage() {
     }
   }
 
+  async function handleDeleteSubscriptionAccount() {
+    if (!deletingBusinessAccount) {
+      setDeleteFormError("Select a subscription account to delete.");
+      return;
+    }
+
+    setDeleteFormError(null);
+
+    try {
+      await deleteAccountMutation.mutateAsync({ id: deletingBusinessAccount.id });
+      if (selectedBusinessAccountId === deletingBusinessAccount.id) {
+        setSelectedBusinessAccountId(null);
+      }
+      if (editingBusinessAccountId === deletingBusinessAccount.id) {
+        resetEditDialog();
+      }
+      resetDeleteDialog();
+    } catch (error) {
+      setDeleteFormError(getErrorMessageOrNull(error, "Failed to delete subscription account."));
+    }
+  }
+
   return (
     <div className="animate-fade-in-up space-y-6">
       <div className="rounded-2xl border border-border/70 bg-gradient-to-b from-card via-card to-card/70 p-5 shadow-sm">
@@ -342,14 +402,30 @@ export function BillingPage() {
           </CardContent>
         </Card>
       ) : accounts.length === 0 ? (
-        <EmptyState
-          icon={Building2}
-          title="No billed accounts yet"
-          description="Medusa has not returned any subscription accounts for this dashboard."
-        />
+        <Card className="border-border/70">
+          <CardContent className="space-y-5 py-10">
+            <EmptyState
+              icon={Building2}
+              title="No billed accounts yet"
+              description="No subscription accounts are currently stored for this dashboard."
+            />
+            <div className="flex justify-center">
+              <Button
+                type="button"
+                onClick={() => {
+                  setCreateFormError(null);
+                  setCreateDialogOpen(true);
+                }}
+              >
+                <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+                Add subscription account
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       ) : (
         <>
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
             <div className="rounded-xl border border-border/70 bg-muted/30 p-4">
               <p className="text-xs uppercase tracking-wide text-muted-foreground">
                 Billed accounts
@@ -375,6 +451,16 @@ export function BillingPage() {
                 Codex seats in use
               </p>
               <p className="mt-2 text-2xl font-semibold">{totalCodexSeats}</p>
+            </div>
+            <div className="rounded-xl border border-border/70 bg-muted/30 p-4">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                Monthly spend
+              </p>
+              <p className="mt-2 text-2xl font-semibold">{formatEuro(totalMonthlySpendEuro)}</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {totalChatgptSeats} ChatGPT × €{CHATGPT_SEAT_MONTHLY_PRICE_EUR} · {totalCodexSeats} Codex × €
+                {CODEX_SEAT_MONTHLY_PRICE_EUR}
+              </p>
             </div>
           </div>
 
@@ -498,6 +584,16 @@ export function BillingPage() {
                             >
                               <PencilLine className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
                               Edit
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              className="h-8 w-8 rounded-full text-destructive hover:text-destructive"
+                              aria-label={`Delete ${account.domain} subscription account`}
+                              onClick={() => openDeleteDialog(account)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                             </Button>
                           </div>
                         </TableCell>
@@ -676,83 +772,40 @@ export function BillingPage() {
           </Dialog>
 
           <Dialog
-            open={createDialogOpen}
+            open={deleteDialogOpen}
             onOpenChange={(open) => {
-              setCreateDialogOpen(open);
               if (!open) {
-                setCreateForm(DEFAULT_CREATE_ACCOUNT_FORM);
-                setCreateFormError(null);
+                resetDeleteDialog();
+                return;
               }
+              setDeleteDialogOpen(true);
             }}
           >
             <DialogContent className="sm:max-w-md">
               <DialogHeader>
-                <DialogTitle>Add subscription account</DialogTitle>
+                <DialogTitle>
+                  {deletingBusinessAccount
+                    ? `Delete ${deletingBusinessAccount.domain}?`
+                    : "Delete subscription account"}
+                </DialogTitle>
                 <DialogDescription>
-                  Create a new billed account entry in the live subscription summary.
+                  This permanently removes the business account from the subscription summary.
                 </DialogDescription>
               </DialogHeader>
-
-              <form className="space-y-4" onSubmit={handleCreateSubscriptionAccount}>
-                <div className="space-y-2">
-                  <Label htmlFor="billing-create-domain">Business domain</Label>
-                  <Input
-                    id="billing-create-domain"
-                    autoFocus
-                    placeholder="example.com"
-                    value={createForm.domain}
-                    onChange={(event) =>
-                      setCreateForm((current) => ({ ...current, domain: event.target.value }))
-                    }
-                  />
-                </div>
-
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="billing-create-plan-name">Plan name</Label>
-                    <Input
-                      id="billing-create-plan-name"
-                      placeholder="Business"
-                      value={createForm.planName}
-                      onChange={(event) =>
-                        setCreateForm((current) => ({ ...current, planName: event.target.value }))
-                      }
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="billing-create-plan-code">Plan code</Label>
-                    <Input
-                      id="billing-create-plan-code"
-                      placeholder="business"
-                      value={createForm.planCode}
-                      onChange={(event) =>
-                        setCreateForm((current) => ({ ...current, planCode: event.target.value }))
-                      }
-                    />
-                  </div>
-                </div>
-
-                {createFormError ? (
-                  <p className="text-sm text-destructive">{createFormError}</p>
-                ) : null}
-
-                <DialogFooter>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      setCreateDialogOpen(false);
-                    }}
-                    disabled={createPending}
-                  >
-                    Cancel
-                  </Button>
-                  <Button type="submit" disabled={createPending}>
-                    {createPending ? "Adding..." : "Add account"}
-                  </Button>
-                </DialogFooter>
-              </form>
+              {deleteFormError ? <p className="text-sm text-destructive">{deleteFormError}</p> : null}
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={resetDeleteDialog} disabled={deletePending}>
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  onClick={() => void handleDeleteSubscriptionAccount()}
+                  disabled={deletePending}
+                >
+                  {deletePending ? "Deleting..." : "Delete account"}
+                </Button>
+              </DialogFooter>
             </DialogContent>
           </Dialog>
 
@@ -860,6 +913,86 @@ export function BillingPage() {
           </Dialog>
         </>
       )}
+      <Dialog
+        open={createDialogOpen}
+        onOpenChange={(open) => {
+          setCreateDialogOpen(open);
+          if (!open) {
+            setCreateForm(DEFAULT_CREATE_ACCOUNT_FORM);
+            setCreateFormError(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add subscription account</DialogTitle>
+            <DialogDescription>
+              Create a new billed account entry in the live subscription summary.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form className="space-y-4" onSubmit={handleCreateSubscriptionAccount}>
+            <div className="space-y-2">
+              <Label htmlFor="billing-create-domain">Business domain</Label>
+              <Input
+                id="billing-create-domain"
+                autoFocus
+                placeholder="example.com"
+                value={createForm.domain}
+                onChange={(event) =>
+                  setCreateForm((current) => ({ ...current, domain: event.target.value }))
+                }
+              />
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="billing-create-plan-name">Plan name</Label>
+                <Input
+                  id="billing-create-plan-name"
+                  placeholder="Business"
+                  value={createForm.planName}
+                  onChange={(event) =>
+                    setCreateForm((current) => ({ ...current, planName: event.target.value }))
+                  }
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="billing-create-plan-code">Plan code</Label>
+                <Input
+                  id="billing-create-plan-code"
+                  placeholder="business"
+                  value={createForm.planCode}
+                  onChange={(event) =>
+                    setCreateForm((current) => ({ ...current, planCode: event.target.value }))
+                  }
+                />
+              </div>
+            </div>
+
+            {createFormError ? (
+              <p className="text-sm text-destructive">{createFormError}</p>
+            ) : null}
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setCreateDialogOpen(false);
+                }}
+                disabled={createPending}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={createPending}>
+                {createPending ? "Adding..." : "Add account"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

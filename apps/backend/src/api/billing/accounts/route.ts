@@ -3,6 +3,7 @@ import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { SUBSCRIPTION_MODULE } from "../../../modules/subscription"
 import SubscriptionModuleService, {
   SubscriptionAccountConflictError,
+  SubscriptionAccountNotFoundError,
   SubscriptionAccountValidationError,
 } from "../../../modules/subscription/service"
 import { PaymentStatus, SubscriptionStatus } from "../../../modules/subscription/types"
@@ -17,6 +18,10 @@ type CreateBillingAccountPayload = {
   renewal_at?: string | null
   chatgpt_seats_in_use?: number
   codex_seats_in_use?: number
+}
+
+type DeleteBillingAccountPayload = {
+  id: string
 }
 
 const SUBSCRIPTION_STATUSES = new Set(Object.values(SubscriptionStatus))
@@ -106,6 +111,21 @@ function parseCreateBillingAccountPayload(raw: unknown): CreateBillingAccountPay
   return parsed
 }
 
+function parseDeleteBillingAccountPayload(raw: unknown): DeleteBillingAccountPayload | null {
+  if (!raw || typeof raw !== "object") {
+    return null
+  }
+
+  const payload = raw as Record<string, unknown>
+  if (typeof payload.id !== "string" || payload.id.trim().length === 0) {
+    return null
+  }
+
+  return {
+    id: payload.id.trim(),
+  }
+}
+
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
   const payload = parseCreateBillingAccountPayload(req.body)
   if (!payload) {
@@ -127,6 +147,45 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       return res.status(409).json({
         error: {
           code: "billing_account_exists",
+          message: error.message,
+        },
+      })
+    }
+
+    if (error instanceof SubscriptionAccountValidationError) {
+      return res.status(400).json({
+        error: {
+          code: "invalid_billing_account_payload",
+          message: error.message,
+        },
+      })
+    }
+
+    throw error
+  }
+}
+
+export async function DELETE(req: MedusaRequest, res: MedusaResponse) {
+  const payload = parseDeleteBillingAccountPayload(req.body)
+  if (!payload) {
+    return res.status(400).json({
+      error: {
+        code: "invalid_billing_account_payload",
+        message: "Invalid billing account payload",
+      },
+    })
+  }
+
+  const subscriptionModuleService: SubscriptionModuleService = req.scope.resolve(SUBSCRIPTION_MODULE)
+
+  try {
+    await subscriptionModuleService.deleteBillingAccount(payload.id)
+    return res.status(204).send()
+  } catch (error) {
+    if (error instanceof SubscriptionAccountNotFoundError) {
+      return res.status(404).json({
+        error: {
+          code: "billing_account_not_found",
           message: error.message,
         },
       })

@@ -108,7 +108,7 @@ async def _safe_send(websocket: WebSocket, payload: dict[str, Any]) -> bool:
         return False
     try:
         await websocket.send_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
-    except RuntimeError:
+    except (RuntimeError, WebSocketDisconnect):
         return False
     return True
 

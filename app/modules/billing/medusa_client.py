@@ -15,6 +15,7 @@ from app.modules.billing.service import (
     BillingAccountConflictError,
     BillingAccountCreateData,
     BillingAccountData,
+    BillingAccountNotFoundError,
     BillingAccountValidationError,
     BillingCycleData,
     BillingMemberData,
@@ -176,6 +177,40 @@ class MedusaBillingSummaryClient:
             raise BillingSummaryUnavailableError(BILLING_SUMMARY_UNAVAILABLE_MESSAGE) from exc
 
         return _to_account(created)
+
+    async def delete_account(self, account_id: str) -> None:
+        settings = get_settings()
+        client_session = self._session or get_http_client().session
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        }
+        request_id = get_request_id()
+        if request_id:
+            headers["x-request-id"] = request_id
+        timeout = aiohttp.ClientTimeout(total=settings.billing_summary_timeout_seconds)
+        url = f"{self._base_url}/billing/accounts"
+
+        try:
+            async with client_session.delete(
+                url,
+                headers=headers,
+                json={"id": account_id},
+                timeout=timeout,
+            ) as response:
+                raw_payload = await _safe_json(response)
+                if response.status == 404:
+                    raise BillingAccountNotFoundError(
+                        _extract_error_message(raw_payload, f"Billing account not found: {account_id}")
+                    )
+                if response.status >= 500:
+                    raise BillingSummaryUnavailableError(BILLING_SUMMARY_UNAVAILABLE_MESSAGE)
+                if response.status >= 400:
+                    raise BillingAccountValidationError(
+                        _extract_error_message(raw_payload, "Billing account payload is invalid")
+                    )
+        except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+            raise BillingSummaryUnavailableError(BILLING_SUMMARY_UNAVAILABLE_MESSAGE) from exc
 
 
 async def _safe_json(response: aiohttp.ClientResponse) -> JsonObject:

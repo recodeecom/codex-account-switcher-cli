@@ -54,6 +54,7 @@ type SubscriptionPersistenceCrud = {
   createSubscriptionAccounts(data: Record<string, unknown>[] | Record<string, unknown>): Promise<PersistedSubscriptionAccount[] | PersistedSubscriptionAccount>
   createSubscriptionSeats(data: Record<string, unknown>[] | Record<string, unknown>): Promise<PersistedSubscriptionSeat[] | PersistedSubscriptionSeat>
   updateSubscriptionAccounts(data: Record<string, unknown>[] | Record<string, unknown>): Promise<PersistedSubscriptionAccount[] | PersistedSubscriptionAccount>
+  deleteSubscriptionAccounts(ids: string[] | string): Promise<string[]>
   deleteSubscriptionSeats(ids: string[] | string): Promise<string[]>
 }
 
@@ -250,6 +251,13 @@ export class SubscriptionAccountConflictError extends Error {
   }
 }
 
+export class SubscriptionAccountNotFoundError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = "SubscriptionAccountNotFoundError"
+  }
+}
+
 class SubscriptionModuleService extends MedusaService({
   SubscriptionAccount,
   SubscriptionSeat,
@@ -349,6 +357,25 @@ class SubscriptionModuleService extends MedusaService({
       ...createdAccount,
       seats: createdAccount.seats ?? [],
     })
+  }
+
+  async deleteBillingAccount(accountId: string): Promise<void> {
+    const normalizedAccountId = accountId.trim()
+    if (!normalizedAccountId) {
+      throw new SubscriptionAccountValidationError("Billing account id is required")
+    }
+
+    const currentAccounts = await this.ensureSeededAccounts()
+    const existingAccount = currentAccounts.find((account) => account.id === normalizedAccountId)
+    if (!existingAccount) {
+      throw new SubscriptionAccountNotFoundError(`Billing account not found: ${normalizedAccountId}`)
+    }
+
+    const existingSeatIds = (existingAccount.seats ?? []).map((seat) => seat.id)
+    if (existingSeatIds.length > 0) {
+      await this.persistence.deleteSubscriptionSeats(existingSeatIds)
+    }
+    await this.persistence.deleteSubscriptionAccounts(normalizedAccountId)
   }
 
   async updateBillingAccounts(

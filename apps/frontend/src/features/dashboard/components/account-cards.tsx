@@ -8,7 +8,11 @@ import {
   AccountCard,
   type AccountCardProps,
 } from "@/features/dashboard/components/account-card";
-import type { AccountSummary, UsageWindow } from "@/features/dashboard/schemas";
+import type {
+  AccountSummary,
+  RequestLogUsageSummary,
+  UsageWindow,
+} from "@/features/dashboard/schemas";
 import {
   buildAccountIdentityKey,
   buildDuplicateAccountIdSet,
@@ -24,7 +28,7 @@ import {
   selectStableRemainingPercent,
 } from "@/utils/account-working";
 import { resolveEffectiveAccountStatus } from "@/utils/account-status";
-import { formatWindowLabel } from "@/utils/formatters";
+import { formatCompactNumber, formatWindowLabel } from "@/utils/formatters";
 import { normalizeRemainingPercentForDisplay } from "@/utils/quota-display";
 
 const RECENT_LAST_SEEN_SORT_WINDOW_MS = 30 * 60 * 1000;
@@ -56,7 +60,9 @@ function matchesOtherAccountEmailQuery(
   return normalizeEmailSearchValue(account.email).includes(normalizedQuery);
 }
 
-function hasMeaningfulTaskPreview(taskPreview: string | null | undefined): boolean {
+function hasMeaningfulTaskPreview(
+  taskPreview: string | null | undefined,
+): boolean {
   const normalized = taskPreview?.trim().replace(/\s+/g, " ") ?? "";
   if (!normalized) {
     return false;
@@ -91,7 +97,10 @@ function computeLevenshteinDistance(source: string, target: string): number {
     return source.length;
   }
 
-  const previousRow = Array.from({ length: target.length + 1 }, (_, index) => index);
+  const previousRow = Array.from(
+    { length: target.length + 1 },
+    (_, index) => index,
+  );
   const currentRow = new Array<number>(target.length + 1);
 
   for (let sourceIndex = 1; sourceIndex <= source.length; sourceIndex += 1) {
@@ -121,19 +130,27 @@ function resolveEmailAutocorrection(
   }
 
   const normalizedOptions = emailOptions
-    .map((email) => ({ email, normalizedEmail: normalizeEmailSearchValue(email) }))
+    .map((email) => ({
+      email,
+      normalizedEmail: normalizeEmailSearchValue(email),
+    }))
     .filter((option) => option.normalizedEmail.length > 0);
 
   if (normalizedOptions.length === 0) {
     return null;
   }
-  if (normalizedOptions.some((option) => option.normalizedEmail === normalizedValue)) {
+  if (
+    normalizedOptions.some(
+      (option) => option.normalizedEmail === normalizedValue,
+    )
+  ) {
     return null;
   }
 
   let bestMatch: { email: string; distance: number } | null = null;
   for (const option of normalizedOptions) {
-    const [localPart = option.normalizedEmail] = option.normalizedEmail.split("@");
+    const [localPart = option.normalizedEmail] =
+      option.normalizedEmail.split("@");
     const distance = Math.min(
       computeLevenshteinDistance(normalizedValue, option.normalizedEmail),
       computeLevenshteinDistance(normalizedValue, localPart),
@@ -157,30 +174,20 @@ function resolveEmailAutocorrection(
   return null;
 }
 
-function roundAveragePercent(
-  values: Array<number | null | undefined>,
-): number | null {
-  const normalized = values
-    .filter((value): value is number => value != null)
-    .map((value) => Math.max(0, Math.min(100, value)));
-
-  if (normalized.length === 0) {
-    return null;
-  }
-
-  const average =
-    normalized.reduce((sum, value) => sum + value, 0) / normalized.length;
-  return Math.round(average);
-}
-
-function compareNullableNumberDesc(left: number | null, right: number | null): number {
+function compareNullableNumberDesc(
+  left: number | null,
+  right: number | null,
+): number {
   if (left == null && right == null) return 0;
   if (left == null) return 1;
   if (right == null) return -1;
   return right - left;
 }
 
-function compareNullableNumberAsc(left: number | null, right: number | null): number {
+function compareNullableNumberAsc(
+  left: number | null,
+  right: number | null,
+): number {
   if (left == null && right == null) return 0;
   if (left == null) return 1;
   if (right == null) return -1;
@@ -196,10 +203,7 @@ function parseTimestampMs(value: string | null | undefined): number | null {
 
 function normalizeNearZeroQuotaPercent(value: number): number {
   const clamped = Math.max(0, Math.min(100, value));
-  if (
-    clamped > 0 &&
-    clamped < WEEKLY_DEPLETED_SORT_THRESHOLD_PERCENT
-  ) {
+  if (clamped > 0 && clamped < WEEKLY_DEPLETED_SORT_THRESHOLD_PERCENT) {
     return 0;
   }
   return clamped;
@@ -210,8 +214,9 @@ function bucketizeQuotaPercent(value: number | null): number | null {
     return null;
   }
   return (
-    Math.floor(normalizeNearZeroQuotaPercent(value) / QUOTA_SORT_BUCKET_PERCENT) *
-    QUOTA_SORT_BUCKET_PERCENT
+    Math.floor(
+      normalizeNearZeroQuotaPercent(value) / QUOTA_SORT_BUCKET_PERCENT,
+    ) * QUOTA_SORT_BUCKET_PERCENT
   );
 }
 
@@ -220,7 +225,10 @@ function resolveSortableRemainingPercent(
   windowKey: "primary" | "secondary",
   nowMs: number,
 ): number | null {
-  const mergedRemainingPercent = getMergedQuotaRemainingPercent(account, windowKey);
+  const mergedRemainingPercent = getMergedQuotaRemainingPercent(
+    account,
+    windowKey,
+  );
   const deferredQuotaFallback = getRawQuotaWindowFallback(account, windowKey);
   const baselineRemainingPercent =
     windowKey === "primary"
@@ -243,7 +251,8 @@ function resolveSortableRemainingPercent(
       baselineResetAt,
     });
 
-  const effectiveResetAt = deferredQuotaFallback?.resetAt ?? baselineResetAt ?? null;
+  const effectiveResetAt =
+    deferredQuotaFallback?.resetAt ?? baselineResetAt ?? null;
   const effectiveRecordedAt =
     deferredQuotaFallback?.recordedAt ?? baselineRecordedAt ?? null;
 
@@ -269,7 +278,8 @@ function resolveSortableResetAtMs(
   const deferredQuotaFallback = getRawQuotaWindowFallback(account, windowKey);
   const baselineResetAt =
     windowKey === "primary" ? account.resetAtPrimary : account.resetAtSecondary;
-  const effectiveResetAt = deferredQuotaFallback?.resetAt ?? baselineResetAt ?? null;
+  const effectiveResetAt =
+    deferredQuotaFallback?.resetAt ?? baselineResetAt ?? null;
   return parseTimestampMs(effectiveResetAt);
 }
 
@@ -322,8 +332,10 @@ function sortAccountsByAvailableQuota(
       return left.accountId.localeCompare(right.accountId);
     }
 
-    const leftWeeklyDepletedPinned = shouldPinWeeklyDepletedAccountToEnd(leftMetrics);
-    const rightWeeklyDepletedPinned = shouldPinWeeklyDepletedAccountToEnd(rightMetrics);
+    const leftWeeklyDepletedPinned =
+      shouldPinWeeklyDepletedAccountToEnd(leftMetrics);
+    const rightWeeklyDepletedPinned =
+      shouldPinWeeklyDepletedAccountToEnd(rightMetrics);
     if (leftWeeklyDepletedPinned !== rightWeeklyDepletedPinned) {
       return leftWeeklyDepletedPinned ? 1 : -1;
     }
@@ -344,7 +356,8 @@ function sortAccountsByAvailableQuota(
     const leftPrimaryDepleted =
       leftMetrics.primaryRemaining != null && leftMetrics.primaryRemaining <= 0;
     const rightPrimaryDepleted =
-      rightMetrics.primaryRemaining != null && rightMetrics.primaryRemaining <= 0;
+      rightMetrics.primaryRemaining != null &&
+      rightMetrics.primaryRemaining <= 0;
     if (leftPrimaryDepleted && rightPrimaryDepleted) {
       const primaryResetDiff = compareNullableNumberAsc(
         leftMetrics.primaryResetAtMs,
@@ -427,7 +440,9 @@ function sortAccountsByUsageLimitAvailableFirst(
   return [...usageLimitAvailable, ...otherAccounts];
 }
 
-function resolveMostRecentUsageRecordedAtMs(account: AccountSummary): number | null {
+function resolveMostRecentUsageRecordedAtMs(
+  account: AccountSummary,
+): number | null {
   const primaryRecordedAt =
     getRawQuotaWindowFallback(account, "primary")?.recordedAt ??
     account.lastUsageRecordedAtPrimary ??
@@ -443,14 +458,18 @@ function resolveMostRecentUsageRecordedAtMs(account: AccountSummary): number | n
     return null;
   }
 
-  return Math.max(primaryRecordedAtMs ?? Number.NEGATIVE_INFINITY, secondaryRecordedAtMs ?? Number.NEGATIVE_INFINITY);
+  return Math.max(
+    primaryRecordedAtMs ?? Number.NEGATIVE_INFINITY,
+    secondaryRecordedAtMs ?? Number.NEGATIVE_INFINITY,
+  );
 }
 
 function hasRecentLastSeenUsage(
   account: AccountSummary,
   nowMs: number = Date.now(),
 ): boolean {
-  const mostRecentUsageRecordedAtMs = resolveMostRecentUsageRecordedAtMs(account);
+  const mostRecentUsageRecordedAtMs =
+    resolveMostRecentUsageRecordedAtMs(account);
   if (mostRecentUsageRecordedAtMs == null) {
     return false;
   }
@@ -505,11 +524,19 @@ export type AccountCardsProps = {
   accounts: AccountSummary[];
   primaryWindow: UsageWindow | null;
   secondaryWindow: UsageWindow | null;
+  primaryUsageSummary?: RequestLogUsageSummary["last5h"] | null;
   useLocalBusy?: boolean;
   useLocalBusyAccountId?: string | null;
   deleteBusy?: boolean;
   onAction?: AccountCardProps["onAction"];
 };
+
+function formatConsumedTokens(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) {
+    return "--";
+  }
+  return formatCompactNumber(Math.max(0, value) * 1000);
+}
 
 function buildRemainingByAccount(
   window: UsageWindow | null,
@@ -557,6 +584,7 @@ export function AccountCards({
   accounts,
   primaryWindow,
   secondaryWindow,
+  primaryUsageSummary = null,
   useLocalBusy = false,
   useLocalBusyAccountId = null,
   deleteBusy = false,
@@ -577,7 +605,9 @@ export function AccountCards({
   const stableAccountOrder = useMemo(
     () =>
       new Map(
-        accounts.map((account, index) => [buildAccountEntryKey(account), index] as const),
+        accounts.map(
+          (account, index) => [buildAccountEntryKey(account), index] as const,
+        ),
       ),
     [accounts],
   );
@@ -635,61 +665,44 @@ export function AccountCards({
       remaining: [
         ...(otherAccountsSortMode === "available-first"
           ? sortAccountsByLastSeenAndAvailableQuota(active, nowMs)
-            : otherAccountsSortMode === "usage-limit-available-first"
-              ? sortAccountsByUsageLimitAvailableFirst(active, nowMs)
+          : otherAccountsSortMode === "usage-limit-available-first"
+            ? sortAccountsByUsageLimitAvailableFirst(active, nowMs)
             : sortAccountsByStableOrder(active, stableAccountOrder)),
         ...(otherAccountsSortMode === "available-first"
           ? sortAccountsByLastSeenAndAvailableQuota(deactivated, nowMs)
           : otherAccountsSortMode === "usage-limit-available-first"
             ? sortAccountsByUsageLimitAvailableFirst(deactivated, nowMs)
-            : sortAccountsByStableOrder(
-                deactivated,
-                stableAccountOrder,
-              )),
+            : sortAccountsByStableOrder(deactivated, stableAccountOrder)),
       ],
     };
-  }, [
-    accounts,
-    nowMs,
-    otherAccountsSortMode,
-    stableAccountOrder,
-  ]);
+  }, [accounts, nowMs, otherAccountsSortMode, stableAccountOrder]);
   const workingSummary = useMemo(() => {
+    const workingAccountIds = new Set(
+      groupedAccounts.working.map((account) => account.accountId),
+    );
     const liveSessions = groupedAccounts.working.reduce((sum, account) => {
       if (!hasFreshLiveTelemetry(account, nowMs)) {
         return sum;
       }
       return sum + Math.max(account.codexLiveSessionCount ?? 0, 1);
     }, 0);
+    const primaryConsumedTokens =
+      primaryUsageSummary == null
+        ? null
+        : primaryUsageSummary.accounts.length === 0
+          ? primaryUsageSummary.totalTokens
+          : primaryUsageSummary.accounts.reduce((sum, row) => {
+              if (!row.accountId || !workingAccountIds.has(row.accountId)) {
+                return sum;
+              }
+              return sum + row.tokens;
+            }, 0);
 
     return {
       liveSessions,
-      avgPrimaryRemaining: roundAveragePercent(
-        groupedAccounts.working.map((account) =>
-          normalizeRemainingPercentForDisplay({
-            accountKey: buildQuotaDisplayAccountKey(account),
-            windowKey: "primary",
-            remainingPercent: account.usage?.primaryRemainingPercent ?? null,
-            resetAt: account.resetAtPrimary ?? null,
-            hasLiveSession: hasFreshLiveTelemetry(account, nowMs),
-            lastRecordedAt: account.lastUsageRecordedAtPrimary ?? null,
-          }),
-        ),
-      ),
-      avgSecondaryRemaining: roundAveragePercent(
-        groupedAccounts.working.map((account) =>
-          normalizeRemainingPercentForDisplay({
-            accountKey: buildQuotaDisplayAccountKey(account),
-            windowKey: "secondary",
-            remainingPercent: account.usage?.secondaryRemainingPercent ?? null,
-            resetAt: account.resetAtSecondary ?? null,
-            hasLiveSession: hasFreshLiveTelemetry(account, nowMs),
-            lastRecordedAt: account.lastUsageRecordedAtSecondary ?? null,
-          }),
-        ),
-      ),
+      primaryConsumedTokens,
     };
-  }, [groupedAccounts.working, nowMs]);
+  }, [groupedAccounts.working, nowMs, primaryUsageSummary]);
   const otherAccountsEmailSuggestions = useMemo(() => {
     const emailSet = new Set<string>();
     for (const account of groupedAccounts.remaining) {
@@ -698,7 +711,9 @@ export function AccountCards({
         emailSet.add(normalizedEmail);
       }
     }
-    return Array.from(emailSet).sort((left, right) => left.localeCompare(right));
+    return Array.from(emailSet).sort((left, right) =>
+      left.localeCompare(right),
+    );
   }, [groupedAccounts.remaining]);
   const filteredRemainingAccounts = useMemo(() => {
     const normalizedQuery = normalizeEmailSearchValue(otherAccountsEmailSearch);
@@ -709,9 +724,8 @@ export function AccountCards({
       matchesOtherAccountEmailQuery(account, normalizedQuery),
     );
   }, [groupedAccounts.remaining, otherAccountsEmailSearch]);
-  const hasOtherAccountsEmailSearch = normalizeEmailSearchValue(
-    otherAccountsEmailSearch,
-  ).length > 0;
+  const hasOtherAccountsEmailSearch =
+    normalizeEmailSearchValue(otherAccountsEmailSearch).length > 0;
 
   if (accounts.length === 0) {
     return (
@@ -770,63 +784,43 @@ export function AccountCards({
   return (
     <div className="space-y-5">
       {groupedAccounts.working.length > 0 ? (
-        <section className="relative overflow-hidden space-y-4 rounded-2xl border border-cyan-500/30 bg-[radial-gradient(120%_135%_at_0%_0%,rgba(34,211,238,0.14)_0%,rgba(8,13,24,0.9)_48%,rgba(3,7,18,0.98)_100%)] p-4 shadow-[0_0_0_1px_rgba(34,211,238,0.06),0_18px_48px_-34px_rgba(34,211,238,0.4)] md:p-6">
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute -top-16 -right-16 h-40 w-40 rounded-full bg-cyan-400/25 blur-3xl"
-          />
-          <div className="relative flex flex-col gap-3 border-b border-cyan-500/20 pb-4 xl:flex-row xl:items-start xl:justify-between">
-            <div className="min-w-0 space-y-1.5">
-              <div className="inline-flex items-center gap-2.5">
-                <span className="relative inline-flex h-2.5 w-2.5">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400/70" />
-                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-300 shadow-[0_0_0_3px_rgba(16,185,129,0.16)]" />
-                </span>
-                <h3 className="text-base font-semibold tracking-tight text-cyan-100">
-                  Working now
-                </h3>
-              </div>
-              <p className="text-xs text-cyan-100/70">
+        <section className="space-y-4 rounded-xl border border-white/10 bg-[#0d1522] p-4 md:p-5">
+          <div className="flex flex-col gap-4 border-b border-white/8 pb-4 xl:flex-row xl:items-start xl:justify-between">
+            <div className="min-w-0 space-y-1">
+              <h3 className="text-base font-semibold tracking-tight text-zinc-100">
+                Working now
+              </h3>
+              <p className="text-sm text-zinc-400">
                 Accounts with active CLI sessions are grouped first so you can
                 switch faster.
               </p>
             </div>
-            <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 xl:w-[36rem] xl:min-w-[36rem]">
-              <span className="inline-flex min-h-11 items-center justify-between rounded-xl border border-cyan-400/35 bg-cyan-400/12 px-3 py-2 text-cyan-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)]">
-                <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-cyan-100/70">
+            <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 xl:w-auto xl:min-w-[34rem] xl:grid-cols-3">
+              <span className="flex min-h-16 flex-col justify-between rounded-lg border border-white/10 bg-white/[0.03] px-3.5 py-3">
+                <span className="text-[11px] font-medium text-zinc-400">
                   Active accounts
                 </span>
-                <span className="text-sm font-semibold tabular-nums">
+                <span className="text-base font-semibold text-zinc-100 tabular-nums">
                   {groupedAccounts.working.length} working
                 </span>
               </span>
               {workingSummary.liveSessions > 0 ? (
-                <span className="inline-flex min-h-11 items-center justify-between rounded-xl border border-cyan-400/30 bg-cyan-400/10 px-3 py-2 text-cyan-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)]">
-                  <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-cyan-100/70">
+                <span className="flex min-h-16 flex-col justify-between rounded-lg border border-white/10 bg-white/[0.03] px-3.5 py-3">
+                  <span className="text-[11px] font-medium text-zinc-400">
                     CLI sessions
                   </span>
-                  <span className="text-sm font-semibold tabular-nums">
+                  <span className="text-base font-semibold text-zinc-100 tabular-nums">
                     {workingSummary.liveSessions} live sessions
                   </span>
                 </span>
               ) : null}
-              {workingSummary.avgPrimaryRemaining !== null ? (
-                <span className="inline-flex min-h-11 items-center justify-between rounded-xl border border-emerald-400/32 bg-emerald-400/12 px-3 py-2 text-emerald-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)]">
-                  <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-emerald-100/75">
-                    {primaryWindowLabel} average
+              {workingSummary.primaryConsumedTokens !== null ? (
+                <span className="flex min-h-16 flex-col justify-between rounded-lg border border-white/10 bg-white/[0.03] px-3.5 py-3">
+                  <span className="text-[11px] font-medium text-zinc-400">
+                    {primaryWindowLabel} token spend
                   </span>
-                  <span className="text-sm font-semibold tabular-nums">
-                    {primaryWindowLabel} avg {workingSummary.avgPrimaryRemaining}%
-                  </span>
-                </span>
-              ) : null}
-              {workingSummary.avgSecondaryRemaining !== null ? (
-                <span className="inline-flex min-h-11 items-center justify-between rounded-xl border border-emerald-400/32 bg-emerald-400/12 px-3 py-2 text-emerald-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)]">
-                  <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-emerald-100/75">
-                    Weekly average
-                  </span>
-                  <span className="text-sm font-semibold tabular-nums">
-                    Weekly avg {workingSummary.avgSecondaryRemaining}%
+                  <span className="text-base font-semibold text-zinc-100 tabular-nums">
+                    {formatConsumedTokens(workingSummary.primaryConsumedTokens)}
                   </span>
                 </span>
               ) : null}
@@ -845,10 +839,10 @@ export function AccountCards({
               </h3>
               <div className="h-px w-12 bg-border/70 sm:w-24" />
             </div>
-            <div className="flex flex-1 flex-wrap items-center justify-end gap-2">
-              <div className="relative min-w-[14rem] max-w-xs flex-1 sm:w-72 sm:max-w-none sm:flex-none">
+            <div className="flex flex-1 flex-wrap items-center justify-end gap-2.5">
+              <div className="relative min-w-[16rem] max-w-sm flex-1 sm:w-80 sm:max-w-none sm:flex-none">
                 <Search
-                  className="pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/60"
+                  className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground/65"
                   aria-hidden="true"
                 />
                 <Input
@@ -862,11 +856,14 @@ export function AccountCards({
                       otherAccountsEmailSearch,
                       otherAccountsEmailSuggestions,
                     );
-                    if (correctedEmail && correctedEmail !== otherAccountsEmailSearch) {
+                    if (
+                      correctedEmail &&
+                      correctedEmail !== otherAccountsEmailSearch
+                    ) {
                       setOtherAccountsEmailSearch(correctedEmail);
                     }
                   }}
-                  className="h-7 pl-8 text-[11px]"
+                  className="h-10 rounded-lg border-border/75 bg-background/80 pl-10 text-sm font-medium placeholder:text-muted-foreground/70"
                   placeholder="Search by email address"
                   aria-label="Search other accounts by email"
                   list="other-accounts-email-suggestions"
@@ -882,7 +879,7 @@ export function AccountCards({
                 </datalist>
               </div>
               <div
-                className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-background/70 p-1"
+                className="inline-flex flex-wrap items-center gap-1.5 rounded-lg border border-border/70 bg-background/70 p-1.5"
                 role="group"
                 aria-label="Other accounts order"
               >
@@ -894,7 +891,7 @@ export function AccountCards({
                       ? "secondary"
                       : "ghost"
                   }
-                  className="h-7 px-2.5 text-[11px]"
+                  className="h-9 rounded-md px-3.5 text-sm font-medium"
                   aria-pressed={otherAccountsSortMode === "available-first"}
                   onClick={() => {
                     setOtherAccountsSortMode("available-first");
@@ -910,7 +907,7 @@ export function AccountCards({
                       ? "secondary"
                       : "ghost"
                   }
-                  className="h-7 px-2.5 text-[11px]"
+                  className="h-9 rounded-md px-3.5 text-sm font-medium"
                   aria-pressed={
                     otherAccountsSortMode === "usage-limit-available-first"
                   }
@@ -918,7 +915,7 @@ export function AccountCards({
                     setOtherAccountsSortMode("usage-limit-available-first");
                   }}
                 >
-                  Usage-limit available
+                  Usage-limit soon available
                 </Button>
                 <Button
                   type="button"
@@ -926,7 +923,7 @@ export function AccountCards({
                   variant={
                     otherAccountsSortMode === "stable" ? "secondary" : "ghost"
                   }
-                  className="h-7 px-2.5 text-[11px]"
+                  className="h-9 rounded-md px-3.5 text-sm font-medium"
                   aria-pressed={otherAccountsSortMode === "stable"}
                   onClick={() => {
                     setOtherAccountsSortMode("stable");

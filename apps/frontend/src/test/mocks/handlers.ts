@@ -139,6 +139,11 @@ const BillingPayloadSchema = z
 	.passthrough();
 
 const BillingAccountCreatePayloadSchema = BillingAccountCreateRequestSchema.passthrough();
+const BillingAccountDeletePayloadSchema = z
+	.object({
+		id: z.string().min(1),
+	})
+	.passthrough();
 
 const MedusaCredentialsPayloadSchema = z
 	.object({
@@ -1130,6 +1135,37 @@ export const handlers = [
 		state.billingAccounts = [...state.billingAccounts, created];
 
 		return HttpResponse.json(created, { status: 200 });
+	}),
+
+	http.delete("/api/billing/accounts", async ({ request }) => {
+		const payload = await parseJsonBody(request, BillingAccountDeletePayloadSchema);
+		if (!payload) {
+			return HttpResponse.json(
+				{
+					error: {
+						code: "invalid_billing_account_payload",
+						message: "Invalid billing account payload",
+					},
+				},
+				{ status: 400 },
+			);
+		}
+
+		const existing = state.billingAccounts.find((account) => account.id === payload.id);
+		if (!existing) {
+			return HttpResponse.json(
+				{
+					error: {
+						code: "billing_account_not_found",
+						message: `Billing account not found: ${payload.id}`,
+					},
+				},
+				{ status: 404 },
+			);
+		}
+
+		state.billingAccounts = state.billingAccounts.filter((account) => account.id !== payload.id);
+		return new HttpResponse(null, { status: 204 });
 	}),
 
 	http.get("/api/firewall/ips", () => {

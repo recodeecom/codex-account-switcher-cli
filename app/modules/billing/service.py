@@ -21,6 +21,10 @@ class BillingAccountConflictError(RuntimeError):
     """Raised when a billing account cannot be created because it already exists."""
 
 
+class BillingAccountNotFoundError(RuntimeError):
+    """Raised when a billing account does not exist."""
+
+
 class BillingAccountValidationError(RuntimeError):
     """Raised when billing account creation input is invalid."""
 
@@ -79,6 +83,7 @@ class BillingSummaryProvider(Protocol):
     async def fetch_accounts(self) -> list[BillingAccountData]: ...
     async def update_accounts(self, accounts: list[BillingAccountData]) -> list[BillingAccountData]: ...
     async def add_account(self, account: BillingAccountCreateData) -> BillingAccountData: ...
+    async def delete_account(self, account_id: str) -> None: ...
 
 
 class BillingService:
@@ -109,3 +114,7 @@ class BillingService:
         created_account = await self._summary_provider.add_account(account)
         set_normal()
         return created_account
+
+    async def delete_account(self, account_id: str) -> None:
+        await self._summary_provider.delete_account(account_id)
+        set_normal()

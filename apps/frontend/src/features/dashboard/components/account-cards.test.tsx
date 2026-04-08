@@ -181,6 +181,15 @@ describe("AccountCards", () => {
         accounts={[idle, working]}
         primaryWindow={buildWindow("primary", "acc_working", 1000, 900)}
         secondaryWindow={null}
+        primaryUsageSummary={{
+          totalTokens: 1800,
+          totalCostUsd: 0,
+          totalCostEur: 0,
+          accounts: [
+            { accountId: "acc_working", accountEmail: null, tokens: 1200, costUsd: 0, costEur: 0 },
+            { accountId: "acc_idle", accountEmail: null, tokens: 600, costUsd: 0, costEur: 0 },
+          ],
+        }}
       />,
     );
 
@@ -190,8 +199,10 @@ describe("AccountCards", () => {
       screen.getByText("Accounts with active CLI sessions are grouped first so you can switch faster."),
     ).toBeInTheDocument();
     expect(screen.getByText("2 live sessions")).toBeInTheDocument();
-    expect(screen.getByText(/5h avg \d+%/i)).toBeInTheDocument();
-    expect(screen.getByText(/weekly avg \d+%/i)).toBeInTheDocument();
+    expect(screen.getByText("5h token spend")).toBeInTheDocument();
+    expect(screen.getByText("1.2M")).toBeInTheDocument();
+    expect(screen.queryByText(/weekly avg \d+%/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("Weekly token spend")).not.toBeInTheDocument();
 
     const cards = Array.from(container.querySelectorAll(".card-hover"));
     expect(cards).toHaveLength(2);
@@ -370,7 +381,7 @@ describe("AccountCards", () => {
     expect(within(card as HTMLElement).getByText("900k")).toBeInTheDocument();
   });
 
-  it("uses the primary window duration label in working summary chips", () => {
+  it("uses the primary window duration label in the working summary", () => {
     const nowIso = new Date().toISOString();
     const working = createAccountSummary({
       accountId: "acc_working",
@@ -394,11 +405,19 @@ describe("AccountCards", () => {
         accounts={[working]}
         primaryWindow={buildWindow("primary", "acc_working", 1000, 900, 50, 480)}
         secondaryWindow={null}
+        primaryUsageSummary={{
+          totalTokens: 1800,
+          totalCostUsd: 0,
+          totalCostEur: 0,
+          accounts: [
+            { accountId: "acc_working", accountEmail: null, tokens: 1800, costUsd: 0, costEur: 0 },
+          ],
+        }}
       />,
     );
 
-    expect(screen.getByText(/8h avg \d+%/i)).toBeInTheDocument();
-    expect(screen.queryByText(/5h avg \d+%/i)).not.toBeInTheDocument();
+    expect(screen.getByText("8h token spend")).toBeInTheDocument();
+    expect(screen.queryByText("5h token spend")).not.toBeInTheDocument();
   });
 
   it("keeps accounts in working-now when primary rounds to 0% but sessions are active", () => {

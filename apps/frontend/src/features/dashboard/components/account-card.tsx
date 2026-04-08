@@ -356,7 +356,7 @@ function isWaitingTaskPreview(taskPreview: string): boolean {
   );
 }
 
-function resolveWaitingTaskHelperText(taskPreview: string): string {
+function resolveWaitingTaskHelperText(taskPreview: string): string | null {
   const normalized = taskPreview.trim().toLowerCase();
   if (normalized.includes("submit")) {
     return "Waiting for user to press submit.";
@@ -371,7 +371,7 @@ function resolveWaitingTaskHelperText(taskPreview: string): string {
   ) {
     return "Waiting for user input.";
   }
-  return "No task assigned yet for this account.";
+  return null;
 }
 
 function resolveSessionTaskState(taskPreview: string): SessionTaskState {
@@ -1446,6 +1446,8 @@ export function AccountCard(props: AccountCardProps) {
     status === "deactivated" &&
       "border-zinc-500/35 bg-zinc-500/14 text-zinc-300",
   );
+  const hideLiveTaskAndStatusBadges = showWeeklyUsageLimitDetailBadge;
+  const tokenCardLiveLabel = hasLiveSession ? "Live token card" : "Token card";
   return (
     <div className="relative">
       <div
@@ -1460,104 +1462,115 @@ export function AccountCard(props: AccountCardProps) {
             showLimitTint && "border-red-500/40",
           )}
         >
-          <div className="relative">
-            <div className="mb-2 flex items-start justify-between gap-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-200/90">
-              <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                <span className="inline-flex items-center gap-1.5 text-zinc-100">
+            <div className="relative">
+              <div className="mb-2 flex items-start justify-between gap-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-200/90">
+                <span className="inline-flex min-w-0 flex-wrap items-center gap-1.5 text-zinc-100">
                   <img
                     src="/openai.svg"
                     alt=""
                     className="h-3.5 w-3.5 opacity-80 brightness-0 invert"
                     aria-hidden
                   />
-                  OpenAI
-                </span>
-                <Badge variant="outline" className={tokenCardStatusClass}>
+                  <span>OpenAI</span>
                   <span
-                    className="h-1.5 w-1.5 rounded-full bg-current"
-                    aria-hidden
-                  />
-                  {STATUS_LABELS[status] ?? status}
-                </Badge>
-                {isOmxBoosted ? (
-                  <Badge
-                    variant="outline"
-                    className="gap-1.5 border-cyan-500/30 bg-cyan-500/10 text-cyan-200"
+                    className="shrink-0 text-[9px] tracking-[0.18em] text-zinc-300/80"
+                    data-testid="token-card-label"
                   >
-                    <span
-                      className="h-1.5 w-1.5 rounded-full bg-current"
-                      aria-hidden
-                    />
-                    OMX boosted
-                  </Badge>
-                ) : null}
-                {deactivatedLastSeenDisplay ? (
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      "gap-1",
-                      deactivatedLastSeenDisplay.upToDate
-                        ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300"
-                        : "border-zinc-500/25 bg-zinc-500/10 text-zinc-600 dark:text-zinc-300",
-                    )}
-                    title={deactivatedLastSeenDisplay.label ?? undefined}
-                  >
-                    <Clock className="h-3 w-3" />
-                    {deactivatedLastSeenDisplay.label}
-                  </Badge>
-                ) : null}
-                {showUsageLimitHitBadge ? (
-                  <Badge
-                    variant="outline"
-                    className="gap-1.5 border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-300"
-                  >
-                    <span
-                      className="h-1.5 w-1.5 rounded-full bg-current"
-                      aria-hidden
-                    />
-                    Usage limit hit
-                    {usageLimitHit && usageLimitHitCountdownLabel ? (
-                      <span className="font-medium text-red-700 dark:text-red-300">
-                        · leaves in {usageLimitHitCountdownLabel}
-                      </span>
-                    ) : null}
-                  </Badge>
-                ) : showWorkingIndicator ? (
-                  <WorkingNowPill />
-                ) : showWaitingForTaskIndicator ? (
-                  <WaitingForTaskPill label={waitingTaskPillLabel} />
-                ) : null}
-                {showWeeklyUsageLimitDetailBadge ? (
-                  <Badge
-                    variant="outline"
-                    className="gap-1.5 border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-300"
-                  >
-                    <span
-                      className="h-1.5 w-1.5 rounded-full bg-current"
-                      aria-hidden
-                    />
-                    Weekly usage limit hit
-                  </Badge>
-                ) : null}
-                {hasExpiredRefreshToken ? (
-                  <Badge
-                    variant="outline"
-                    className="gap-1.5 border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300"
-                    title={
-                      account.deactivationReason ??
-                      "Re-login is required to refresh the account token."
-                    }
-                  >
-                    <span
-                      className="h-1.5 w-1.5 rounded-full bg-current"
-                      aria-hidden
-                    />
-                    Expired refresh token
-                  </Badge>
-                ) : null}
+                    {tokenCardLiveLabel}
+                  </span>
+                </span>
+
+                <div
+                  className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 pl-2"
+                  data-testid="token-card-badge-row"
+                >
+                  {!hideLiveTaskAndStatusBadges ? (
+                    <Badge variant="outline" className={tokenCardStatusClass}>
+                      <span
+                        className="h-1.5 w-1.5 rounded-full bg-current"
+                        aria-hidden
+                      />
+                      {STATUS_LABELS[status] ?? status}
+                    </Badge>
+                  ) : null}
+                  {isOmxBoosted ? (
+                    <Badge
+                      variant="outline"
+                      className="gap-1.5 border-zinc-500/40 bg-zinc-950/80 text-zinc-100"
+                    >
+                      <span
+                        className="h-1.5 w-1.5 rounded-full bg-current"
+                        aria-hidden
+                      />
+                      OMX
+                    </Badge>
+                  ) : null}
+                  {deactivatedLastSeenDisplay ? (
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "gap-1",
+                        deactivatedLastSeenDisplay.upToDate
+                          ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300"
+                          : "border-zinc-500/25 bg-zinc-500/10 text-zinc-600 dark:text-zinc-300",
+                      )}
+                      title={deactivatedLastSeenDisplay.label ?? undefined}
+                    >
+                      <Clock className="h-3 w-3" />
+                      {deactivatedLastSeenDisplay.label}
+                    </Badge>
+                  ) : null}
+                  {showUsageLimitHitBadge ? (
+                    <Badge
+                      variant="outline"
+                      className="gap-1.5 border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-300"
+                    >
+                      <span
+                        className="h-1.5 w-1.5 rounded-full bg-current"
+                        aria-hidden
+                      />
+                      Usage limit hit
+                      {usageLimitHit && usageLimitHitCountdownLabel ? (
+                        <span className="font-medium text-red-700 dark:text-red-300">
+                          · leaves in {usageLimitHitCountdownLabel}
+                        </span>
+                      ) : null}
+                    </Badge>
+                  ) : !hideLiveTaskAndStatusBadges && showWorkingIndicator ? (
+                    <WorkingNowPill />
+                  ) : !hideLiveTaskAndStatusBadges && showWaitingForTaskIndicator ? (
+                    <WaitingForTaskPill label={waitingTaskPillLabel} />
+                  ) : null}
+                  {showWeeklyUsageLimitDetailBadge ? (
+                    <Badge
+                      variant="outline"
+                      className="gap-1.5 border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-300"
+                    >
+                      <span
+                        className="h-1.5 w-1.5 rounded-full bg-current"
+                        aria-hidden
+                      />
+                      Weekly usage limit hit
+                    </Badge>
+                  ) : null}
+                  {hasExpiredRefreshToken ? (
+                    <Badge
+                      variant="outline"
+                      className="gap-1.5 border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                      title={
+                        account.deactivationReason ??
+                        "Re-login is required to refresh the account token."
+                      }
+                    >
+                      <span
+                        className="h-1.5 w-1.5 rounded-full bg-current"
+                        aria-hidden
+                      />
+                      Expired refresh token
+                    </Badge>
+                  ) : null}
+                </div>
               </div>
-              <span className="shrink-0 pt-1">{hasLiveSession ? "Live token card" : "Token card"}</span>
-            </div>
             <p
               className="mt-1 truncate text-[11px] font-semibold uppercase tracking-[0.13em] text-zinc-300"
               title={
@@ -1809,18 +1822,18 @@ export function AccountCard(props: AccountCardProps) {
                             <li
                               key={sessionTaskRowKey}
                               className={cn(
-                                "relative overflow-hidden space-y-1 rounded-xl border border-white/25 bg-transparent px-2 py-1.5 transition-all duration-200",
+                                "relative overflow-hidden space-y-1 rounded-xl bg-white/[0.02] pl-3 pr-2 py-1.5 transition-colors duration-200",
                                 sessionTaskState === "waiting" &&
-                                  "hover:border-cyan-300/45",
+                                  "hover:bg-cyan-500/[0.05]",
                                 sessionTaskState === "thinking" &&
-                                  "border-indigo-300/45 ring-1 ring-indigo-400/20 hover:border-indigo-200/50",
+                                  "bg-indigo-500/[0.08] hover:bg-indigo-500/[0.11]",
                                 sessionTaskState === "finished" &&
-                                  "border-emerald-400/35 hover:border-emerald-300/45",
+                                  "bg-emerald-500/[0.06] hover:bg-emerald-500/[0.09]",
                               )}
                             >
                               <span
                                 className={cn(
-                                  "pointer-events-none absolute inset-y-0 left-0 w-1 rounded-l-xl bg-gradient-to-b opacity-85",
+                                  "pointer-events-none absolute inset-y-0 left-0 w-1.5 rounded-r-full bg-gradient-to-b opacity-95",
                                   resolveSessionTaskAccentClass(index),
                                 )}
                                 aria-hidden
@@ -1845,11 +1858,7 @@ export function AccountCard(props: AccountCardProps) {
                               </div>
                               <div title={preview.taskPreview}>
                                 <div
-                                  className={cn(
-                                    "rounded-md px-1.5 py-0.5",
-                                    sessionTaskState === "thinking" &&
-                                      "border border-indigo-200/30 bg-transparent",
-                                  )}
+                                  className="rounded-md px-1.5 py-0.5"
                                 >
                                   {sessionTaskState === "thinking" ? (
                                     <div className="mb-1 inline-flex h-4 items-center gap-1 rounded-full border border-indigo-200/35 bg-transparent px-1.5 text-[8px] font-semibold uppercase tracking-[0.1em] text-indigo-100">
@@ -1889,7 +1898,10 @@ export function AccountCard(props: AccountCardProps) {
                                       : "View Full"}
                                   </button>
                                 ) : null}
-                                {sessionTaskState === "waiting" ? (
+                                {sessionTaskState === "waiting" &&
+                                resolveWaitingTaskHelperText(
+                                  preview.taskPreview,
+                                ) ? (
                                   <p className="mt-1 text-[10px] leading-relaxed text-cyan-200/85">
                                     {resolveWaitingTaskHelperText(
                                       preview.taskPreview,

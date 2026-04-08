@@ -1,17 +1,20 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import Response
 
 from app.core.auth.dependencies import set_dashboard_error_format, validate_dashboard_session
 from app.core.exceptions import (
     DashboardBadRequestError,
     DashboardConflictError,
+    DashboardNotFoundError,
     DashboardServiceUnavailableError,
 )
 from app.dependencies import BillingContext, get_billing_context
 from app.modules.billing.schemas import (
     BillingAccount,
     BillingAccountCreateRequest,
+    BillingAccountDeleteRequest,
     BillingAccountsResponse,
     BillingAccountsUpdateRequest,
     BillingCycle,
@@ -21,6 +24,7 @@ from app.modules.billing.service import (
     BillingAccountConflictError,
     BillingAccountCreateData,
     BillingAccountData,
+    BillingAccountNotFoundError,
     BillingAccountValidationError,
     BillingCycleData,
     BillingMemberData,
@@ -87,6 +91,23 @@ async def create_billing_account(
         raise DashboardServiceUnavailableError(str(exc), code="billing_summary_unavailable") from exc
 
     return _to_schema(account)
+
+
+@router.delete("/accounts", status_code=204, response_class=Response)
+async def delete_billing_account(
+    payload: BillingAccountDeleteRequest,
+    context: BillingContext = Depends(get_billing_context),
+) -> Response:
+    try:
+        await context.service.delete_account(payload.id)
+    except BillingAccountNotFoundError as exc:
+        raise DashboardNotFoundError(str(exc), code="billing_account_not_found") from exc
+    except BillingAccountValidationError as exc:
+        raise DashboardBadRequestError(str(exc), code="invalid_billing_account_payload") from exc
+    except BillingSummaryUnavailableError as exc:
+        raise DashboardServiceUnavailableError(str(exc), code="billing_summary_unavailable") from exc
+
+    return Response(status_code=204)
 
 
 def _from_schema(account: BillingAccount) -> BillingAccountData:

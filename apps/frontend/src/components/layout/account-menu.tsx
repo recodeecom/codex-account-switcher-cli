@@ -118,12 +118,22 @@ export function AccountMenu({
     [overviewQuery.data?.accounts],
   );
   const medusaAdminEmail = medusaUser?.email ?? null;
-  const dashboardLoginEmail =
-    medusaAdminEmail ?? medusaLastAuthenticatedEmail ?? null;
+  const dashboardLoginEmail = medusaAdminEmail ?? null;
   const displayedLoginEmail = dashboardLoginEmail ?? loggedInEmail;
+  const normalizedLoggedInEmail = loggedInEmail?.trim().toLowerCase() ?? null;
+  const normalizedDisplayedLoginEmail =
+    displayedLoginEmail?.trim().toLowerCase() ?? null;
   const triggerEmail = displayedLoginEmail;
   const showTriggerCodexEmail =
-    Boolean(loggedInEmail) && loggedInEmail !== displayedLoginEmail;
+    Boolean(loggedInEmail) &&
+    normalizedLoggedInEmail !== normalizedDisplayedLoginEmail;
+  const showCodexAccountDetails =
+    Boolean(loggedInEmail) &&
+    normalizedLoggedInEmail !== normalizedDisplayedLoginEmail;
+  const showLastMedusaAdminLogin =
+    Boolean(medusaAdminEmail) &&
+    Boolean(medusaLastAuthenticatedEmail) &&
+    medusaLastAuthenticatedEmail !== medusaAdminEmail;
   const triggerLetter = (triggerEmail?.trim()?.[0] ?? "C").toUpperCase();
 
   return (
@@ -253,7 +263,7 @@ export function AccountMenu({
             {displayedLoginEmail ?? "No dashboard login recorded yet"}
           </p>
 
-          {loggedInEmail ? (
+          {showCodexAccountDetails && loggedInEmail ? (
             <>
               <p className="mt-2 text-[10px] uppercase tracking-wider text-muted-foreground">
                 Active Codex account
@@ -287,7 +297,7 @@ export function AccountMenu({
             </>
           ) : null}
 
-          {medusaLastAuthenticatedEmail ? (
+          {showLastMedusaAdminLogin && medusaLastAuthenticatedEmail ? (
             <>
               <p className="mt-2 text-[10px] uppercase tracking-wider text-muted-foreground">
                 Last Medusa admin login

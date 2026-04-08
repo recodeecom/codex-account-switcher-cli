@@ -55,3 +55,7 @@ class BillingAccountCreateRequest(DashboardModel):
     renewal_at: datetime | None = None
     chatgpt_seats_in_use: int = Field(default=0, ge=0)
     codex_seats_in_use: int = Field(default=0, ge=0)
+
+
+class BillingAccountDeleteRequest(DashboardModel):
+    id: str = Field(min_length=1, max_length=255)

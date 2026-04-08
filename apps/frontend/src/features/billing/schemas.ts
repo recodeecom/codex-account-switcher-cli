@@ -51,9 +51,14 @@ export const BillingAccountCreateRequestSchema = z.object({
   codexSeatsInUse: z.number().int().nonnegative().default(0),
 });
 
+export const BillingAccountDeleteRequestSchema = z.object({
+  id: z.string().min(1),
+});
+
 export type BillingMember = z.infer<typeof BillingMemberSchema>;
 export type BillingCycle = z.infer<typeof BillingCycleSchema>;
 export type BillingAccount = z.infer<typeof BillingAccountSchema>;
 export type BillingAccountsResponse = z.infer<typeof BillingAccountsResponseSchema>;
 export type BillingAccountsUpdateRequest = z.infer<typeof BillingAccountsUpdateRequestSchema>;
 export type BillingAccountCreateRequest = z.infer<typeof BillingAccountCreateRequestSchema>;
+export type BillingAccountDeleteRequest = z.infer<typeof BillingAccountDeleteRequestSchema>;

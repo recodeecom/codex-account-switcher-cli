@@ -1,4 +1,7 @@
-import SubscriptionModuleService, { SubscriptionAccountValidationError } from "./service"
+import SubscriptionModuleService, {
+  SubscriptionAccountNotFoundError,
+  SubscriptionAccountValidationError,
+} from "./service"
 import { subscriptionBillingFixture } from "./fixtures/summary"
 import { PaymentStatus, SeatType, SubscriptionStatus, type SubscriptionBillingAccount } from "./types"
 
@@ -262,5 +265,36 @@ describe("SubscriptionModuleService persistence", () => {
     )
 
     expect(updateSubscriptionAccounts).not.toHaveBeenCalled()
+  })
+
+  it("deletes an existing billing account and its persisted seat rows", async () => {
+    const service = instantiateService()
+    const baselineAccounts = buildPersistedSummary()
+    const target = baselineAccounts[0]
+
+    jest.spyOn(service as any, "listSubscriptionAccounts").mockResolvedValue(baselineAccounts)
+    const deleteSubscriptionSeats = jest
+      .spyOn(service as any, "deleteSubscriptionSeats")
+      .mockResolvedValue(target.seats.map((seat) => seat.id))
+    const deleteSubscriptionAccounts = jest
+      .spyOn(service as any, "deleteSubscriptionAccounts")
+      .mockResolvedValue([target.id])
+
+    await service.deleteBillingAccount(target.id)
+
+    expect(deleteSubscriptionSeats).toHaveBeenCalledWith(
+      expect.arrayContaining(target.seats.map((seat) => seat.id))
+    )
+    expect(deleteSubscriptionAccounts).toHaveBeenCalledWith(target.id)
+  })
+
+  it("rejects deleting a billing account that does not exist", async () => {
+    const service = instantiateService()
+
+    jest.spyOn(service as any, "listSubscriptionAccounts").mockResolvedValue(buildPersistedSummary())
+
+    await expect(service.deleteBillingAccount("missing")).rejects.toThrow(
+      new SubscriptionAccountNotFoundError("Billing account not found: missing")
+    )
   })
 })

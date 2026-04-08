@@ -1,6 +1,7 @@
-import { get, post, put } from "@/lib/api-client";
+import { del, get, post, put } from "@/lib/api-client";
 import {
   BillingAccountCreateRequestSchema,
+  BillingAccountDeleteRequestSchema,
   BillingAccountSchema,
   BillingAccountsResponseSchema,
   BillingAccountsUpdateRequestSchema,
@@ -21,4 +22,9 @@ export function updateBillingAccounts(payload: unknown) {
 export function createBillingAccount(payload: unknown) {
   const validated = BillingAccountCreateRequestSchema.parse(payload);
   return post(BILLING_ACCOUNTS_PATH, BillingAccountSchema, { body: validated });
+}
+
+export function deleteBillingAccount(payload: unknown) {
+  const validated = BillingAccountDeleteRequestSchema.parse(payload);
+  return del(BILLING_ACCOUNTS_PATH, { body: validated });
 }

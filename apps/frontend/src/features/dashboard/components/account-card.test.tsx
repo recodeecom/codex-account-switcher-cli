@@ -86,7 +86,7 @@ describe("AccountCard", () => {
     expect(within(tokenCardBody as HTMLElement).getByText("Weekly")).toBeInTheDocument();
   });
 
-  it("shows an OMX boosted badge next to the active status when OMX manages the live session", () => {
+  it("shows OMX badge in the right-side token-card badge row", () => {
     const account = createAccountSummary({
       codexLiveSessionCount: 1,
       codexSessionCount: 1,
@@ -103,9 +103,17 @@ describe("AccountCard", () => {
     render(<AccountCard account={account} />);
 
     expect(screen.getByText("OpenAI")).toBeInTheDocument();
-    expect(screen.getByText("Active")).toBeInTheDocument();
-    expect(screen.getByText("OMX boosted")).toBeInTheDocument();
-    expect(screen.getByText("Live token card")).toBeInTheDocument();
+    const openAiLabel = screen.getByText("OpenAI");
+    const liveTokenLabel = screen.getByTestId("token-card-label");
+    const badgeRow = screen.getByTestId("token-card-badge-row");
+    const activeBadge = within(badgeRow).getByText("Active");
+    const omxBadge = within(badgeRow).getByText("OMX");
+
+    expect(liveTokenLabel).toHaveTextContent("Live token card");
+    expect(openAiLabel.compareDocumentPosition(liveTokenLabel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(activeBadge).toBeInTheDocument();
+    expect(omxBadge).toBeInTheDocument();
+    expect(screen.queryByTestId("token-card-badge-row")).toContainElement(activeBadge);
   });
 
   it("does not render the cardholder row", () => {
@@ -1013,6 +1021,40 @@ describe("AccountCard", () => {
 
     expect(screen.queryByText(/^Usage limit hit$/)).not.toBeInTheDocument();
     expect(screen.getByText("Weekly usage limit hit")).toBeInTheDocument();
+    expect(screen.queryByText("Active")).not.toBeInTheDocument();
+    expect(screen.queryByText("working...")).not.toBeInTheDocument();
+    expect(screen.queryByText("waiting for new task")).not.toBeInTheDocument();
+  });
+
+  it("hides active and waiting badges when weekly usage limit is hit during a live session", () => {
+    const nowIso = new Date().toISOString();
+    const account = createAccountSummary({
+      status: "active",
+      usage: {
+        primaryRemainingPercent: 58,
+        secondaryRemainingPercent: 0,
+      },
+      codexCurrentTaskPreview: null,
+      codexLiveSessionCount: 1,
+      codexSessionCount: 1,
+      codexTrackedSessionCount: 1,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+      lastUsageRecordedAtPrimary: nowIso,
+      lastUsageRecordedAtSecondary: nowIso,
+    });
+
+    render(<AccountCard account={account} />);
+
+    expect(screen.getByText("Weekly usage limit hit")).toBeInTheDocument();
+    expect(screen.queryByText("Active")).not.toBeInTheDocument();
+    expect(screen.queryByText("working...")).not.toBeInTheDocument();
+    expect(screen.queryByText("waiting for new task")).not.toBeInTheDocument();
   });
 
   it("treats sub-5% 5h quota as depleted for live usage-limit state", () => {
@@ -1720,8 +1762,8 @@ describe("AccountCard", () => {
     expect(screen.getByText("1 assigned")).toBeInTheDocument();
     expect(screen.getByText("1 waiting")).toBeInTheDocument();
     expect(
-      screen.getByText("No task assigned yet for this account."),
-    ).toBeInTheDocument();
+      screen.queryByText("No task assigned yet for this account."),
+    ).not.toBeInTheDocument();
   });
 
   it("renders usage-limit session previews in red", () => {

@@ -75,9 +75,11 @@ function mockBillingQuery(
   overrides?: Record<string, unknown>,
   createMutationOverrides?: Record<string, unknown>,
   updateMutationOverrides?: Record<string, unknown>,
+  deleteMutationOverrides?: Record<string, unknown>,
 ) {
   const mutateAsync = vi.fn().mockResolvedValue(undefined);
   const updateMutateAsync = vi.fn().mockResolvedValue(undefined);
+  const deleteMutateAsync = vi.fn().mockResolvedValue(undefined);
   useBillingMock.mockReturnValue({
     billingQuery: {
       data: billingSummary,
@@ -99,11 +101,18 @@ function mockBillingQuery(
       error: null,
       ...createMutationOverrides,
     },
+    deleteAccountMutation: {
+      mutateAsync: deleteMutateAsync,
+      isPending: false,
+      error: null,
+      ...deleteMutationOverrides,
+    },
   } as never);
 
   return {
     mutateAsync,
     updateMutateAsync,
+    deleteMutateAsync,
   };
 }
 
@@ -129,16 +138,22 @@ describe("BillingPage", () => {
     const entitledCard = screen.getByText("Entitled accounts").closest("div");
     const chatgptCard = screen.getByText("ChatGPT seats in use").closest("div");
     const codexCard = screen.getByText("Codex seats in use").closest("div");
+    const monthlySpendCard = screen.getByText("Monthly spend").closest("div");
 
     expect(accountsCard).not.toBeNull();
     expect(entitledCard).not.toBeNull();
     expect(chatgptCard).not.toBeNull();
     expect(codexCard).not.toBeNull();
+    expect(monthlySpendCard).not.toBeNull();
 
     expect(within(accountsCard as HTMLDivElement).getByText("2")).toBeInTheDocument();
     expect(within(entitledCard as HTMLDivElement).getByText("1 of 2")).toBeInTheDocument();
     expect(within(chatgptCard as HTMLDivElement).getByText("10")).toBeInTheDocument();
     expect(within(codexCard as HTMLDivElement).getByText("10")).toBeInTheDocument();
+    expect(within(monthlySpendCard as HTMLDivElement).getByText("€260.00")).toBeInTheDocument();
+    expect(
+      within(monthlySpendCard as HTMLDivElement).getByText("10 ChatGPT × €26 · 10 Codex × €0"),
+    ).toBeInTheDocument();
   });
 
   it("shows loading state while the live billing summary is pending", () => {
@@ -211,6 +226,22 @@ describe("BillingPage", () => {
     });
   });
 
+  it("deletes a subscription account from the live summary table", async () => {
+    const user = userEvent.setup();
+    const { deleteMutateAsync } = mockBillingQuery();
+
+    renderWithProviders(<BillingPage />);
+
+    await user.click(screen.getByRole("button", { name: "Delete edixai.com subscription account" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Delete edixai.com?" });
+    await user.click(within(dialog).getByRole("button", { name: "Delete account" }));
+
+    expect(deleteMutateAsync).toHaveBeenCalledWith({
+      id: billingSummary.accounts[0].id,
+    });
+  });
+
   it("submits the add subscription account dialog", async () => {
     const user = userEvent.setup();
     const { mutateAsync } = mockBillingQuery();
@@ -228,5 +259,20 @@ describe("BillingPage", () => {
       planCode: "business",
       planName: "Business",
     });
+  });
+
+  it("keeps add subscription account available when no rows are present", async () => {
+    const user = userEvent.setup();
+    mockBillingQuery({
+      data: {
+        accounts: [],
+      },
+    });
+
+    renderWithProviders(<BillingPage />);
+
+    expect(screen.getByText("No billed accounts yet")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Add subscription account" }));
+    expect(await screen.findByRole("dialog", { name: "Add subscription account" })).toBeInTheDocument();
   });
 });

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { FolderTree } from "lucide-react";
 
 import { AlertMessage } from "@/components/alert-message";
+import { CopyButton } from "@/components/copy-button";
 import { EmptyState } from "@/components/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -15,6 +16,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useOpenSpecPlans } from "@/features/plans/hooks/use-open-spec-plans";
+import type { OpenSpecPlanDetail } from "@/features/plans/schemas";
 import { cn } from "@/lib/utils";
 import { getErrorMessageOrNull } from "@/utils/errors";
 import { formatTimeLong } from "@/utils/formatters";
@@ -191,6 +193,76 @@ function parseCheckpointLines(checkpointsMarkdown: string): ParsedCheckpointLine
   });
 }
 
+function buildPlanStarterPrompt(
+  planDetail: OpenSpecPlanDetail,
+  displayStatus: string,
+  summaryLines: string[],
+): string {
+  const planPath = `openspec/plan/${planDetail.slug}`;
+  const remainingRoles = planDetail.roles.filter((role) => role.doneCheckpoints < role.totalCheckpoints);
+  const nextRole = remainingRoles[0] ?? null;
+  const currentCheckpoint = planDetail.currentCheckpoint;
+
+  const lines = [
+    "You are a new Codex session/account continuing an existing OpenSpec implementation plan.",
+    `Repository: /home/deadpool/Documents/codex-lb`,
+    `Plan workspace: ${planPath}`,
+    "",
+    "Use the existing plan artifacts as source of truth. Do not restart planning from scratch unless the artifacts are inconsistent.",
+    "",
+    "Read first:",
+    `- ${planPath}/summary.md`,
+    `- ${planPath}/checkpoints.md`,
+    `- ${planPath}/planner/plan.md`,
+    `- ${planPath}/executor/tasks.md`,
+    `- ${planPath}/writer/tasks.md`,
+    `- ${planPath}/verifier/tasks.md`,
+    "",
+    `Plan: ${planDetail.title}`,
+    `Slug: ${planDetail.slug}`,
+    `Status: ${displayStatus}`,
+    `Overall progress: ${roleCompletionLabel(planDetail.overallProgress.doneCheckpoints, planDetail.overallProgress.totalCheckpoints)} checkpoints complete (${planDetail.overallProgress.percentComplete}%)`,
+  ];
+
+  if (currentCheckpoint) {
+    lines.push(
+      `Current checkpoint: ${formatRoleLabel(currentCheckpoint.role)} · ${currentCheckpoint.checkpointId} · ${formatCheckpointState(currentCheckpoint.state)}`,
+      `Current checkpoint note: ${currentCheckpoint.message || "No checkpoint message provided."}`,
+      `Current checkpoint time: ${currentCheckpoint.timestamp}`,
+    );
+  } else {
+    lines.push("Current checkpoint: none recorded.");
+  }
+
+  if (remainingRoles.length > 0) {
+    lines.push("Remaining role checkpoints:");
+    lines.push(
+      ...remainingRoles.map(
+        (role) =>
+          `- ${formatRoleLabel(role.role)} ${roleCompletionLabel(role.doneCheckpoints, role.totalCheckpoints)}`,
+      ),
+    );
+  }
+
+  if (summaryLines.length > 0) {
+    lines.push("Plan summary:");
+    lines.push(...summaryLines.map((line) => `- ${line}`));
+  }
+
+  lines.push(
+    "",
+    "Continue implementation from the current checkpoint or the next unfinished role.",
+    "Update the OpenSpec plan tasks/checkpoints as you progress.",
+    "Verify current repo state before editing, then run focused tests/lint/typecheck before marking the work complete.",
+  );
+
+  if (nextRole) {
+    lines.push(`If the current checkpoint is stale, resume from the next unfinished role: ${formatRoleLabel(nextRole.role)}.`);
+  }
+
+  return lines.join("\n");
+}
+
 export function PlansPage() {
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const { plansQuery, planDetailQuery, effectiveSelectedSlug } = useOpenSpecPlans(selectedSlug);
@@ -217,6 +289,10 @@ export function PlansPage() {
     : null;
   const summaryLines = planDetail ? parseSummaryLines(planDetail.summaryMarkdown) : [];
   const checkpointLines = planDetail ? parseCheckpointLines(planDetail.checkpointsMarkdown) : [];
+  const starterPrompt =
+    planDetail && selectedEntryDisplayStatus
+      ? buildPlanStarterPrompt(planDetail, selectedEntryDisplayStatus, summaryLines)
+      : "";
 
   return (
     <section className="space-y-6">
@@ -306,14 +382,17 @@ export function PlansPage() {
           <div className="rounded-xl border border-border/60 bg-card/60 p-4">
             {selectedEntry ? (
               <>
-                <div className="mb-3 flex flex-wrap items-center gap-2">
-                  <h2 className="text-lg font-semibold">{selectedEntry.title}</h2>
-                  <Badge
-                    variant="outline"
-                    className={cn("capitalize", statusBadgeClass(selectedEntryDisplayStatus ?? selectedEntry.status))}
-                  >
-                    {selectedEntryDisplayStatus ?? selectedEntry.status}
-                  </Badge>
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-lg font-semibold">{selectedEntry.title}</h2>
+                    <Badge
+                      variant="outline"
+                      className={cn("capitalize", statusBadgeClass(selectedEntryDisplayStatus ?? selectedEntry.status))}
+                    >
+                      {selectedEntryDisplayStatus ?? selectedEntry.status}
+                    </Badge>
+                  </div>
+                  {starterPrompt ? <CopyButton value={starterPrompt} label="Copy starter prompt" /> : null}
                 </div>
 
                 {detailError ? (
