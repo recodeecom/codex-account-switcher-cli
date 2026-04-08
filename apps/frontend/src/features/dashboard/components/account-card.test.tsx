@@ -1545,9 +1545,13 @@ describe("AccountCard", () => {
     render(<AccountCard account={account} />);
 
     expect(screen.queryByText("Current task")).not.toBeInTheDocument();
-    expect(screen.getByText("Prompt task")).toBeInTheDocument();
+    expect(screen.queryByText("Prompt task")).not.toBeInTheDocument();
+    const planningGraph = screen.getByTestId("omx-planning-prompt-graph");
+    expect(planningGraph).toBeInTheDocument();
     expect(
-      screen.getAllByText("Trace session-affinity fallback for codex websocket flow").length,
+      within(planningGraph).getAllByText(
+        "Trace session-affinity fallback for codex websocket flow",
+      ).length,
     ).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("Last codex response:")).toBeInTheDocument();
     expect(
@@ -1556,7 +1560,7 @@ describe("AccountCard", () => {
     expect(screen.getByText("working...")).toBeInTheDocument();
   });
 
-  it("renders the OMX planning graph in place of the prompt pill for $ralplan tasks", () => {
+  it("renders the OMX planning graph with planning role nodes", () => {
     const account = createAccountSummary({
       codexLiveSessionCount: 1,
       codexSessionCount: 1,
@@ -1581,19 +1585,15 @@ describe("AccountCard", () => {
         "$ralplan can you make this card show planning mode runtime state",
       ),
     ).toBeInTheDocument();
-    expect(within(planningGraph).getByText("Web")).toBeInTheDocument();
-    expect(within(planningGraph).getByText("Plan")).toBeInTheDocument();
-    expect(within(planningGraph).getByText("DB")).toBeInTheDocument();
-    expect(within(planningGraph).getByText("API")).toBeInTheDocument();
-    expect(within(planningGraph).getByText("Deploy")).toBeInTheDocument();
-    expect(within(planningGraph).getByText("LLM")).toBeInTheDocument();
-    expect(within(planningGraph).getByText("CLI state")).toBeInTheDocument();
+    expect(within(planningGraph).getByText("Planner")).toBeInTheDocument();
+    expect(within(planningGraph).getByText("Architect")).toBeInTheDocument();
+    expect(within(planningGraph).getByText("Critic")).toBeInTheDocument();
+    expect(within(planningGraph).getByText("Engineer")).toBeInTheDocument();
+    expect(within(planningGraph).getByText("Writer")).toBeInTheDocument();
+    expect(within(planningGraph).getByText("Verifier")).toBeInTheDocument();
     expect(
       within(planningGraph).getByTestId("omx-planning-cli-state"),
     ).toHaveTextContent("Thinking");
-    expect(within(planningGraph).getByText("1 assigned")).toBeInTheDocument();
-    expect(within(planningGraph).getByText("0 waiting")).toBeInTheDocument();
-    expect(within(planningGraph).getByText("0 finished")).toBeInTheDocument();
   });
 
   it("shows waiting CLI runtime state inside the OMX planning graph when sessions are idle", () => {
@@ -1624,8 +1624,32 @@ describe("AccountCard", () => {
     expect(
       within(planningGraph).getByTestId("omx-planning-cli-state"),
     ).toHaveTextContent("Waiting");
-    expect(within(planningGraph).getByText("0 assigned")).toBeInTheDocument();
-    expect(within(planningGraph).getByText("1 waiting")).toBeInTheDocument();
+  });
+
+  it("falls back to the newest non-waiting prompt in the planning graph", () => {
+    const account = createAccountSummary({
+      codexLiveSessionCount: 1,
+      codexSessionCount: 1,
+      codexCurrentTaskPreview: "Waiting for new task",
+      codexLastTaskPreview:
+        "Architect and critic review the runtime ready fail-closed field",
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+    });
+
+    render(<AccountCard account={account} />);
+
+    const planningGraph = screen.getByTestId("omx-planning-prompt-graph");
+    expect(
+      within(planningGraph).getByText(
+        "Architect and critic review the runtime ready fail-closed field",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("shows a Next.js badge when task previews mention next.js or turbopack", () => {
@@ -1686,7 +1710,8 @@ describe("AccountCard", () => {
     render(<AccountCard account={account} />);
 
     expect(screen.queryByText("Current task")).not.toBeInTheDocument();
-    expect(screen.getByText("No active task reported")).toBeInTheDocument();
+    const planningGraph = screen.getByTestId("omx-planning-prompt-graph");
+    expect(within(planningGraph).getByText("No prompt reported yet")).toBeInTheDocument();
   });
 
   it("shows waiting for new task without the thinking indicator when a live session has no task preview", () => {
@@ -2005,8 +2030,7 @@ describe("AccountCard", () => {
     });
   });
 
-  it("truncates long current task previews and allows expanding them", async () => {
-    const user = userEvent.setup();
+  it("shows full current task previews in the planning graph without expand controls", () => {
     const longTaskPreview = `Task trace ${"x".repeat(130)}`;
     const account = createAccountSummary({
       codexCurrentTaskPreview: longTaskPreview,
@@ -2024,15 +2048,10 @@ describe("AccountCard", () => {
 
     render(<AccountCard account={account} />);
 
-    const truncated = truncateTaskPreviewForExpectation(longTaskPreview);
-    expect(screen.getByText(truncated)).toBeInTheDocument();
-    expect(screen.queryByText(longTaskPreview)).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "View Full" }));
-    expect(screen.getByText(longTaskPreview)).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Show Less" }));
-    expect(screen.getByText(truncated)).toBeInTheDocument();
+    const planningGraph = screen.getByTestId("omx-planning-prompt-graph");
+    expect(within(planningGraph).getByText(longTaskPreview)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "View Full" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Show Less" })).not.toBeInTheDocument();
   });
 
   it("truncates long per-session task previews and allows expanding them", async () => {
@@ -2342,7 +2361,11 @@ describe("AccountCard", () => {
 
     render(<AccountCard account={account} />);
 
-    expect(screen.getAllByText("Waiting for new task").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText("Waiting for new task")).not.toBeInTheDocument();
+    const planningGraph = screen.getByTestId("omx-planning-prompt-graph");
+    expect(
+      within(planningGraph).getByText("Investigate Zeus quota overlay mapping"),
+    ).toBeInTheDocument();
     expect(screen.getByText("Last codex response:")).toBeInTheDocument();
     expect(
       screen.getAllByText("Investigate Zeus quota overlay mapping").length,
