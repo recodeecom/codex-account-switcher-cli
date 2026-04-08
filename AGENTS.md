@@ -95,6 +95,8 @@ Prompting cue (use when writing docs):
 
 Use `openspec/plan/` as the durable pre-implementation planning layer.
 
+Planner narrative plans must follow `openspec/plan/PLANS.md`.
+
 Required shape for each plan:
 
 ```text

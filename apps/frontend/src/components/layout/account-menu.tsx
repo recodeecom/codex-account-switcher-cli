@@ -5,6 +5,7 @@ import {
   Eye,
   EyeOff,
   CreditCard,
+  FolderTree,
   Home,
   KeyRound,
   LayoutDashboard,
@@ -20,7 +21,7 @@ import {
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import { NAV_ITEMS } from "@/components/layout/nav-items";
+import { flattenNavItems, NAV_ITEMS } from "@/components/layout/nav-items";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -48,6 +49,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   "/devices": MonitorSmartphone,
   "/storage": Home,
   "/sessions": Link2,
+  "/projects/plans": FolderTree,
   "/settings": Settings2,
 };
 
@@ -100,6 +102,7 @@ export function AccountMenu({
     (state) => state.lastAuthenticatedEmail,
   );
   const medusaLogout = useMedusaAdminAuthStore((state) => state.logout);
+  const navItems = useMemo(() => flattenNavItems(NAV_ITEMS), []);
 
   const overviewQuery = useQuery({
     queryKey: ["dashboard", "overview"],
@@ -115,8 +118,9 @@ export function AccountMenu({
   );
   const medusaAdminEmail = medusaUser?.email ?? null;
   const dashboardLoginEmail =
-    medusaLastAuthenticatedEmail ?? medusaAdminEmail ?? loggedInEmail;
-  const triggerEmail = loggedInEmail ?? dashboardLoginEmail;
+    medusaAdminEmail ?? medusaLastAuthenticatedEmail ?? null;
+  const triggerEmail = dashboardLoginEmail;
+  const showTriggerCodexEmail = Boolean(loggedInEmail);
   const triggerLetter = (triggerEmail?.trim()?.[0] ?? "C").toUpperCase();
 
   return (
@@ -132,16 +136,21 @@ export function AccountMenu({
           <span className="flex h-5 w-5 items-center justify-center rounded-md border border-border/70 bg-muted/40 font-medium">
             {triggerLetter}
           </span>
-          <span className="hidden min-w-0 lg:flex lg:max-w-[13rem] lg:flex-col lg:items-start lg:leading-tight">
-            <span className="text-[9px] uppercase tracking-[0.08em] text-muted-foreground/80">
-              Active Codex account
-            </span>
+          <span className="hidden min-w-0 sm:flex sm:max-w-[16rem] sm:flex-col sm:items-start sm:leading-tight">
             <span
-              className="max-w-[13rem] truncate text-xs text-muted-foreground"
-              title={triggerEmail ?? "No active Codex account"}
+              className="max-w-[16rem] truncate text-xs text-muted-foreground"
+              title={triggerEmail ?? "No dashboard login recorded yet"}
             >
-              {triggerEmail ?? "No active Codex account"}
+              {triggerEmail ?? "No dashboard login recorded yet"}
             </span>
+            {showTriggerCodexEmail ? (
+              <span
+                className="max-w-[16rem] truncate text-[10px] text-muted-foreground/80"
+                title={loggedInEmail ?? undefined}
+              >
+                Active Codex account: {loggedInEmail}
+              </span>
+            ) : null}
           </span>
         </Button>
       </DropdownMenuTrigger>
@@ -187,7 +196,7 @@ export function AccountMenu({
           </>
         ) : null}
 
-        {NAV_ITEMS.map((item) => {
+        {navItems.map((item) => {
           const Icon = NAV_ICONS[item.to] ?? Home;
           return (
             <DropdownMenuItem
@@ -198,7 +207,7 @@ export function AccountMenu({
               }}
             >
                 <Icon className="h-4 w-4" aria-hidden="true" />
-                <span>{item.label}</span>
+                <span className={item.depth > 0 ? "pl-4" : undefined}>{item.label}</span>
                 {item.isComingSoon ? (
                   <Badge
                     variant="secondary"

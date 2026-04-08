@@ -65,3 +65,4 @@ apps/logs/*.log
 # Keep OpenSpec plan workspaces local
 openspec/plan/*
 !openspec/plan/README.md
+!openspec/plan/PLANS.md

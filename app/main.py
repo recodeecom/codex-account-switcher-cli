@@ -40,6 +40,7 @@ from app.modules.medusa_admin_auth import api as medusa_admin_auth_api
 from app.modules.health import api as health_api
 from app.modules.handoffs import api as handoffs_api
 from app.modules.oauth import api as oauth_api
+from app.modules.plans import api as plans_api
 from app.modules.proxy import api as proxy_api
 from app.modules.proxy.rate_limit_cache import get_rate_limit_headers_cache
 from app.modules.proxy.ring_membership import (
@@ -327,6 +328,7 @@ def create_app() -> FastAPI:
     app.include_router(firewall_api.router)
     app.include_router(devices_api.router)
     app.include_router(projects_api.router)
+    app.include_router(plans_api.router)
     app.include_router(sticky_sessions_api.router)
     app.include_router(handoffs_api.router)
     app.include_router(api_keys_api.router)

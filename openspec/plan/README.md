@@ -2,6 +2,8 @@
 
 `openspec/plan/` stores durable, pre-implementation planning workspaces.
 
+Planner narrative documents are governed by `openspec/plan/PLANS.md`.
+
 ## Contract
 
 Each plan must be stored as:
@@ -37,6 +39,26 @@ Each role `tasks.md` should keep visible checklist sections:
 ```
 
 This keeps planning work readable in an OpenSpec-style checklist format.
+
+## Planner ExecPlan shape
+
+`planner/plan.md` is the narrative execution spec and should include these sections in order:
+
+1. `Purpose / Big Picture`
+2. `Progress`
+3. `Surprises & Discoveries`
+4. `Decision Log`
+5. `Outcomes & Retrospective`
+6. `Context and Orientation`
+7. `Plan of Work`
+8. `Concrete Steps`
+9. `Validation and Acceptance`
+10. `Idempotence and Recovery`
+11. `Artifacts and Notes`
+12. `Interfaces and Dependencies`
+13. `Revision Note`
+
+Use `openspec/plan/PLANS.md` for full writing rules and living-document expectations.
 
 Example completed style:
 
