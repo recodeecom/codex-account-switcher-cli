@@ -1581,12 +1581,51 @@ describe("AccountCard", () => {
         "$ralplan can you make this card show planning mode runtime state",
       ),
     ).toBeInTheDocument();
-    expect(screen.getByText("Web")).toBeInTheDocument();
-    expect(screen.getByText("Plan")).toBeInTheDocument();
-    expect(screen.getByText("DB")).toBeInTheDocument();
-    expect(screen.getByText("API")).toBeInTheDocument();
-    expect(screen.getByText("Deploy")).toBeInTheDocument();
-    expect(screen.getByText("LLM")).toBeInTheDocument();
+    expect(within(planningGraph).getByText("Web")).toBeInTheDocument();
+    expect(within(planningGraph).getByText("Plan")).toBeInTheDocument();
+    expect(within(planningGraph).getByText("DB")).toBeInTheDocument();
+    expect(within(planningGraph).getByText("API")).toBeInTheDocument();
+    expect(within(planningGraph).getByText("Deploy")).toBeInTheDocument();
+    expect(within(planningGraph).getByText("LLM")).toBeInTheDocument();
+    expect(within(planningGraph).getByText("CLI state")).toBeInTheDocument();
+    expect(
+      within(planningGraph).getByTestId("omx-planning-cli-state"),
+    ).toHaveTextContent("Thinking");
+    expect(within(planningGraph).getByText("1 assigned")).toBeInTheDocument();
+    expect(within(planningGraph).getByText("0 waiting")).toBeInTheDocument();
+    expect(within(planningGraph).getByText("0 finished")).toBeInTheDocument();
+  });
+
+  it("shows waiting CLI runtime state inside the OMX planning graph when sessions are idle", () => {
+    const account = createAccountSummary({
+      codexLiveSessionCount: 1,
+      codexSessionCount: 1,
+      codexCurrentTaskPreview:
+        "$ralplan can you make this card show planning mode runtime state",
+      codexSessionTaskPreviews: [
+        {
+          sessionKey: "session-1",
+          taskPreview: "Waiting for new task",
+          taskUpdatedAt: new Date().toISOString(),
+        },
+      ],
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+    });
+
+    render(<AccountCard account={account} />);
+
+    const planningGraph = screen.getByTestId("omx-planning-prompt-graph");
+    expect(
+      within(planningGraph).getByTestId("omx-planning-cli-state"),
+    ).toHaveTextContent("Waiting");
+    expect(within(planningGraph).getByText("0 assigned")).toBeInTheDocument();
+    expect(within(planningGraph).getByText("1 waiting")).toBeInTheDocument();
   });
 
   it("shows a Next.js badge when task previews mention next.js or turbopack", () => {

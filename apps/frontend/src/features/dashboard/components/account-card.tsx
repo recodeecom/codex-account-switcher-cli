@@ -164,6 +164,37 @@ const CURRENT_TASK_PREVIEW_EXPANSION_KEY = "__current_task_preview__";
 const LAST_TASK_PREVIEW_EXPANSION_KEY = "__last_task_preview__";
 const STALE_SESSION_TASK_MS = 90_000;
 type OmxPlanningNodeKey = (typeof OMX_PLANNING_NODES)[number]["key"];
+type OmxCliRuntimeState = "finished" | "waiting" | "thinking";
+
+const OMX_CLI_STATE_STYLES: Record<
+  OmxCliRuntimeState,
+  {
+    label: string;
+    badgeClassName: string;
+    glowClassName: string;
+    pulseClassName: string;
+  }
+> = {
+  thinking: {
+    label: "Thinking",
+    badgeClassName: "border-indigo-300/45 bg-indigo-500/18 text-indigo-50",
+    glowClassName: "from-indigo-500/12 via-cyan-500/14 to-sky-500/12",
+    pulseClassName: "bg-cyan-200 motion-safe:animate-pulse",
+  },
+  waiting: {
+    label: "Waiting",
+    badgeClassName: "border-cyan-300/45 bg-cyan-500/16 text-cyan-50",
+    glowClassName: "from-cyan-500/10 via-sky-500/12 to-cyan-500/10",
+    pulseClassName:
+      "bg-cyan-200 motion-safe:animate-ping motion-safe:[animation-duration:1.4s]",
+  },
+  finished: {
+    label: "Finished",
+    badgeClassName: "border-emerald-300/45 bg-emerald-500/16 text-emerald-50",
+    glowClassName: "from-emerald-500/12 via-teal-500/12 to-emerald-500/12",
+    pulseClassName: "bg-emerald-200",
+  },
+};
 
 function hasNextTaskHint(taskPreview: string | null | undefined): boolean {
   const normalized = taskPreview?.trim();
@@ -248,15 +279,41 @@ function resolveOmxPlanningActiveNodeKey(taskPreview: string): OmxPlanningNodeKe
 function OmxPlanningPromptGraph({
   prompt,
   activeNodeKey,
+  cliRuntimeState,
+  assignedSessionCount,
+  waitingSessionCount,
+  finishedSessionCount,
 }: {
   prompt: string;
   activeNodeKey: OmxPlanningNodeKey;
+  cliRuntimeState: OmxCliRuntimeState;
+  assignedSessionCount: number;
+  waitingSessionCount: number;
+  finishedSessionCount: number;
 }) {
+  const cliStateStyle =
+    OMX_CLI_STATE_STYLES[cliRuntimeState] ?? OMX_CLI_STATE_STYLES.finished;
+
   return (
     <div
       data-testid="omx-planning-prompt-graph"
-      className="relative mx-auto aspect-square w-full max-w-[18.5rem] overflow-hidden rounded-xl border border-cyan-500/18 bg-[radial-gradient(circle_at_center,rgba(13,57,85,0.36)_0%,rgba(5,14,28,0.94)_62%,rgba(2,8,18,1)_100%)]"
+      className={cn(
+        "group relative mx-auto aspect-square w-full max-w-[22.5rem] overflow-hidden rounded-2xl border border-cyan-500/28 bg-[radial-gradient(circle_at_center,rgba(15,73,110,0.4)_0%,rgba(6,17,33,0.95)_58%,rgba(2,8,18,1)_100%)] shadow-[0_16px_40px_rgba(2,6,23,0.6),inset_0_1px_0_rgba(255,255,255,0.12)]",
+        "before:pointer-events-none before:absolute before:inset-[8%] before:rounded-[1.2rem] before:border before:border-cyan-300/16 before:content-['']",
+      )}
     >
+      <div
+        className={cn(
+          "pointer-events-none absolute inset-0 bg-gradient-to-br opacity-90 transition-opacity duration-300",
+          cliStateStyle.glowClassName,
+        )}
+        aria-hidden
+      />
+      <div
+        className="pointer-events-none absolute left-1/2 top-1/2 h-[72%] w-[72%] -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-300/14 shadow-[0_0_30px_rgba(34,211,238,0.18)] motion-safe:animate-[pulse_3.2s_ease-in-out_infinite]"
+        aria-hidden
+      />
+
       <svg
         className="pointer-events-none absolute inset-0 h-full w-full"
         viewBox="0 0 100 100"
@@ -272,6 +329,11 @@ function OmxPlanningPromptGraph({
             stroke={node.key === activeNodeKey ? "rgba(34,211,238,0.72)" : "rgba(148,163,184,0.28)"}
             strokeDasharray="3 2"
             strokeWidth="0.6"
+            className={cn(
+              "motion-safe:transition-all motion-safe:duration-300",
+              node.key === activeNodeKey &&
+                "motion-safe:animate-[pulse_1.8s_ease-in-out_infinite]",
+            )}
           />
         ))}
       </svg>
@@ -282,25 +344,69 @@ function OmxPlanningPromptGraph({
           <div
             key={node.key}
             className={cn(
-              "absolute inline-flex min-w-[4.5rem] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-md border px-2 py-1 text-[10px] font-semibold tracking-[0.08em]",
+              "absolute inline-flex min-w-[4.9rem] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-md border px-2.5 py-1 text-[10px] font-semibold tracking-[0.1em] transition-all duration-300",
               nodeActive
-                ? "border-cyan-300/60 bg-cyan-500/20 text-cyan-100 shadow-[0_0_0_1px_rgba(34,211,238,0.2)]"
+                ? "scale-[1.07] border-cyan-300/65 bg-cyan-500/22 text-cyan-50 shadow-[0_0_0_1px_rgba(34,211,238,0.28),0_0_20px_rgba(34,211,238,0.22)]"
                 : "border-white/16 bg-slate-900/80 text-zinc-200/95",
             )}
             style={{ left: `${node.x}%`, top: `${node.y}%` }}
           >
             {node.label}
+            {nodeActive ? (
+              <span
+                className="ml-1 inline-flex h-1.5 w-1.5 rounded-full bg-cyan-200 motion-safe:animate-ping"
+                aria-hidden
+              />
+            ) : null}
           </div>
         );
       })}
 
-      <div className="absolute left-1/2 top-1/2 flex h-[7.5rem] w-[7.5rem] -translate-x-1/2 -translate-y-1/2 flex-col justify-center rounded-full border border-white/25 bg-slate-950/90 px-3 text-center shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_16px_40px_rgba(2,6,23,0.45)]">
-        <p className="text-[9px] font-semibold uppercase tracking-[0.15em] text-cyan-100/90">
+      <div className="absolute left-1/2 top-1/2 flex h-[8.9rem] w-[8.9rem] -translate-x-1/2 -translate-y-1/2 flex-col justify-center rounded-full border border-cyan-200/35 bg-slate-950/92 px-3.5 text-center shadow-[0_0_0_1px_rgba(34,211,238,0.16),0_18px_46px_rgba(2,6,23,0.55)]">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-cyan-100/95">
           Prompt
         </p>
-        <p className="mt-1 line-clamp-4 break-words text-[10px] leading-snug text-zinc-100/95">
+        <p className="mt-1.5 line-clamp-4 break-words text-[11px] leading-snug text-zinc-100/95">
           {prompt}
         </p>
+      </div>
+
+      <div className="absolute bottom-3 left-1/2 z-10 flex w-[89%] -translate-x-1/2 flex-col gap-1.5 rounded-lg border border-white/15 bg-slate-950/78 px-2.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-[2px]">
+        <div className="flex items-center justify-between gap-2 text-[10px]">
+          <span className="font-semibold uppercase tracking-[0.11em] text-zinc-300/95">
+            CLI state
+          </span>
+          <span
+            data-testid="omx-planning-cli-state"
+            className={cn(
+              "inline-flex h-5 items-center gap-1.5 rounded-full border px-2 text-[9px] font-semibold uppercase tracking-[0.11em]",
+              cliStateStyle.badgeClassName,
+            )}
+          >
+            <span className="relative inline-flex h-1.5 w-1.5">
+              <span
+                className={cn(
+                  "absolute inset-0 rounded-full",
+                  cliStateStyle.pulseClassName,
+                )}
+                aria-hidden
+              />
+              <span className="absolute inset-0 rounded-full bg-current/80" />
+            </span>
+            {cliStateStyle.label}
+          </span>
+        </div>
+        <div className="flex flex-wrap items-center gap-1 text-[9px] font-semibold uppercase tracking-[0.1em] text-zinc-300/90">
+          <span className="rounded-md border border-indigo-300/30 bg-indigo-500/10 px-1.5 py-0.5 text-indigo-100/90">
+            {assignedSessionCount} assigned
+          </span>
+          <span className="rounded-md border border-cyan-300/30 bg-cyan-500/10 px-1.5 py-0.5 text-cyan-100/90">
+            {waitingSessionCount} waiting
+          </span>
+          <span className="rounded-md border border-emerald-300/30 bg-emerald-500/10 px-1.5 py-0.5 text-emerald-100/90">
+            {finishedSessionCount} finished
+          </span>
+        </div>
       </div>
     </div>
   );
@@ -1520,6 +1626,30 @@ export function AccountCard(props: AccountCardProps) {
       assignedCount,
     };
   }, [sessionTaskStates]);
+  const omxPlanningCliRuntimeState: OmxCliRuntimeState = useMemo(() => {
+    if (sessionTaskSummary.thinkingCount > 0) {
+      return "thinking";
+    }
+    if (sessionTaskSummary.waitingCount > 0) {
+      return "waiting";
+    }
+    if (sessionTaskSummary.finishedCount > 0) {
+      return "finished";
+    }
+    if (showWorkingIndicator) {
+      return "thinking";
+    }
+    if (isCurrentTaskWaiting) {
+      return "waiting";
+    }
+    return "finished";
+  }, [
+    isCurrentTaskWaiting,
+    sessionTaskSummary.finishedCount,
+    sessionTaskSummary.thinkingCount,
+    sessionTaskSummary.waitingCount,
+    showWorkingIndicator,
+  ]);
   const quotaDebugLogText = liveQuotaDebug
     ? buildQuotaDebugLogLines(
         liveQuotaDebug,
@@ -1791,6 +1921,10 @@ export function AccountCard(props: AccountCardProps) {
                             "No active task reported"
                           }
                           activeNodeKey={omxPlanningActiveNodeKey}
+                          cliRuntimeState={omxPlanningCliRuntimeState}
+                          assignedSessionCount={sessionTaskSummary.assignedCount}
+                          waitingSessionCount={sessionTaskSummary.waitingCount}
+                          finishedSessionCount={sessionTaskSummary.finishedCount}
                         />
                         {currentTaskPreviewExcerpt?.truncated ? (
                           <button
