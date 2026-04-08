@@ -1352,7 +1352,9 @@ export function AccountCard(props: AccountCardProps) {
     usageLimitHitCountdownMs <= 0,
   );
   const codexCurrentTaskPreview = usageLimitHitGraceExpired
-    ? null
+    ? isWorkingNow
+      ? account.codexCurrentTaskPreview?.trim() || null
+      : null
     : account.codexCurrentTaskPreview?.trim() || null;
   const codexLastTaskPreview = account.codexLastTaskPreview?.trim() || null;
   const effectiveCurrentTaskPreview =

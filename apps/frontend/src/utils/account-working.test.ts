@@ -155,7 +155,7 @@ describe("isAccountWorkingNow", () => {
     expect(isAccountWorkingNow(account, new Date("2026-04-04T11:59:40.000Z").getTime())).toBe(true);
   });
 
-  it("drops sub-5% 5h accounts from working-now after grace until reset", () => {
+  it("keeps sub-5% 5h accounts in working-now after grace while CLI signals stay live", () => {
     const account = createAccountSummary({
       usage: {
         primaryRemainingPercent: 4,
@@ -177,10 +177,10 @@ describe("isAccountWorkingNow", () => {
     });
 
     expect(isAccountWorkingNow(account, new Date("2026-04-04T11:59:00.000Z").getTime())).toBe(true);
-    expect(isAccountWorkingNow(account, new Date("2026-04-04T12:00:01.000Z").getTime())).toBe(false);
+    expect(isAccountWorkingNow(account, new Date("2026-04-04T12:00:01.000Z").getTime())).toBe(true);
   });
 
-  it("keeps usage-limit-hit accounts out of working-now after 60 seconds until reset", () => {
+  it("keeps usage-limit-hit accounts in working-now after 60 seconds while CLI signals stay live", () => {
     const account = createAccountSummary({
       usage: {
         primaryRemainingPercent: 0,
@@ -202,7 +202,7 @@ describe("isAccountWorkingNow", () => {
     });
 
     expect(isAccountWorkingNow(account, new Date("2026-04-04T11:59:00.000Z").getTime())).toBe(true);
-    expect(isAccountWorkingNow(account, new Date("2026-04-04T12:00:01.000Z").getTime())).toBe(false);
+    expect(isAccountWorkingNow(account, new Date("2026-04-04T12:00:01.000Z").getTime())).toBe(true);
   });
 
   it("allows usage-limit-hit accounts back into working-now after the 5h reset timestamp", () => {
@@ -256,7 +256,7 @@ describe("isAccountWorkingNow", () => {
     expect(countdownMs).toBeLessThanOrEqual(60_000);
   });
 
-  it("does not restart the usage-limit grace window for the same stuck session", () => {
+  it("does not restart the usage-limit grace window for the same stuck session and keeps working-now active", () => {
     const base = createAccountSummary({
       usage: {
         primaryRemainingPercent: 0,
@@ -289,11 +289,11 @@ describe("isAccountWorkingNow", () => {
     const secondNowMs = new Date("2026-04-04T12:00:10.000Z").getTime();
 
     expect(getWorkingNowUsageLimitHitCountdownMs(refreshedButSameSession, secondNowMs)).toBe(0);
-    expect(isAccountWorkingNow(refreshedButSameSession, secondNowMs)).toBe(false);
+    expect(isAccountWorkingNow(refreshedButSameSession, secondNowMs)).toBe(true);
     expect(hasActiveCliSessionSignal(refreshedButSameSession, secondNowMs)).toBe(true);
   });
 
-  it("does not restart usage-limit grace when raw rollout source names rotate", () => {
+  it("does not restart usage-limit grace when raw rollout source names rotate and keeps working-now active", () => {
     const base = createAccountSummary({
       usage: {
         primaryRemainingPercent: 0,
@@ -356,11 +356,11 @@ describe("isAccountWorkingNow", () => {
     const secondNowMs = new Date("2026-04-04T12:00:10.000Z").getTime();
 
     expect(getWorkingNowUsageLimitHitCountdownMs(sameSessionWithRotatedSource, secondNowMs)).toBe(0);
-    expect(isAccountWorkingNow(sameSessionWithRotatedSource, secondNowMs)).toBe(false);
+    expect(isAccountWorkingNow(sameSessionWithRotatedSource, secondNowMs)).toBe(true);
     expect(hasActiveCliSessionSignal(sameSessionWithRotatedSource, secondNowMs)).toBe(true);
   });
 
-  it("does not restart usage-limit grace when live_usage task preview timestamps rotate", () => {
+  it("does not restart usage-limit grace when live_usage task preview timestamps rotate and keeps working-now active", () => {
     const base = createAccountSummary({
       usage: {
         primaryRemainingPercent: 0,
@@ -407,7 +407,7 @@ describe("isAccountWorkingNow", () => {
         sameSessionWithRefreshedLiveUsageTask,
         secondNowMs,
       ),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       hasActiveCliSessionSignal(
         sameSessionWithRefreshedLiveUsageTask,
@@ -545,7 +545,7 @@ describe("isAccountWorkingNow", () => {
     expect(isAccountWorkingNow(base, afterGraceMs)).toBe(false);
   });
 
-  it("does not restart usage-limit grace after a transient no-signal gap", () => {
+  it("does not restart usage-limit grace after a transient no-signal gap once fresh session evidence returns", () => {
     const base = createAccountSummary({
       status: "active",
       usage: {
@@ -611,7 +611,7 @@ describe("isAccountWorkingNow", () => {
     const resumedNowMs = new Date("2026-04-04T12:00:20.000Z").getTime();
 
     expect(getWorkingNowUsageLimitHitCountdownMs(resumedSameCycle, resumedNowMs)).toBe(0);
-    expect(isAccountWorkingNow(resumedSameCycle, resumedNowMs)).toBe(false);
+    expect(isAccountWorkingNow(resumedSameCycle, resumedNowMs)).toBe(true);
   });
 
   it("returns false when no-live-telemetry fallback reports 0% even if baseline usage is higher", () => {
@@ -1355,7 +1355,7 @@ describe("isAccountWorkingNow", () => {
     expect(getRawQuotaWindowFallback(account, "secondary")).toBeNull();
   });
 
-  it("keeps merged-depleted 5h accounts out of working-now after grace until reset", () => {
+  it("keeps merged-depleted 5h accounts in working-now after grace while CLI signals stay live", () => {
     const nowMs = new Date("2026-04-04T12:00:00.000Z").getTime();
     const nowIso = new Date(nowMs).toISOString();
     const account = createAccountSummary({
@@ -1392,7 +1392,7 @@ describe("isAccountWorkingNow", () => {
     });
 
     expect(isAccountWorkingNow(account, nowMs)).toBe(true);
-    expect(isAccountWorkingNow(account, nowMs + 61_000)).toBe(false);
+    expect(isAccountWorkingNow(account, nowMs + 61_000)).toBe(true);
   });
 
   it("keeps the lower remaining value when fallback and baseline share reset cycle", () => {

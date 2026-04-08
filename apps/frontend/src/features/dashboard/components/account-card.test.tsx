@@ -2280,7 +2280,7 @@ describe("AccountCard", () => {
     ).toBeGreaterThanOrEqual(1);
   });
 
-  it("hides stale current task preview after usage-limit grace expires", () => {
+  it("keeps current task preview visible after usage-limit grace expires while live CLI signals remain", () => {
     vi.useFakeTimers();
     try {
       const now = new Date("2026-04-05T00:00:00.000Z");
@@ -2318,8 +2318,9 @@ describe("AccountCard", () => {
       });
 
       expect(screen.queryByText("Current task")).not.toBeInTheDocument();
-      expect(screen.queryByText("Investigate codexina rollout session mapping")).not.toBeInTheDocument();
-      expect(screen.getAllByText("Waiting for new task").length).toBeGreaterThanOrEqual(1);
+      expect(
+        screen.getAllByText("Investigate codexina rollout session mapping").length,
+      ).toBeGreaterThanOrEqual(1);
       expect(screen.queryByText(/leaves in/i)).not.toBeInTheDocument();
     } finally {
       vi.useRealTimers();
