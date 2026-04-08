@@ -1,10 +1,12 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup, configure } from "@testing-library/react";
-import { afterAll, afterEach, beforeAll, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, vi } from "vitest";
 
 import { resetMockState } from "@/test/mocks/handlers";
 import { server, startMockServer } from "@/test/mocks/server";
 import { resetQuotaDisplayFloorCacheForTests } from "@/utils/quota-display";
+
+const TEST_MEDUSA_TOKEN = "test-medusa-token";
 
 if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
   Object.defineProperty(window, "matchMedia", {
@@ -38,6 +40,12 @@ if (typeof globalThis.ResizeObserver === "undefined") {
 beforeAll(() => {
   configure({ asyncUtilTimeout: 10_000 });
   startMockServer();
+});
+
+beforeEach(() => {
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem("codex-lb-medusa-customer-token", TEST_MEDUSA_TOKEN);
+  }
 });
 
 afterEach(() => {

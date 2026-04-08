@@ -1,31 +1,35 @@
 import { useEffect } from "react";
 import type { PropsWithChildren } from "react";
 
-import { CodexLogo } from "@/components/brand/codex-logo";
 import { SpinnerBlock } from "@/components/ui/spinner";
-import { LoginForm } from "@/features/auth/components/login-form";
-import { TotpDialog } from "@/features/auth/components/totp-dialog";
-import { useAuthStore } from "@/features/auth/hooks/use-auth";
+import { MedusaCustomerAuthPage } from "@/features/medusa-customer-auth/components/medusa-customer-auth-page";
+import { useMedusaCustomerAuthStore } from "@/features/medusa-customer-auth/hooks/use-medusa-customer-auth";
+
+function resolveInitialMode(): "login" | "register" {
+  if (typeof window === "undefined") {
+    return "login";
+  }
+
+  return window.location.pathname.toLowerCase().includes("register")
+    ? "register"
+    : "login";
+}
 
 export function AuthGate({ children }: PropsWithChildren) {
-  const refreshSessionStable = useAuthStore((state) => state.refreshSession);
-  const initialized = useAuthStore((state) => state.initialized);
-  const loading = useAuthStore((state) => state.loading);
-  const passwordRequired = useAuthStore((state) => state.passwordRequired);
-  const authenticated = useAuthStore((state) => state.authenticated);
-  const totpRequiredOnLogin = useAuthStore(
-    (state) => state.totpRequiredOnLogin,
-  );
+  const initialize = useMedusaCustomerAuthStore((state) => state.initialize);
+  const initialized = useMedusaCustomerAuthStore((state) => state.initialized);
+  const loading = useMedusaCustomerAuthStore((state) => state.loading);
+  const customer = useMedusaCustomerAuthStore((state) => state.customer);
 
   useEffect(() => {
-    void refreshSessionStable().catch(() => {
+    void initialize().catch(() => {
       // Initial auth refresh errors are already reflected in auth store state.
       // Swallow here to avoid unhandled promise rejections in React effects.
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (!initialized && loading) {
+  if (!initialized) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <SpinnerBlock />
@@ -33,38 +37,14 @@ export function AuthGate({ children }: PropsWithChildren) {
     );
   }
 
-  if (passwordRequired && !authenticated) {
-    if (totpRequiredOnLogin) {
-      return <TotpDialog open />;
-    }
-    return (
-      <div className="relative flex min-h-screen items-center justify-center p-4">
-        {/* Background decoration */}
-        <div className="pointer-events-none absolute inset-0 overflow-hidden">
-          <div className="absolute -top-1/4 -right-1/4 h-[600px] w-[600px] rounded-full bg-primary/5 blur-3xl" />
-          <div className="absolute -bottom-1/4 -left-1/4 h-[500px] w-[500px] rounded-full bg-primary/3 blur-3xl" />
-          <div className="absolute bottom-0 left-1/2 h-[400px] w-[400px] -translate-x-1/2 rounded-full bg-primary/4 blur-3xl" />
-        </div>
+  if (!customer) {
+    return <MedusaCustomerAuthPage initialMode={resolveInitialMode()} />;
+  }
 
-        <div className="relative w-full max-w-sm animate-fade-in-up">
-          <div className="mb-8 flex flex-col items-center gap-3 text-center">
-            <div className="flex h-24 w-28 items-center justify-center rounded-[1.5rem] border border-primary/20 bg-gradient-to-br from-primary/20 via-primary/10 to-background shadow-sm ring-2 ring-primary/10 ring-offset-2 ring-offset-background">
-              <CodexLogo size={56} className="text-primary" />
-            </div>
-            <div>
-              <h1 className="text-xl font-semibold tracking-tight">
-                recodee.com
-              </h1>
-              <p className="mt-0.5 text-sm text-muted-foreground">
-                Live account switchboard
-              </p>
-              <p className="mt-0.5 text-xs text-muted-foreground/80">
-                Track usage, switch sessions quickly, and keep account routing tidy.
-              </p>
-            </div>
-          </div>
-          <LoginForm />
-        </div>
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <SpinnerBlock />
       </div>
     );
   }

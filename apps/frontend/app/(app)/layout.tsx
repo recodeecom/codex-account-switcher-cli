@@ -6,11 +6,11 @@ import { AppHeader } from "@/components/layout/app-header";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { StatusBar } from "@/components/layout/status-bar";
 import { AuthGate } from "@/features/auth/components/auth-gate";
-import { useAuthStore } from "@/features/auth/hooks/use-auth";
+import { useMedusaCustomerAuthStore } from "@/features/medusa-customer-auth/hooks/use-medusa-customer-auth";
 
 export default function AuthenticatedLayout({ children }: { children: ReactNode }) {
-  const logout = useAuthStore((state) => state.logout);
-  const passwordRequired = useAuthStore((state) => state.passwordRequired);
+  const logout = useMedusaCustomerAuthStore((state) => state.logout);
+  const customer = useMedusaCustomerAuthStore((state) => state.customer);
 
   return (
     <AuthGate>
@@ -21,7 +21,7 @@ export default function AuthenticatedLayout({ children }: { children: ReactNode 
             onLogout={() => {
               void logout();
             }}
-            showLogout={passwordRequired}
+            showLogout={Boolean(customer)}
             sidebarAware
           />
           <main className="mx-auto w-full max-w-[1500px] flex-1 px-4 py-8 sm:px-6 lg:px-8">

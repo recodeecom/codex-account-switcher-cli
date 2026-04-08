@@ -6,7 +6,7 @@ import { StatusBar } from "@/components/layout/status-bar";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthGate } from "@/features/auth/components/auth-gate";
-import { useAuthStore } from "@/features/auth/hooks/use-auth";
+import { useMedusaCustomerAuthStore } from "@/features/medusa-customer-auth/hooks/use-medusa-customer-auth";
 import { AccountsPage } from "@/features/accounts/components/accounts-page";
 import { ApisPage } from "@/features/apis/components/apis-page";
 import { BillingPage } from "@/features/billing/components/billing-page";
@@ -19,8 +19,8 @@ import { SettingsPage } from "@/features/settings/components/settings-page";
 import { StoragePage } from "@/features/storage/components/storage-page";
 
 function AppLayout() {
-  const logout = useAuthStore((state) => state.logout);
-  const passwordRequired = useAuthStore((state) => state.passwordRequired);
+  const logout = useMedusaCustomerAuthStore((state) => state.logout);
+  const customer = useMedusaCustomerAuthStore((state) => state.customer);
 
   return (
     <div className="flex min-h-screen bg-background pb-10">
@@ -30,7 +30,7 @@ function AppLayout() {
           onLogout={() => {
             void logout();
           }}
-          showLogout={passwordRequired}
+          showLogout={Boolean(customer)}
           sidebarAware
         />
         <main className="mx-auto w-full max-w-[1500px] flex-1 px-4 py-8 sm:px-6 lg:px-8">

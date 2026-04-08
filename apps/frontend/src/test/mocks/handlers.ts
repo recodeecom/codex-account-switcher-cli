@@ -135,6 +135,21 @@ const BillingPayloadSchema = z
 	})
 	.passthrough();
 
+const MedusaCredentialsPayloadSchema = z
+	.object({
+		email: z.string().email(),
+		password: z.string().min(1),
+	})
+	.passthrough();
+
+const MedusaCustomerCreatePayloadSchema = z
+	.object({
+		email: z.string().email(),
+		first_name: z.string().optional(),
+		last_name: z.string().optional(),
+	})
+	.passthrough();
+
 // ── Helpers ──
 
 async function parseJsonBody<T>(
@@ -185,6 +200,13 @@ type MockState = {
 		expiresAt: string | null;
 		isStale: boolean;
 	}>;
+	medusaCustomer: {
+		id: string;
+		email: string;
+		first_name: string | null;
+		last_name: string | null;
+		phone: string | null;
+	};
 };
 
 function createInitialState(): MockState {
@@ -199,6 +221,13 @@ function createInitialState(): MockState {
 		projects: [],
 		billingAccounts: createDefaultBillingAccounts(),
 		stickySessions: [],
+		medusaCustomer: {
+			id: "cus_test_1",
+			email: "customer@example.com",
+			first_name: "Test",
+			last_name: "Customer",
+			phone: null,
+		},
 	};
 }
 
@@ -1380,6 +1409,62 @@ export const handlers = [
 		const deletedCount = state.stickySessions.length;
 		state.stickySessions = [];
 		return HttpResponse.json({ deletedCount });
+	}),
+
+	http.post("*/auth/customer/emailpass/register", async ({ request }) => {
+		const payload = await parseJsonBody(request, MedusaCredentialsPayloadSchema);
+		if (!payload) {
+			return HttpResponse.json(
+				{ message: "Invalid registration payload" },
+				{ status: 400 },
+			);
+		}
+		return HttpResponse.json({ token: "test-medusa-token" });
+	}),
+
+	http.post("*/auth/customer/emailpass", async ({ request }) => {
+		const payload = await parseJsonBody(request, MedusaCredentialsPayloadSchema);
+		if (!payload) {
+			return HttpResponse.json(
+				{ message: "Invalid login payload" },
+				{ status: 400 },
+			);
+		}
+
+		return HttpResponse.json({ token: "test-medusa-token" });
+	}),
+
+	http.post("*/store/customers", async ({ request }) => {
+		const authHeader = request.headers.get("authorization");
+		if (!authHeader?.startsWith("Bearer ")) {
+			return HttpResponse.json({ message: "Unauthorized" }, { status: 401 });
+		}
+
+		const payload = await parseJsonBody(request, MedusaCustomerCreatePayloadSchema);
+		if (!payload) {
+			return HttpResponse.json(
+				{ message: "Invalid customer payload" },
+				{ status: 400 },
+			);
+		}
+
+		state.medusaCustomer = {
+			...state.medusaCustomer,
+			email: payload.email,
+			first_name: payload.first_name?.trim() || null,
+			last_name: payload.last_name?.trim() || null,
+		};
+
+		return HttpResponse.json({ customer: state.medusaCustomer });
+	}),
+
+	http.get("*/store/customers/me", ({ request }) => {
+		const authHeader = request.headers.get("authorization");
+		if (!authHeader?.startsWith("Bearer ")) {
+			return HttpResponse.json({ message: "Unauthorized" }, { status: 401 });
+		}
+
+		return HttpResponse.json({ customer: state.medusaCustomer });
 	}),
 
 	http.get("/api/dashboard-auth/session", () => {

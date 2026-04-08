@@ -2,17 +2,16 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AuthGate } from "@/features/auth/components/auth-gate";
-import { useAuthStore } from "@/features/auth/hooks/use-auth";
+import { useMedusaCustomerAuthStore } from "@/features/medusa-customer-auth/hooks/use-medusa-customer-auth";
 
 function setAuthState(
-  patch: Partial<ReturnType<typeof useAuthStore.getState>>,
+  patch: Partial<ReturnType<typeof useMedusaCustomerAuthStore.getState>>,
 ): void {
-  useAuthStore.setState({
+  useMedusaCustomerAuthStore.setState({
+    token: null,
+    customer: null,
     initialized: true,
     loading: false,
-    passwordRequired: true,
-    authenticated: false,
-    totpRequiredOnLogin: false,
     error: null,
     ...patch,
   });
@@ -21,17 +20,17 @@ function setAuthState(
 describe("AuthGate", () => {
   beforeEach(() => {
     setAuthState({
-      refreshSession: vi.fn().mockResolvedValue(undefined),
+      initialize: vi.fn().mockResolvedValue(undefined),
     });
   });
 
-  it("shows login form when unauthenticated", async () => {
-    const refreshSession = vi.fn().mockResolvedValue(undefined);
+  it("shows Medusa login/register page when unauthenticated", async () => {
+    const initialize = vi.fn().mockResolvedValue(undefined);
     setAuthState({
-      refreshSession,
-      passwordRequired: true,
-      authenticated: false,
-      totpRequiredOnLogin: false,
+      initialize,
+      customer: null,
+      token: null,
+      initialized: true,
     });
 
     render(
@@ -40,18 +39,26 @@ describe("AuthGate", () => {
       </AuthGate>,
     );
 
-    expect(screen.getByText("Sign in")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Login" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Register" })).toBeInTheDocument();
     expect(screen.queryByText("Protected content")).not.toBeInTheDocument();
-    await waitFor(() => expect(refreshSession).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(initialize).toHaveBeenCalledTimes(1));
   });
 
-  it("shows children when authenticated", async () => {
-    const refreshSession = vi.fn().mockResolvedValue(undefined);
+  it("shows children when customer is authenticated", async () => {
+    const initialize = vi.fn().mockResolvedValue(undefined);
     setAuthState({
-      refreshSession,
-      passwordRequired: true,
-      authenticated: true,
-      totpRequiredOnLogin: false,
+      initialize,
+      token: "test-medusa-token",
+      customer: {
+        id: "cus_123",
+        email: "customer@example.com",
+        first_name: "Test",
+        last_name: "Customer",
+        phone: null,
+      },
+      initialized: true,
+      loading: false,
     });
 
     render(
@@ -61,16 +68,16 @@ describe("AuthGate", () => {
     );
 
     expect(screen.getByText("Protected content")).toBeInTheDocument();
-    await waitFor(() => expect(refreshSession).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(initialize).toHaveBeenCalledTimes(1));
   });
 
-  it("shows totp dialog when verification is pending", async () => {
-    const refreshSession = vi.fn().mockResolvedValue(undefined);
+  it("does not crash when initial Medusa session restore fails", async () => {
+    const initialize = vi.fn().mockRejectedValue(new Error("Request failed"));
     setAuthState({
-      refreshSession,
-      passwordRequired: true,
-      authenticated: false,
-      totpRequiredOnLogin: true,
+      initialize,
+      customer: null,
+      token: null,
+      initialized: true,
     });
 
     render(
@@ -79,28 +86,8 @@ describe("AuthGate", () => {
       </AuthGate>,
     );
 
-    expect(screen.getByText("Two-factor verification")).toBeInTheDocument();
-    expect(screen.queryByText("Dashboard Login")).not.toBeInTheDocument();
-    await waitFor(() => expect(refreshSession).toHaveBeenCalledTimes(1));
-  });
-
-  it("does not crash when initial refresh session request fails", async () => {
-    const refreshSession = vi.fn().mockRejectedValue(new Error("Request failed"));
-    setAuthState({
-      refreshSession,
-      passwordRequired: true,
-      authenticated: false,
-      totpRequiredOnLogin: false,
-    });
-
-    render(
-      <AuthGate>
-        <div>Protected content</div>
-      </AuthGate>,
-    );
-
-    expect(screen.getByText("Sign in")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Login" })).toBeInTheDocument();
     expect(screen.queryByText("Protected content")).not.toBeInTheDocument();
-    await waitFor(() => expect(refreshSession).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(initialize).toHaveBeenCalledTimes(1));
   });
 });
