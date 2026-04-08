@@ -18,8 +18,10 @@ Create or refresh a durable plan workspace in `openspec/plan/<plan-slug>/`.
    ```
 3. Confirm the resulting structure includes:
    - `summary.md`
+   - `checkpoints.md`
+   - `planner/plan.md`
    - role folders for `planner`, `architect`, `critic`, `executor`, `writer`, `verifier`
-   - `tasks.md` in each role folder with visible Spec/Tests/Implementation sections
+   - `tasks.md` in each role folder with visible Spec/Tests/Implementation/Checkpoints sections
 4. Show resulting file tree under `openspec/plan/<plan-slug>/`.
 
 ## Output
@@ -29,6 +31,9 @@ Summarize:
 - Role folders created/refreshed
 - Any existing files preserved
 - Next step: fill `summary.md` and role `tasks.md` checklists
+- Optional: start checkpoint tracking with:
+  - `python3 scripts/openspec/update-plan-checkpoint.py ...`
+  - `python3 scripts/openspec/sync-team-plan-checkpoints.py --team <team> --plan <plan>`
 
 ## Guardrails
 

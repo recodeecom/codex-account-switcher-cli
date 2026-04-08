@@ -9,6 +9,8 @@ Each plan must be stored as:
 ```text
 openspec/plan/<plan-slug>/
   summary.md
+  checkpoints.md
+  planner/plan.md
   planner/tasks.md
   architect/tasks.md
   critic/tasks.md
@@ -72,3 +74,32 @@ Default roles created:
 - executor
 - writer
 - verifier
+
+The scaffold seeds role-specific `tasks.md` checklists for:
+- planner
+- architect
+- critic
+- executor
+- writer
+- verifier
+
+## Checkpoint updates
+
+Update a role checkpoint directly:
+
+```bash
+python3 scripts/openspec/update-plan-checkpoint.py \
+  --plan <plan-slug> \
+  --role <planner|architect|critic|executor|writer|verifier> \
+  --id <checkpoint-id> \
+  --state <ready|in_progress|blocked|failed|done> \
+  --text "checkpoint note"
+```
+
+Sync checkpoints from OMX team runtime task state:
+
+```bash
+python3 scripts/openspec/sync-team-plan-checkpoints.py \
+  --team <team-name> \
+  --plan <plan-slug>
+```

@@ -82,6 +82,8 @@ Prompting cue (use when writing docs):
 
 - Start a change: `/opsx:new <kebab-case>`
 - Create/refresh plan workspace: `/opsx:plan <plan-slug>`
+- Update plan checkpoint: `/opsx:checkpoint <plan-slug> <role> <checkpoint-id> <state> <text...>`
+- Watch team -> plan checkpoints: `/opsx:watch-plan <team-name> <plan-slug>`
 - Create artifacts (step): `/opsx:continue <change>`
 - Create artifacts (fast): `/opsx:ff <change>`
 - Implement tasks: `/opsx:apply <change>`
@@ -98,6 +100,8 @@ Required shape for each plan:
 ```text
 openspec/plan/<plan-slug>/
   summary.md
+  checkpoints.md
+  planner/plan.md
   planner/tasks.md
   architect/tasks.md
   critic/tasks.md
@@ -116,6 +120,7 @@ When operating in ralplan/team-style planning flows:
    - `## 1. Spec`
    - `## 2. Tests`
    - `## 3. Implementation`
+   - `## 4. Checkpoints`
 4. Update checkboxes during execution so status remains human-readable in OpenSpec style.
 
 Scaffold command:

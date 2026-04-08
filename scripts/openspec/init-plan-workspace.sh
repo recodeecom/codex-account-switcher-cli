@@ -37,6 +37,15 @@ Describe the planning context, constraints, and desired outcomes.
 SUMEOF
 fi
 
+if [[ ! -f "$PLAN_DIR/checkpoints.md" ]]; then
+  cat > "$PLAN_DIR/checkpoints.md" <<CPTEOF
+# Plan Checkpoints: ${PLAN_SLUG}
+
+Chronological checkpoint log for all roles.
+
+CPTEOF
+fi
+
 if [[ ! -f "$PLAN_DIR/README.md" ]]; then
   {
     echo "# Plan Workspace: ${PLAN_SLUG}"
@@ -48,7 +57,8 @@ if [[ ! -f "$PLAN_DIR/README.md" ]]; then
       echo "- \`${role}/\`"
     done
     echo
-    echo "Each role folder contains \`tasks.md\` with visible Spec / Tests / Implementation checklists."
+    echo "Each role folder contains \`tasks.md\` with visible Spec / Tests / Implementation / Checkpoints checklists."
+    echo "Planner also gets \`plan.md\`; executor also gets \`checkpoints.md\`."
   } > "$PLAN_DIR/README.md"
 fi
 
@@ -66,8 +76,192 @@ Use this folder for role notes, artifacts, and status updates.
 ROLEEOF
   fi
 
+  if [[ "$role" == "planner" && ! -f "$ROLE_DIR/plan.md" ]]; then
+    cat > "$ROLE_DIR/plan.md" <<PLANEOF
+# planner precise plan list
+
+## Objective
+
+Define a precise, execution-ready plan for \`${PLAN_SLUG}\`.
+
+## Plan items
+
+1. [ ] Scope and constraints finalized
+2. [ ] Decision drivers and options mapped
+3. [ ] Architecture and risk review completed
+4. [ ] Execution lanes and staffing defined
+5. [ ] Verification path and checkpoints finalized
+
+## Notes
+
+- Keep this list concrete and measurable.
+- Link each item to evidence or artifacts when complete.
+PLANEOF
+  fi
+
+  if [[ "$role" == "executor" && ! -f "$ROLE_DIR/checkpoints.md" ]]; then
+    cat > "$ROLE_DIR/checkpoints.md" <<EXCCPTEOF
+# executor checkpoints
+
+Timestamped execution checkpoints for \`${PLAN_SLUG}\`.
+
+EXCCPTEOF
+  fi
+
   if [[ ! -f "$ROLE_DIR/tasks.md" ]]; then
-    cat > "$ROLE_DIR/tasks.md" <<TASKEOF
+    case "$role" in
+      planner)
+        cat > "$ROLE_DIR/tasks.md" <<TASKEOF
+# planner tasks
+
+## 1. Spec
+
+- [ ] 1.1 Define planning principles, decision drivers, and viable options for \`${PLAN_SLUG}\`
+- [ ] 1.2 Validate that scope, constraints, and acceptance criteria are captured in \`summary.md\`
+
+## 2. Tests
+
+- [ ] 2.1 Define verification approach for plan quality (traceability, testability, evidence expectations)
+- [ ] 2.2 Validate OpenSpec consistency checkpoints (including \`openspec validate --specs\` when applicable)
+
+## 3. Implementation
+
+- [ ] 3.1 Produce the initial RALPLAN-DR plan draft
+- [ ] 3.2 Integrate Architect/Critic feedback into revised plan iterations
+- [ ] 3.3 Publish final planning handoff with explicit execution lanes
+
+## 4. Checkpoints
+
+- [ ] [P1] READY - Initial planning draft checkpoint
+TASKEOF
+        ;;
+      architect)
+        cat > "$ROLE_DIR/tasks.md" <<TASKEOF
+# architect tasks
+
+## 1. Spec
+
+- [ ] 1.1 Define ownership boundaries, interfaces, and artifact responsibilities for \`${PLAN_SLUG}\`
+- [ ] 1.2 Validate architecture constraints and non-functional requirements coverage
+
+## 2. Tests
+
+- [ ] 2.1 Define architectural verification checkpoints (integration boundaries, failure modes, compatibility)
+- [ ] 2.2 Validate that acceptance criteria map to concrete architecture decisions
+
+## 3. Implementation
+
+- [ ] 3.1 Review plan for strongest antithesis/tradeoff tensions
+- [ ] 3.2 Propose synthesis path and guardrails for implementation teams
+- [ ] 3.3 Record architecture sign-off notes for downstream execution
+
+## 4. Checkpoints
+
+- [ ] [A1] READY - Architecture review checkpoint
+TASKEOF
+        ;;
+      critic)
+        cat > "$ROLE_DIR/tasks.md" <<TASKEOF
+# critic tasks
+
+## 1. Spec
+
+- [ ] 1.1 Validate principle-driver-option consistency across the plan
+- [ ] 1.2 Validate risks, consequences, and mitigation clarity (including idempotency expectations)
+
+## 2. Tests
+
+- [ ] 2.1 Validate testability and measurability of all acceptance criteria
+- [ ] 2.2 Validate verification steps are concrete and reproducible
+
+## 3. Implementation
+
+- [ ] 3.1 Produce verdict (APPROVE / ITERATE / REJECT) with actionable feedback
+- [ ] 3.2 Confirm revised drafts resolve prior findings before approval
+- [ ] 3.3 Publish final quality/risk sign-off notes
+
+## 4. Checkpoints
+
+- [ ] [C1] READY - Quality gate checkpoint
+TASKEOF
+        ;;
+      executor)
+        cat > "$ROLE_DIR/tasks.md" <<TASKEOF
+# executor tasks
+
+## 1. Spec
+
+- [ ] 1.1 Map approved plan requirements to concrete implementation work items
+- [ ] 1.2 Validate touched components/files are explicitly listed before coding starts
+
+## 2. Tests
+
+- [ ] 2.1 Define test additions/updates required to lock intended behavior
+- [ ] 2.2 Validate regression and smoke verification commands for delivery
+
+## 3. Implementation
+
+- [ ] 3.1 Execute implementation tasks in approved order
+- [ ] 3.2 Keep progress and evidence linked back to plan checkpoints
+- [ ] 3.3 Complete final verification bundle for handoff
+
+## 4. Checkpoints
+
+- [ ] [E1] READY - Execution start checkpoint
+TASKEOF
+        ;;
+      writer)
+        cat > "$ROLE_DIR/tasks.md" <<TASKEOF
+# writer tasks
+
+## 1. Spec
+
+- [ ] 1.1 Validate documentation scope and audience for \`${PLAN_SLUG}\`
+- [ ] 1.2 Validate consistency between plan terminology and OpenSpec artifacts
+
+## 2. Tests
+
+- [ ] 2.1 Define documentation verification checklist (accuracy, completeness, command correctness)
+- [ ] 2.2 Validate command/help text examples against current workflow behavior
+
+## 3. Implementation
+
+- [ ] 3.1 Update workflow docs and command guidance for approved plan behavior
+- [ ] 3.2 Add or refine examples for operator usage and handoff clarity
+- [ ] 3.3 Publish final docs change summary with references
+
+## 4. Checkpoints
+
+- [ ] [W1] READY - Docs update checkpoint
+TASKEOF
+        ;;
+      verifier)
+        cat > "$ROLE_DIR/tasks.md" <<TASKEOF
+# verifier tasks
+
+## 1. Spec
+
+- [ ] 1.1 Define end-to-end validation matrix for \`${PLAN_SLUG}\`
+- [ ] 1.2 Validate success/failure conditions and evidence requirements
+
+## 2. Tests
+
+- [ ] 2.1 Execute verification commands and collect outputs
+- [ ] 2.2 Validate idempotency/re-run behavior and error-path handling
+
+## 3. Implementation
+
+- [ ] 3.1 Verify completed work against acceptance criteria
+- [ ] 3.2 Produce pass/fail findings with concrete evidence links
+- [ ] 3.3 Publish final verification sign-off (or blocker report)
+
+## 4. Checkpoints
+
+- [ ] [V1] READY - Verification checkpoint
+TASKEOF
+        ;;
+      *)
+        cat > "$ROLE_DIR/tasks.md" <<TASKEOF
 # ${role} tasks
 
 ## 1. Spec
@@ -85,7 +279,13 @@ ROLEEOF
 - [ ] 3.1 Execute ${role} deliverables for this plan
 - [ ] 3.2 Record handoff/status notes for downstream roles
 - [ ] 3.3 Mark completion with evidence links
+
+## 4. Checkpoints
+
+- [ ] [${role^^}1] READY - Role checkpoint
 TASKEOF
+        ;;
+    esac
   fi
 done
 
