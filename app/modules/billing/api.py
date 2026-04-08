@@ -13,14 +13,17 @@ from app.modules.billing.schemas import (
     BillingAccount,
     BillingAccountCreateRequest,
     BillingAccountsResponse,
+    BillingAccountsUpdateRequest,
     BillingCycle,
     BillingMember,
 )
 from app.modules.billing.service import (
-    BillingAccountCreateData,
     BillingAccountConflictError,
+    BillingAccountCreateData,
     BillingAccountData,
     BillingAccountValidationError,
+    BillingCycleData,
+    BillingMemberData,
     BillingSummaryUnavailableError,
 )
 
@@ -44,13 +47,17 @@ async def get_billing_accounts(
 
 @router.put("", response_model=BillingAccountsResponse)
 async def update_billing_accounts(
+    payload: BillingAccountsUpdateRequest,
     context: BillingContext = Depends(get_billing_context),
 ) -> BillingAccountsResponse:
-    del context
-    raise DashboardBadRequestError(
-        "Billing mutations must be applied through Medusa workflows",
-        code="billing_mutations_unavailable",
-    )
+    try:
+        updated = await context.service.update_accounts([_from_schema(account) for account in payload.accounts])
+    except BillingAccountValidationError as exc:
+        raise DashboardBadRequestError(str(exc), code="invalid_billing_payload") from exc
+    except BillingSummaryUnavailableError as exc:
+        raise DashboardServiceUnavailableError(str(exc), code="billing_summary_unavailable") from exc
+
+    return BillingAccountsResponse(accounts=[_to_schema(account) for account in updated.accounts])
 
 
 @router.post("/accounts", response_model=BillingAccount)
@@ -80,6 +87,36 @@ async def create_billing_account(
         raise DashboardServiceUnavailableError(str(exc), code="billing_summary_unavailable") from exc
 
     return _to_schema(account)
+
+
+def _from_schema(account: BillingAccount) -> BillingAccountData:
+    return BillingAccountData(
+        id=account.id,
+        domain=account.domain,
+        plan_code=account.plan_code,
+        plan_name=account.plan_name,
+        subscription_status=account.subscription_status,
+        entitled=account.entitled,
+        payment_status=account.payment_status,
+        billing_cycle=BillingCycleData(
+            start=account.billing_cycle.start,
+            end=account.billing_cycle.end,
+        ),
+        renewal_at=account.renewal_at,
+        chatgpt_seats_in_use=account.chatgpt_seats_in_use,
+        codex_seats_in_use=account.codex_seats_in_use,
+        members=[
+            BillingMemberData(
+                id=member.id,
+                name=member.name,
+                email=member.email,
+                role="Owner" if member.role == "Owner" else "Member",
+                seat_type="Codex" if member.seat_type == "Codex" else "ChatGPT",
+                date_added=member.date_added,
+            )
+            for member in account.members
+        ],
+    )
 
 
 def _to_schema(account: BillingAccountData) -> BillingAccount:

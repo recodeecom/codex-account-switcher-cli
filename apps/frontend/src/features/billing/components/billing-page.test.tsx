@@ -74,8 +74,10 @@ const billingSummary: BillingAccountsResponse = {
 function mockBillingQuery(
   overrides?: Record<string, unknown>,
   createMutationOverrides?: Record<string, unknown>,
+  updateMutationOverrides?: Record<string, unknown>,
 ) {
   const mutateAsync = vi.fn().mockResolvedValue(undefined);
+  const updateMutateAsync = vi.fn().mockResolvedValue(undefined);
   useBillingMock.mockReturnValue({
     billingQuery: {
       data: billingSummary,
@@ -84,6 +86,12 @@ function mockBillingQuery(
       isError: false,
       error: null,
       ...overrides,
+    },
+    updateAccountsMutation: {
+      mutateAsync: updateMutateAsync,
+      isPending: false,
+      error: null,
+      ...updateMutationOverrides,
     },
     createAccountMutation: {
       mutateAsync,
@@ -95,6 +103,7 @@ function mockBillingQuery(
 
   return {
     mutateAsync,
+    updateMutateAsync,
   };
 }
 
@@ -173,6 +182,33 @@ describe("BillingPage", () => {
     expect(within(dialog).getByText("ChatGPT")).toBeInTheDocument();
     expect(within(dialog).getByText("Mar 23, 2026")).toBeInTheDocument();
     expect(within(dialog).getByText("admin@edixai.com")).toBeInTheDocument();
+  });
+
+  it("opens the edit dialog and submits updated seat settings", async () => {
+    const user = userEvent.setup();
+    const { updateMutateAsync } = mockBillingQuery();
+
+    renderWithProviders(<BillingPage />);
+
+    await user.click(screen.getByRole("button", { name: "Edit edixai.com subscription account" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Edit edixai.com" });
+    await user.clear(within(dialog).getByLabelText("ChatGPT seats in use"));
+    await user.type(within(dialog).getByLabelText("ChatGPT seats in use"), "7");
+    await user.clear(within(dialog).getByLabelText("Codex seats in use"));
+    await user.type(within(dialog).getByLabelText("Codex seats in use"), "3");
+    await user.click(within(dialog).getByRole("button", { name: "Save changes" }));
+
+    expect(updateMutateAsync).toHaveBeenCalledWith({
+      accounts: [
+        {
+          ...billingSummary.accounts[0],
+          chatgptSeatsInUse: 7,
+          codexSeatsInUse: 3,
+        },
+        billingSummary.accounts[1],
+      ],
+    });
   });
 
   it("submits the add subscription account dialog", async () => {

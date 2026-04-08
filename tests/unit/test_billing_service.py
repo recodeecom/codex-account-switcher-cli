@@ -53,7 +53,10 @@ async def test_get_accounts_reads_medusa_summary_without_python_seed_defaults() 
         list_accounts=AsyncMock(return_value=[]),
         replace_accounts=AsyncMock(),
     )
-    summary_provider = SimpleNamespace(fetch_accounts=AsyncMock(return_value=[_account()]))
+    summary_provider = SimpleNamespace(
+        fetch_accounts=AsyncMock(return_value=[_account()]),
+        update_accounts=AsyncMock(),
+    )
     service = BillingService(repository, summary_provider)
 
     with patch("app.modules.billing.service.set_normal") as set_normal:
@@ -75,7 +78,8 @@ async def test_get_accounts_marks_degraded_and_raises_when_medusa_summary_is_una
     summary_provider = SimpleNamespace(
         fetch_accounts=AsyncMock(
             side_effect=BillingSummaryUnavailableError("Medusa billing summary is unavailable")
-        )
+        ),
+        update_accounts=AsyncMock(),
     )
     service = BillingService(repository, summary_provider)
 
@@ -94,6 +98,28 @@ async def test_get_accounts_marks_degraded_and_raises_when_medusa_summary_is_una
 
 
 @pytest.mark.asyncio
+async def test_update_accounts_passes_updates_to_summary_provider() -> None:
+    repository = SimpleNamespace(
+        list_accounts=AsyncMock(return_value=[]),
+        replace_accounts=AsyncMock(),
+    )
+    updated_account = _account()
+    summary_provider = SimpleNamespace(
+        fetch_accounts=AsyncMock(return_value=[]),
+        update_accounts=AsyncMock(return_value=[updated_account]),
+        add_account=AsyncMock(),
+    )
+    service = BillingService(repository, summary_provider)
+
+    with patch("app.modules.billing.service.set_normal") as set_normal:
+        result = await service.update_accounts([updated_account])
+
+    assert result == BillingAccountsData(accounts=[updated_account])
+    summary_provider.update_accounts.assert_awaited_once_with([updated_account])
+    set_normal.assert_called_once_with()
+
+
+@pytest.mark.asyncio
 async def test_add_account_passes_creation_to_summary_provider() -> None:
     repository = SimpleNamespace(
         list_accounts=AsyncMock(return_value=[]),
@@ -102,6 +128,7 @@ async def test_add_account_passes_creation_to_summary_provider() -> None:
     created_account = _account()
     summary_provider = SimpleNamespace(
         fetch_accounts=AsyncMock(return_value=[]),
+        update_accounts=AsyncMock(return_value=[]),
         add_account=AsyncMock(return_value=created_account),
     )
     service = BillingService(repository, summary_provider)
@@ -134,6 +161,7 @@ async def test_add_account_propagates_validation_errors() -> None:
     )
     summary_provider = SimpleNamespace(
         fetch_accounts=AsyncMock(return_value=[]),
+        update_accounts=AsyncMock(return_value=[]),
         add_account=AsyncMock(side_effect=BillingAccountValidationError("Domain is required")),
     )
     service = BillingService(repository, summary_provider)

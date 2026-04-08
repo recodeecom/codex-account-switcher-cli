@@ -77,6 +77,7 @@ class BillingAccountCreateData:
 
 class BillingSummaryProvider(Protocol):
     async def fetch_accounts(self) -> list[BillingAccountData]: ...
+    async def update_accounts(self, accounts: list[BillingAccountData]) -> list[BillingAccountData]: ...
     async def add_account(self, account: BillingAccountCreateData) -> BillingAccountData: ...
 
 
@@ -98,6 +99,11 @@ class BillingService:
 
         set_normal()
         return BillingAccountsData(accounts=accounts)
+
+    async def update_accounts(self, accounts: list[BillingAccountData]) -> BillingAccountsData:
+        updated_accounts = await self._summary_provider.update_accounts(accounts)
+        set_normal()
+        return BillingAccountsData(accounts=updated_accounts)
 
     async def add_account(self, account: BillingAccountCreateData) -> BillingAccountData:
         created_account = await self._summary_provider.add_account(account)

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-import { createBillingAccount, getBillingAccounts } from "@/features/billing/api";
+import { createBillingAccount, getBillingAccounts, updateBillingAccounts } from "@/features/billing/api";
 
 export function useBilling() {
   const queryClient = useQueryClient();
@@ -9,6 +9,17 @@ export function useBilling() {
     queryKey: ["billing", "summary"],
     queryFn: getBillingAccounts,
     refetchOnWindowFocus: true,
+  });
+
+  const updateAccountsMutation = useMutation({
+    mutationFn: updateBillingAccounts,
+    onSuccess: async () => {
+      toast.success("Subscription account updated");
+      await queryClient.invalidateQueries({ queryKey: ["billing", "summary"] });
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Failed to update subscription account");
+    },
   });
 
   const createAccountMutation = useMutation({
@@ -24,6 +35,7 @@ export function useBilling() {
 
   return {
     billingQuery,
+    updateAccountsMutation,
     createAccountMutation,
   };
 }

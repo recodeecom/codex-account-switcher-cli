@@ -12,9 +12,9 @@ from app.core.config.settings import get_settings
 from app.core.types import JsonObject
 from app.core.utils.request_id import get_request_id
 from app.modules.billing.service import (
-    BillingAccountData,
-    BillingAccountCreateData,
     BillingAccountConflictError,
+    BillingAccountCreateData,
+    BillingAccountData,
     BillingAccountValidationError,
     BillingCycleData,
     BillingMemberData,
@@ -98,12 +98,36 @@ class MedusaBillingSummaryClient:
         except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
             raise BillingSummaryUnavailableError(BILLING_SUMMARY_UNAVAILABLE_MESSAGE) from exc
 
+        return _parse_summary_accounts(payload)
+
+    async def update_accounts(self, accounts: list[BillingAccountData]) -> list[BillingAccountData]:
+        settings = get_settings()
+        client_session = self._session or get_http_client().session
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        }
+        request_id = get_request_id()
+        if request_id:
+            headers["x-request-id"] = request_id
+        timeout = aiohttp.ClientTimeout(total=settings.billing_summary_timeout_seconds)
+        url = f"{self._base_url}/billing"
+
+        payload = {"accounts": [_account_to_json(account) for account in accounts]}
+
         try:
-            summary = MedusaBillingSummaryPayload.model_validate(payload)
-        except ValidationError as exc:
+            async with client_session.put(url, headers=headers, json=payload, timeout=timeout) as response:
+                raw_payload = await _safe_json(response)
+                if response.status >= 500:
+                    raise BillingSummaryUnavailableError(BILLING_SUMMARY_UNAVAILABLE_MESSAGE)
+                if response.status >= 400:
+                    raise BillingAccountValidationError(
+                        _extract_error_message(raw_payload, "Billing payload is invalid")
+                    )
+        except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
             raise BillingSummaryUnavailableError(BILLING_SUMMARY_UNAVAILABLE_MESSAGE) from exc
 
-        return [_to_account(account) for account in summary.accounts]
+        return _parse_summary_accounts(raw_payload)
 
     async def add_account(self, account: BillingAccountCreateData) -> BillingAccountData:
         settings = get_settings()
@@ -161,6 +185,45 @@ async def _safe_json(response: aiohttp.ClientResponse) -> JsonObject:
         text = await response.text()
         return {"error": {"message": text.strip()}}
     return payload if isinstance(payload, dict) else {"error": {"message": str(payload)}}
+
+
+def _parse_summary_accounts(payload: JsonObject) -> list[BillingAccountData]:
+    try:
+        summary = MedusaBillingSummaryPayload.model_validate(payload)
+    except ValidationError as exc:
+        raise BillingSummaryUnavailableError(BILLING_SUMMARY_UNAVAILABLE_MESSAGE) from exc
+
+    return [_to_account(account) for account in summary.accounts]
+
+
+def _account_to_json(account: BillingAccountData) -> JsonObject:
+    return {
+        "id": account.id,
+        "domain": account.domain,
+        "plan_code": account.plan_code,
+        "plan_name": account.plan_name,
+        "subscription_status": account.subscription_status,
+        "entitled": account.entitled,
+        "payment_status": account.payment_status,
+        "billing_cycle": {
+            "start": account.billing_cycle.start.isoformat().replace("+00:00", "Z"),
+            "end": account.billing_cycle.end.isoformat().replace("+00:00", "Z"),
+        },
+        "renewal_at": account.renewal_at.isoformat().replace("+00:00", "Z") if account.renewal_at else None,
+        "chatgpt_seats_in_use": account.chatgpt_seats_in_use,
+        "codex_seats_in_use": account.codex_seats_in_use,
+        "members": [
+            {
+                "id": member.id,
+                "name": member.name,
+                "email": member.email,
+                "role": member.role,
+                "seat_type": member.seat_type,
+                "date_added": member.date_added,
+            }
+            for member in account.members
+        ],
+    }
 
 
 def _to_account(payload: MedusaBillingAccountPayload) -> BillingAccountData:

@@ -5,6 +5,7 @@ import {
   CalendarClock,
   CreditCard,
   Eye,
+  PencilLine,
   Plus,
   ShieldCheck,
   Sparkles,
@@ -26,8 +27,16 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { SpinnerBlock } from "@/components/ui/spinner";
+import { Switch } from "@/components/ui/switch";
 import {
   Table,
   TableBody,
@@ -39,6 +48,31 @@ import {
 import { useBilling } from "@/features/billing/hooks/use-billing";
 import type { BillingAccount, BillingAccountCreateRequest } from "@/features/billing/schemas";
 import { getErrorMessageOrNull } from "@/utils/errors";
+
+const SUBSCRIPTION_STATUS_OPTIONS: BillingAccount["subscriptionStatus"][] = [
+  "trialing",
+  "active",
+  "past_due",
+  "canceled",
+  "expired",
+];
+const PAYMENT_STATUS_OPTIONS: BillingAccount["paymentStatus"][] = [
+  "paid",
+  "requires_action",
+  "past_due",
+  "unpaid",
+];
+
+type EditAccountForm = {
+  planName: string;
+  planCode: string;
+  subscriptionStatus: BillingAccount["subscriptionStatus"];
+  paymentStatus: BillingAccount["paymentStatus"];
+  entitled: boolean;
+  renewalAt: string;
+  chatgptSeatsInUse: string;
+  codexSeatsInUse: string;
+};
 
 function formatStatusLabel(value: BillingAccount["subscriptionStatus"] | BillingAccount["paymentStatus"]) {
   const normalized = value.replaceAll("_", " ");
@@ -54,6 +88,17 @@ function formatDisplayDate(value: Date | string | null | undefined): string {
     return "—";
   }
   return format(date, "MMM d, yyyy");
+}
+
+function formatDateInputValue(value: Date | string | null | undefined): string {
+  if (!value) {
+    return "";
+  }
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  return format(date, "yyyy-MM-dd");
 }
 
 function getInitials(value: string): string {
@@ -73,15 +118,43 @@ function getInitials(value: string): string {
   return `${words[0][0]}${words[1][0]}`.toUpperCase();
 }
 
+function getEditFormFromAccount(account: BillingAccount): EditAccountForm {
+  return {
+    planName: account.planName,
+    planCode: account.planCode,
+    subscriptionStatus: account.subscriptionStatus,
+    paymentStatus: account.paymentStatus,
+    entitled: account.entitled,
+    renewalAt: formatDateInputValue(account.renewalAt),
+    chatgptSeatsInUse: String(account.chatgptSeatsInUse),
+    codexSeatsInUse: String(account.codexSeatsInUse),
+  };
+}
+
 const DEFAULT_CREATE_ACCOUNT_FORM: Pick<BillingAccountCreateRequest, "domain" | "planCode" | "planName"> = {
   domain: "",
   planCode: "business",
   planName: "Business",
 };
 
+const DEFAULT_EDIT_ACCOUNT_FORM: EditAccountForm = {
+  planName: "",
+  planCode: "business",
+  subscriptionStatus: "active",
+  paymentStatus: "paid",
+  entitled: true,
+  renewalAt: "",
+  chatgptSeatsInUse: "0",
+  codexSeatsInUse: "0",
+};
+
 export function BillingPage() {
-  const { billingQuery, createAccountMutation } = useBilling();
+  const { billingQuery, updateAccountsMutation, createAccountMutation } = useBilling();
   const [selectedBusinessAccountId, setSelectedBusinessAccountId] = useState<string | null>(null);
+  const [editingBusinessAccountId, setEditingBusinessAccountId] = useState<string | null>(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editForm, setEditForm] = useState(DEFAULT_EDIT_ACCOUNT_FORM);
+  const [editFormError, setEditFormError] = useState<string | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [createForm, setCreateForm] = useState(DEFAULT_CREATE_ACCOUNT_FORM);
   const [createFormError, setCreateFormError] = useState<string | null>(null);
@@ -93,6 +166,13 @@ export function BillingPage() {
         ? null
         : accounts.find((account) => account.id === selectedBusinessAccountId) ?? null,
     [accounts, selectedBusinessAccountId],
+  );
+  const editingBusinessAccount = useMemo(
+    () =>
+      editingBusinessAccountId === null
+        ? null
+        : accounts.find((account) => account.id === editingBusinessAccountId) ?? null,
+    [accounts, editingBusinessAccountId],
   );
 
   const entitledCount = useMemo(
@@ -112,7 +192,89 @@ export function BillingPage() {
     billingQuery.error,
     "Failed to load live billing summary.",
   );
+  const editPending = updateAccountsMutation.isPending;
   const createPending = createAccountMutation.isPending;
+
+  function openEditDialog(account: BillingAccount) {
+    setEditingBusinessAccountId(account.id);
+    setEditForm(getEditFormFromAccount(account));
+    setEditFormError(null);
+    setEditDialogOpen(true);
+  }
+
+  function resetEditDialog() {
+    setEditDialogOpen(false);
+    setEditingBusinessAccountId(null);
+    setEditForm(DEFAULT_EDIT_ACCOUNT_FORM);
+    setEditFormError(null);
+  }
+
+  async function handleEditSubscriptionAccount(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!editingBusinessAccount) {
+      setEditFormError("Select a subscription account to edit.");
+      return;
+    }
+
+    const planName = editForm.planName.trim();
+    const planCode = editForm.planCode.trim();
+    if (!planName) {
+      setEditFormError("Plan name is required.");
+      return;
+    }
+    if (!planCode) {
+      setEditFormError("Plan code is required.");
+      return;
+    }
+
+    const chatgptSeatsInUse = Number.parseInt(editForm.chatgptSeatsInUse, 10);
+    if (!Number.isInteger(chatgptSeatsInUse) || chatgptSeatsInUse < 0) {
+      setEditFormError("ChatGPT seats must be a non-negative whole number.");
+      return;
+    }
+
+    const codexSeatsInUse = Number.parseInt(editForm.codexSeatsInUse, 10);
+    if (!Number.isInteger(codexSeatsInUse) || codexSeatsInUse < 0) {
+      setEditFormError("Codex seats must be a non-negative whole number.");
+      return;
+    }
+
+    let renewalAt: Date | null = null;
+    if (editForm.renewalAt.trim()) {
+      const parsedRenewalAt = new Date(`${editForm.renewalAt}T00:00:00.000Z`);
+      if (Number.isNaN(parsedRenewalAt.getTime())) {
+        setEditFormError("Renewal date must be valid.");
+        return;
+      }
+      renewalAt = parsedRenewalAt;
+    }
+
+    setEditFormError(null);
+
+    const updatedAccounts = accounts.map((account) =>
+      account.id === editingBusinessAccount.id
+        ? {
+            ...account,
+            planName,
+            planCode,
+            subscriptionStatus: editForm.subscriptionStatus,
+            paymentStatus: editForm.paymentStatus,
+            entitled: editForm.entitled,
+            renewalAt,
+            chatgptSeatsInUse,
+            codexSeatsInUse,
+          }
+        : account,
+    );
+
+    try {
+      await updateAccountsMutation.mutateAsync({ accounts: updatedAccounts });
+      resetEditDialog();
+    } catch (error) {
+      setEditFormError(getErrorMessageOrNull(error, "Failed to update subscription account."));
+    }
+  }
 
   async function handleCreateSubscriptionAccount(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -264,7 +426,7 @@ export function BillingPage() {
                       <TableHead>Payment</TableHead>
                       <TableHead>Renewal</TableHead>
                       <TableHead>Seats</TableHead>
-                      <TableHead className="w-[130px] text-right">Accounts list</TableHead>
+                      <TableHead className="w-[220px] text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -314,17 +476,30 @@ export function BillingPage() {
                           {account.chatgptSeatsInUse} ChatGPT · {account.codexSeatsInUse} Codex
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="h-8 rounded-full px-3"
-                            aria-label={`Watch ${account.domain} accounts list`}
-                            onClick={() => setSelectedBusinessAccountId(account.id)}
-                          >
-                            <Eye className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
-                            Watch
-                          </Button>
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-8 rounded-full px-3"
+                              aria-label={`Watch ${account.domain} accounts list`}
+                              onClick={() => setSelectedBusinessAccountId(account.id)}
+                            >
+                              <Eye className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+                              Watch
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-8 rounded-full px-3"
+                              aria-label={`Edit ${account.domain} subscription account`}
+                              onClick={() => openEditDialog(account)}
+                            >
+                              <PencilLine className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+                              Edit
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -333,6 +508,172 @@ export function BillingPage() {
               </div>
             </CardContent>
           </Card>
+
+          <Dialog
+            open={editDialogOpen}
+            onOpenChange={(open) => {
+              if (!open) {
+                resetEditDialog();
+                return;
+              }
+              setEditDialogOpen(true);
+            }}
+          >
+            <DialogContent className="sm:max-w-xl">
+              <DialogHeader>
+                <DialogTitle>
+                  {editingBusinessAccount ? `Edit ${editingBusinessAccount.domain}` : "Edit subscription account"}
+                </DialogTitle>
+                <DialogDescription>
+                  Adjust the business account plan settings, entitlement status, and seat counts.
+                </DialogDescription>
+              </DialogHeader>
+
+              {editingBusinessAccount ? (
+                <form className="space-y-4" onSubmit={handleEditSubscriptionAccount}>
+                  <div className="rounded-xl border border-border/70 bg-muted/30 px-4 py-3">
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Business account</p>
+                    <p className="mt-1 font-medium text-foreground">{editingBusinessAccount.domain}</p>
+                    <p className="text-xs text-muted-foreground">{editingBusinessAccount.id}</p>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="billing-edit-plan-name">Plan name</Label>
+                      <Input
+                        id="billing-edit-plan-name"
+                        value={editForm.planName}
+                        onChange={(event) =>
+                          setEditForm((current) => ({ ...current, planName: event.target.value }))
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="billing-edit-plan-code">Plan code</Label>
+                      <Input
+                        id="billing-edit-plan-code"
+                        value={editForm.planCode}
+                        onChange={(event) =>
+                          setEditForm((current) => ({ ...current, planCode: event.target.value }))
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="billing-edit-subscription-status">Subscription status</Label>
+                      <Select
+                        value={editForm.subscriptionStatus}
+                        onValueChange={(value: BillingAccount["subscriptionStatus"]) =>
+                          setEditForm((current) => ({ ...current, subscriptionStatus: value }))
+                        }
+                      >
+                        <SelectTrigger id="billing-edit-subscription-status" className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {SUBSCRIPTION_STATUS_OPTIONS.map((status) => (
+                            <SelectItem key={status} value={status}>
+                              {formatStatusLabel(status)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="billing-edit-payment-status">Payment status</Label>
+                      <Select
+                        value={editForm.paymentStatus}
+                        onValueChange={(value: BillingAccount["paymentStatus"]) =>
+                          setEditForm((current) => ({ ...current, paymentStatus: value }))
+                        }
+                      >
+                        <SelectTrigger id="billing-edit-payment-status" className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {PAYMENT_STATUS_OPTIONS.map((status) => (
+                            <SelectItem key={status} value={status}>
+                              {formatStatusLabel(status)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+                    <div className="space-y-2">
+                      <Label htmlFor="billing-edit-renewal-at">Renewal date</Label>
+                      <Input
+                        id="billing-edit-renewal-at"
+                        type="date"
+                        value={editForm.renewalAt}
+                        onChange={(event) =>
+                          setEditForm((current) => ({ ...current, renewalAt: event.target.value }))
+                        }
+                      />
+                    </div>
+                    <div className="flex items-center justify-between gap-3 rounded-xl border border-border/70 px-4 py-3 sm:min-w-[220px]">
+                      <div>
+                        <p className="text-sm font-medium text-foreground">Entitled</p>
+                        <p className="text-xs text-muted-foreground">
+                          Premium dashboard access is enabled for this account.
+                        </p>
+                      </div>
+                      <Switch
+                        checked={editForm.entitled}
+                        onCheckedChange={(checked) =>
+                          setEditForm((current) => ({ ...current, entitled: checked }))
+                        }
+                        aria-label="Toggle entitlement"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="billing-edit-chatgpt-seats">ChatGPT seats in use</Label>
+                      <Input
+                        id="billing-edit-chatgpt-seats"
+                        type="number"
+                        min={0}
+                        value={editForm.chatgptSeatsInUse}
+                        onChange={(event) =>
+                          setEditForm((current) => ({ ...current, chatgptSeatsInUse: event.target.value }))
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="billing-edit-codex-seats">Codex seats in use</Label>
+                      <Input
+                        id="billing-edit-codex-seats"
+                        type="number"
+                        min={0}
+                        value={editForm.codexSeatsInUse}
+                        onChange={(event) =>
+                          setEditForm((current) => ({ ...current, codexSeatsInUse: event.target.value }))
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  {editFormError ? <p className="text-sm text-destructive">{editFormError}</p> : null}
+
+                  <DialogFooter>
+                    <Button type="button" variant="outline" onClick={resetEditDialog} disabled={editPending}>
+                      Cancel
+                    </Button>
+                    <Button type="submit" disabled={editPending}>
+                      {editPending ? "Saving..." : "Save changes"}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              ) : null}
+            </DialogContent>
+          </Dialog>
 
           <Dialog
             open={createDialogOpen}

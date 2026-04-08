@@ -62,3 +62,5 @@ export type SubscriptionBillingAccountCreateInput = {
   chatgpt_seats_in_use?: number
   codex_seats_in_use?: number
 }
+
+export type SubscriptionBillingAccountUpdateInput = SubscriptionBillingAccount
