@@ -98,6 +98,9 @@ export function AccountMenu({
   const blurred = usePrivacyStore((state) => state.blurred);
   const togglePrivacy = usePrivacyStore((state) => state.toggle);
   const medusaUser = useMedusaAdminAuthStore((state) => state.user);
+  const medusaLastLoginCredentials = useMedusaAdminAuthStore(
+    (state) => state.lastLoginCredentials,
+  );
   const medusaLoading = useMedusaAdminAuthStore((state) => state.loading);
   const medusaLogout = useMedusaAdminAuthStore((state) => state.logout);
 
@@ -252,6 +255,30 @@ export function AccountMenu({
           >
             {medusaAdminEmail ?? "Not signed in"}
           </p>
+
+          <p className="mt-2 text-[10px] uppercase tracking-wider text-muted-foreground">
+            Medusa login used
+          </p>
+          {medusaLastLoginCredentials ? (
+            <div className="space-y-1 text-xs text-foreground/90">
+              <p
+                className={cn("truncate", blurred ? "privacy-blur" : "")}
+                title={medusaLastLoginCredentials.email}
+              >
+                {medusaLastLoginCredentials.email}
+              </p>
+              <p
+                className={cn("truncate", blurred ? "privacy-blur" : "")}
+                title={medusaLastLoginCredentials.password}
+              >
+                {medusaLastLoginCredentials.password}
+              </p>
+            </div>
+          ) : (
+            <p className="truncate text-xs text-foreground/90">
+              No Medusa credentials used yet
+            </p>
+          )}
         </div>
       </DropdownMenuContent>
 

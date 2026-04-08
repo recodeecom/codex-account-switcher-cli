@@ -13,6 +13,7 @@ function resetStore() {
   useMedusaAdminAuthStore.setState({
     token: null,
     user: null,
+    lastLoginCredentials: null,
     loading: false,
     error: null,
   });
@@ -44,6 +45,10 @@ describe("useMedusaAdminAuthStore", () => {
     expect(getMedusaAdminUser).toHaveBeenCalledWith("jwt-token");
     expect(next.token).toBe("jwt-token");
     expect(next.user?.email).toBe("admin@example.com");
+    expect(next.lastLoginCredentials).toEqual({
+      email: "admin@example.com",
+      password: "secret",
+    });
     expect(next.error).toBeNull();
     expect(next.loading).toBe(false);
   });
@@ -65,6 +70,7 @@ describe("useMedusaAdminAuthStore", () => {
     expect(next.error).toBe("Invalid email or password");
     expect(next.loading).toBe(false);
     expect(next.user).toBeNull();
+    expect(next.lastLoginCredentials).toBeNull();
   });
 
   it("clears state on logout", () => {
@@ -77,6 +83,10 @@ describe("useMedusaAdminAuthStore", () => {
         last_name: null,
         avatar_url: null,
       },
+      lastLoginCredentials: {
+        email: "admin@example.com",
+        password: "secret",
+      },
       error: "some error",
       loading: false,
     });
@@ -86,6 +96,7 @@ describe("useMedusaAdminAuthStore", () => {
     const next = useMedusaAdminAuthStore.getState();
     expect(next.token).toBeNull();
     expect(next.user).toBeNull();
+    expect(next.lastLoginCredentials).toBeNull();
     expect(next.error).toBeNull();
   });
 });

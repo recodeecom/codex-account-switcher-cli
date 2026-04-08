@@ -1,6 +1,6 @@
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import { AccountMenu } from "@/components/layout/account-menu";
 import { useMedusaAdminAuthStore } from "@/features/medusa-auth/hooks/use-medusa-admin-auth";
@@ -11,6 +11,7 @@ describe("AccountMenu component", () => {
     useMedusaAdminAuthStore.setState({
       token: null,
       user: null,
+      lastLoginCredentials: null,
       loading: false,
       error: null,
       login: async () => undefined,
@@ -19,38 +20,41 @@ describe("AccountMenu component", () => {
     });
   });
 
-  it("does not render a Medusa sign-in action in the menu", async () => {
+  it("shows Medusa sign-in state when no admin session exists", async () => {
     const user = userEvent.setup({ delay: null });
     renderWithProviders(<AccountMenu onLogout={() => undefined} />);
 
     await user.click(screen.getByRole("button", { name: "Open account menu" }));
 
-    expect(screen.queryByRole("menuitem", { name: "Sign in Medusa admin" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "Sign in Medusa storefront" })).not.toBeInTheDocument();
-    expect(screen.getByText("Not signed in to storefront")).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Sign in Medusa admin" })).toBeInTheDocument();
+    expect(screen.getByText("Not signed in")).toBeInTheDocument();
+    expect(screen.getByText("No Medusa credentials used yet")).toBeInTheDocument();
   });
 
-  it("shows storefront sign-out action when Medusa auth is already present", async () => {
+  it("shows the last Medusa credentials used for login", async () => {
     const user = userEvent.setup({ delay: null });
-    const logout = vi.fn();
 
     useMedusaAdminAuthStore.setState({
       token: "jwt-token",
       user: {
-        id: "cus_123",
-        email: "customer@example.com",
-        first_name: "Customer",
+        id: "user_123",
+        email: "admin@example.com",
+        first_name: "Admin",
         last_name: "User",
         avatar_url: null,
       },
-      logout,
+      lastLoginCredentials: {
+        email: "odin@recodee.com",
+        password: "medusa-secret",
+      },
     });
 
     renderWithProviders(<AccountMenu onLogout={() => undefined} />);
 
     await user.click(screen.getByRole("button", { name: "Open account menu" }));
-    await user.click(screen.getByRole("menuitem", { name: "Sign out Medusa storefront" }));
 
-    expect(logout).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("menuitem", { name: "Sign out Medusa admin" })).toBeInTheDocument();
+    expect(screen.getByText("odin@recodee.com")).toBeInTheDocument();
+    expect(screen.getByText("medusa-secret")).toBeInTheDocument();
   });
 });

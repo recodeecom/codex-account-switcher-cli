@@ -26,6 +26,10 @@ function getErrorMessage(error: unknown): string {
 type MedusaAdminAuthState = {
   token: string | null;
   user: MedusaAdminUser | null;
+  lastLoginCredentials: {
+    email: string;
+    password: string;
+  } | null;
   loading: boolean;
   error: string | null;
   login: (email: string, password: string) => Promise<void>;
@@ -36,6 +40,7 @@ type MedusaAdminAuthState = {
 export const useMedusaAdminAuthStore = create<MedusaAdminAuthState>((set) => ({
   token: null,
   user: null,
+  lastLoginCredentials: null,
   loading: false,
   error: null,
   login: async (email, password) => {
@@ -43,7 +48,15 @@ export const useMedusaAdminAuthStore = create<MedusaAdminAuthState>((set) => ({
     try {
       const token = await loginMedusaAdmin({ email, password });
       const user = await getMedusaAdminUser(token);
-      set({ token, user, error: null });
+      set({
+        token,
+        user,
+        error: null,
+        lastLoginCredentials: {
+          email,
+          password,
+        },
+      });
     } catch (error) {
       set({ error: getErrorMessage(error) });
       throw error;
@@ -52,7 +65,7 @@ export const useMedusaAdminAuthStore = create<MedusaAdminAuthState>((set) => ({
     }
   },
   logout: () => {
-    set({ token: null, user: null, error: null });
+    set({ token: null, user: null, lastLoginCredentials: null, error: null });
   },
   clearError: () => {
     set({ error: null });

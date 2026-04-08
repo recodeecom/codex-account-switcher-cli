@@ -10,6 +10,7 @@ describe("MedusaAdminLoginDialog", () => {
     useMedusaAdminAuthStore.setState({
       token: null,
       user: null,
+      lastLoginCredentials: null,
       loading: false,
       error: null,
       login: async () => undefined,
