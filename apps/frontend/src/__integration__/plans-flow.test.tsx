@@ -20,18 +20,12 @@ describe("plans flow integration", () => {
     expect(currentCheckpoint).toHaveTextContent(/executor/i);
     expect(currentCheckpoint).toHaveTextContent(/E1/);
     expect(screen.getAllByText("Designer").length).toBeGreaterThanOrEqual(1);
+    expect(await screen.findByTestId("plan-left-off-card")).toHaveClass("border-red-500/40");
     expect(await screen.findByTestId("plan-step-timeline")).toHaveTextContent("Plan steps");
     expect(screen.getByTestId("plan-step-timeline")).toHaveTextContent("Planner");
-    expect(await screen.findByTestId("plan-summary-content")).toHaveTextContent("Mode");
-    expect(screen.getByTestId("plan-summary-content")).toHaveTextContent("ralplan");
-    expect(await screen.findByTestId("plan-checkpoints-content")).toHaveTextContent("Executor");
-    expect(screen.getByTestId("plan-checkpoints-content")).toHaveTextContent("Implementing plans progress UI");
-    expect(await screen.findByTestId("plan-runtime-observer")).toHaveTextContent("Live plan observer");
-    expect(await screen.findByTestId("plan-runtime-reason-badges")).toHaveTextContent("plan session mapping");
-    expect(await screen.findByTestId("plan-runtime-agents")).toHaveTextContent("executor");
-    expect(screen.getByTestId("plan-runtime-agents")).toHaveTextContent("gpt-5.3-codex");
-    expect(await screen.findByTestId("plan-runtime-events")).toHaveTextContent("Executor spawned");
-    expect(await screen.findByTestId("plan-runtime-resume")).toHaveTextContent("Can resume: Yes");
+    expect(screen.queryByTestId("plan-summary-content")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("plan-checkpoints-content")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("plan-runtime-observer")).not.toBeInTheDocument();
 
     const plannerToggle = within(screen.getByTestId("plan-step-timeline")).getByRole("button", {
       name: /planner/i,
@@ -170,11 +164,10 @@ describe("plans flow integration", () => {
     renderWithProviders(<App />);
 
     expect(await screen.findByRole("heading", { name: "Plans" })).toBeInTheDocument();
+    expect(await screen.findByTestId("plan-left-off-card")).toHaveClass("border-red-500/40");
     expect(await screen.findByText("No checkpoint activity recorded yet.")).toBeInTheDocument();
-    expect(await screen.findByText("No checkpoint log entries yet.")).toBeInTheDocument();
-    expect(await screen.findByTestId("plan-runtime-reason-badges")).toHaveTextContent("agent events missing");
-    expect(await screen.findByText(/Runtime data unavailable/i)).toBeInTheDocument();
-    expect(await screen.findByTestId("plan-runtime-resume")).toHaveTextContent("Can resume: Yes");
+    expect(await screen.findByTestId("plan-step-timeline")).toHaveTextContent("Plan steps");
+    expect(screen.queryByTestId("plan-runtime-observer")).not.toBeInTheDocument();
   });
 
   it("shows a copy starter prompt action for the selected plan", async () => {

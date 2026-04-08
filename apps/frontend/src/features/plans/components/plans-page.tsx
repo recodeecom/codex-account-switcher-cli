@@ -162,13 +162,6 @@ function getRoleVisual(role: string): RoleVisual {
   };
 }
 
-function roleProgressPercent(done: number, total: number): number {
-  if (total <= 0) {
-    return 0;
-  }
-  return Math.max(0, Math.min(100, Math.round((done / total) * 100)));
-}
-
 function checkpointStateBadgeClass(state: string): string {
   const normalizedState = state.trim().toLowerCase().replace(/\s+/g, "_");
 
@@ -210,74 +203,6 @@ function formatCheckpointTimestamp(timestamp: string): string {
 
   const formatted = formatTimeLong(new Date(parsed).toISOString());
   return `${formatted.date} ${formatted.time}`;
-}
-
-function formatRuntimeTimestamp(timestamp: string | null): string {
-  if (!timestamp) {
-    return "Unknown";
-  }
-  return formatCheckpointTimestamp(timestamp);
-}
-
-function runtimeStatusBadgeClass(status: string | null): string {
-  const normalizedStatus = status?.trim().toLowerCase().replace(/\s+/g, "_");
-  if (!normalizedStatus) {
-    return "border-slate-500/30 bg-slate-500/15 text-slate-300";
-  }
-  if (["running", "active", "in_progress"].includes(normalizedStatus)) {
-    return "border-sky-500/40 bg-sky-500/20 text-sky-200";
-  }
-  if (["done", "completed", "finished", "idle", "waiting"].includes(normalizedStatus)) {
-    return "border-emerald-500/40 bg-emerald-500/20 text-emerald-200";
-  }
-  if (["failed", "error", "blocked", "rejected", "cancelled", "canceled"].includes(normalizedStatus)) {
-    return "border-red-500/40 bg-red-500/20 text-red-200";
-  }
-  return "border-amber-500/40 bg-amber-500/20 text-amber-200";
-}
-
-function formatRuntimeReasonLabel(reason: string): string {
-  return reason.replace(/_/g, " ");
-}
-
-function runtimeReasonBadgeClass(reason: string): string {
-  const normalizedReason = reason.trim().toLowerCase();
-  if (!normalizedReason) {
-    return "border-slate-500/30 bg-slate-500/15 text-slate-300";
-  }
-
-  if (normalizedReason.includes("missing")) {
-    return "border-amber-500/40 bg-amber-500/20 text-amber-200";
-  }
-
-  if (
-    normalizedReason.includes("invalid") ||
-    normalizedReason.includes("failed") ||
-    normalizedReason.includes("error") ||
-    normalizedReason.includes("unresolved")
-  ) {
-    return "border-red-500/40 bg-red-500/20 text-red-200";
-  }
-
-  if (normalizedReason.includes("completed") || normalizedReason.includes("resolved")) {
-    return "border-emerald-500/40 bg-emerald-500/20 text-emerald-200";
-  }
-
-  return "border-slate-500/30 bg-slate-500/15 text-slate-300";
-}
-
-function runtimeConfidenceBadgeClass(confidence: string): string {
-  const normalizedConfidence = confidence.trim().toLowerCase();
-  if (normalizedConfidence === "high") {
-    return "border-emerald-500/40 bg-emerald-500/20 text-emerald-200";
-  }
-  if (normalizedConfidence === "medium") {
-    return "border-amber-500/40 bg-amber-500/20 text-amber-200";
-  }
-  if (normalizedConfidence === "low") {
-    return "border-red-500/40 bg-red-500/20 text-red-200";
-  }
-  return "border-slate-500/30 bg-slate-500/15 text-slate-300";
 }
 
 function normalizeMarkdownLine(line: string): string {
@@ -346,6 +271,8 @@ function parseRoleTaskItems(tasksMarkdown: string): ParsedRoleTaskItem[] {
       checkboxMatch[1].toLowerCase() === "x" ? "completed" : "pending";
     const normalizedTitle = normalizeMarkdownLine(checkboxMatch[2])
       .replace(/^\d+(?:\.\d+)*\s+/, "")
+      .replace(/^\[[^\]]+\]\s*/, "")
+      .replace(/^(?:todo|ready|done|in[- ]?progress|pending)\s*-\s*/i, "")
       .trim();
 
     if (!normalizedTitle) {
@@ -408,98 +335,6 @@ function StepStatusIcon({
     return <CircleDotDashed className={cn("h-4 w-4 text-sky-400", className)} aria-hidden />;
   }
   return <Circle className={cn("h-4 w-4 text-zinc-500", className)} aria-hidden />;
-}
-
-type ParsedCheckpointEntry = {
-  timestamp: string;
-  role: string | null;
-  checkpointId: string | null;
-  state: string | null;
-  message: string | null;
-};
-
-type ParsedCheckpointLine =
-  | { type: "entry"; entry: ParsedCheckpointEntry }
-  | { type: "text"; text: string };
-
-function parseCheckpointEntry(line: string): ParsedCheckpointEntry | null {
-  const normalized = normalizeMarkdownLine(line);
-  if (!normalized || /^no checkpoints recorded yet\.?$/i.test(normalized)) {
-    return null;
-  }
-
-  const segments = normalized.split("|").map((segment) => segment.trim()).filter(Boolean);
-  if (segments.length < 2) {
-    return null;
-  }
-
-  const [timestamp, ...rest] = segments;
-  let role: string | null = null;
-  let checkpointId: string | null = null;
-  let state: string | null = null;
-  const messageSegments: string[] = [];
-
-  for (const segment of rest) {
-    const separatorIndex = segment.indexOf("=");
-    if (separatorIndex < 0) {
-      messageSegments.push(segment);
-      continue;
-    }
-
-    const key = segment.slice(0, separatorIndex).trim().toLowerCase();
-    const value = segment.slice(separatorIndex + 1).trim();
-    if (!value) {
-      continue;
-    }
-
-    if (key === "role") {
-      role = value;
-      continue;
-    }
-    if (key === "id" || key === "checkpoint") {
-      checkpointId = value;
-      continue;
-    }
-    if (key === "state") {
-      state = value;
-      continue;
-    }
-
-    messageSegments.push(`${key}: ${value}`);
-  }
-
-  return {
-    timestamp,
-    role,
-    checkpointId,
-    state,
-    message: messageSegments.length > 0 ? messageSegments.join(" • ") : null,
-  };
-}
-
-function parseCheckpointLines(checkpointsMarkdown: string): ParsedCheckpointLine[] {
-  const normalizedMarkdown = checkpointsMarkdown.replace(/\\n/g, "\n");
-  const lines = normalizedMarkdown
-    .split("\n")
-    .map((line) => normalizeMarkdownLine(line))
-    .filter((line) => line.length > 0 && !/^plan checkpoints:/i.test(line));
-
-  if (lines.length === 0) {
-    return [];
-  }
-
-  return lines.map((line) => {
-    if (/^no checkpoints recorded yet\.?$/i.test(line)) {
-      return { type: "text", text: "No checkpoints recorded yet." } as const;
-    }
-
-    const parsedEntry = parseCheckpointEntry(line);
-    if (!parsedEntry) {
-      return { type: "text", text: line } as const;
-    }
-
-    return { type: "entry", entry: parsedEntry } as const;
-  });
 }
 
 export function buildPlanStarterPrompt(
@@ -577,14 +412,12 @@ export function buildPlanStarterPrompt(
 export function PlansPage() {
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [collapsedStepRows, setCollapsedStepRows] = useState<Record<string, boolean>>({});
-  const { plansQuery, planDetailQuery, planRuntimeQuery, effectiveSelectedSlug } = useOpenSpecPlans(selectedSlug);
+  const { plansQuery, planDetailQuery, effectiveSelectedSlug } = useOpenSpecPlans(selectedSlug);
 
   const entries = plansQuery.data?.entries ?? [];
   const listError = getErrorMessageOrNull(plansQuery.error);
   const detailError = getErrorMessageOrNull(planDetailQuery.error);
-  const runtimeError = getErrorMessageOrNull(planRuntimeQuery.error);
   const planDetail = planDetailQuery.data;
-  const planRuntime = planRuntimeQuery.data;
 
   const selectedEntry = entries.find((entry) => entry.slug === effectiveSelectedSlug) ?? null;
   const sortedEntries = [...entries].sort((left, right) => {
@@ -602,27 +435,43 @@ export function PlansPage() {
     ? getDisplayStatus(selectedEntry.status, selectedEntry.overallProgress)
     : null;
   const summaryLines = planDetail ? parseSummaryLines(planDetail.summaryMarkdown) : [];
-  const checkpointLines = planDetail ? parseCheckpointLines(planDetail.checkpointsMarkdown) : [];
   const stepTimelineRows: PlanStepTimelineRow[] = planDetail
     ? planDetail.roles.map((role) => {
+        const resolvedStatus = resolvePlanStepStatus(
+          role.doneCheckpoints,
+          role.totalCheckpoints,
+          planDetail.currentCheckpoint?.role === role.role,
+        );
         const parsedItems = parseRoleTaskItems(role.tasksMarkdown);
         const nonCheckpointItems = parsedItems.filter(
           (item) => !(item.section && /checkpoints?/i.test(item.section)),
         );
         const visibleItems = (nonCheckpointItems.length > 0 ? nonCheckpointItems : parsedItems).slice(0, 4);
+        let promotedPending = false;
+        const displayItems = visibleItems.map((item) => {
+          if (resolvedStatus !== "in-progress" || item.status !== "pending" || promotedPending) {
+            return item;
+          }
+          promotedPending = true;
+          return { ...item, status: "in-progress" as const };
+        });
+
         return {
           role: role.role,
-          status: resolvePlanStepStatus(
-            role.doneCheckpoints,
-            role.totalCheckpoints,
-            planDetail.currentCheckpoint?.role === role.role,
-          ),
+          status: resolvedStatus,
           doneCheckpoints: role.doneCheckpoints,
           totalCheckpoints: role.totalCheckpoints,
-          items: visibleItems,
+          items: displayItems,
         };
       })
     : [];
+
+  const toggleStepRow = (role: string) => {
+    setCollapsedStepRows((prev) => ({
+      ...prev,
+      [role]: !(prev[role] ?? false),
+    }));
+  };
   const starterPrompt =
     planDetail && selectedEntryDisplayStatus
       ? buildPlanStarterPrompt(planDetail, selectedEntryDisplayStatus, summaryLines)
@@ -805,6 +654,95 @@ export function PlansPage() {
                       )}
                     </div>
 
+                    <div
+                      className="space-y-2 rounded-lg border border-border/60 bg-background/30 p-3"
+                      data-testid="plan-step-timeline"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs uppercase tracking-wide text-muted-foreground">Plan steps</p>
+                        <Badge variant="outline" className="text-[10px]">
+                          {stepTimelineRows.length} phases
+                        </Badge>
+                      </div>
+
+                      {stepTimelineRows.length > 0 ? (
+                        <ul className="space-y-2">
+                          {stepTimelineRows.map((row) => {
+                            const rowKey = row.role;
+                            const isCollapsed = collapsedStepRows[rowKey] ?? false;
+                            const roleVisual = getRoleVisual(row.role);
+                            const RoleIcon = roleVisual.icon;
+
+                            return (
+                              <li
+                                key={row.role}
+                                className="overflow-hidden rounded-md border border-border/50 bg-background/45"
+                              >
+                                <button
+                                  type="button"
+                                  className="flex w-full items-center justify-between gap-2 px-2.5 py-2 text-left transition-colors hover:bg-background/80"
+                                  aria-expanded={!isCollapsed}
+                                  onClick={() => toggleStepRow(rowKey)}
+                                >
+                                  <div className="flex min-w-0 items-center gap-2">
+                                    <span
+                                      className={cn(
+                                        "inline-flex size-6 shrink-0 items-center justify-center rounded-full border",
+                                        roleVisual.iconClass,
+                                      )}
+                                    >
+                                      <RoleIcon className="size-3.5" />
+                                    </span>
+                                    <StepStatusIcon status={row.status} className="h-3.5 w-3.5 shrink-0" />
+                                    <span className="truncate text-sm font-medium">{formatRoleLabel(row.role)}</span>
+                                  </div>
+                                  <div className="flex items-center gap-1.5">
+                                    <Badge variant="outline" className={cn("text-[10px] capitalize", stepStatusBadgeClass(row.status))}>
+                                      {statusLabel(row.status)}
+                                    </Badge>
+                                    <Badge variant="outline" className="text-[10px]">
+                                      {roleCompletionLabel(row.doneCheckpoints, row.totalCheckpoints)}
+                                    </Badge>
+                                    <ChevronDown
+                                      className={cn(
+                                        "h-4 w-4 text-muted-foreground transition-transform duration-200",
+                                        isCollapsed ? "-rotate-90" : "rotate-0",
+                                      )}
+                                      aria-hidden
+                                    />
+                                  </div>
+                                </button>
+                                {!isCollapsed ? (
+                                  <div className="border-t border-border/40 px-3 py-2">
+                                    {row.items.length > 0 ? (
+                                      <ul className="space-y-1.5 pl-6">
+                                        {row.items.map((item) => (
+                                          <li key={`${row.role}-${item.id}`} className="flex items-start gap-2">
+                                            <StepStatusIcon status={item.status} className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                                            <p
+                                              className={cn(
+                                                "text-sm text-foreground/90",
+                                                item.status === "completed" && "text-muted-foreground line-through",
+                                              )}
+                                            >
+                                              {item.title}
+                                            </p>
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    ) : (
+                                      <p className="text-xs text-muted-foreground">No task checklist items yet.</p>
+                                    )}
+                                  </div>
+                                ) : null}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">No phase data available.</p>
+                      )}
+                    </div>
 
                   </div>
                 ) : null}

@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import { getOpenSpecPlan, getOpenSpecPlanRuntime, listOpenSpecPlans } from "@/features/plans/api";
+import { getOpenSpecPlan, listOpenSpecPlans } from "@/features/plans/api";
 
 function isPlanFinished(roles: { doneCheckpoints: number; totalCheckpoints: number }[]): boolean {
   const done = roles.reduce((acc, role) => acc + role.doneCheckpoints, 0);
@@ -45,28 +45,9 @@ export function useOpenSpecPlans(selectedSlug: string | null) {
     refetchOnWindowFocus: true,
   });
 
-  const planRuntimeQuery = useQuery({
-    queryKey: ["projects", "plans", "runtime", effectiveSelectedSlug],
-    queryFn: () => getOpenSpecPlanRuntime(effectiveSelectedSlug ?? ""),
-    enabled: Boolean(effectiveSelectedSlug),
-    refetchInterval: (query) => {
-      const runtime = query.state.data;
-      if (runtime?.active) {
-        return 5_000;
-      }
-      if (runtime?.available === false) {
-        return false;
-      }
-      return 30_000;
-    },
-    refetchIntervalInBackground: false,
-    refetchOnWindowFocus: true,
-  });
-
   return {
     plansQuery,
     planDetailQuery,
-    planRuntimeQuery,
     effectiveSelectedSlug,
   };
 }
