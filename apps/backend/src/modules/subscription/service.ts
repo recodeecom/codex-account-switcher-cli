@@ -5,6 +5,7 @@ import SubscriptionAccount from "./models/subscription-account"
 import SubscriptionSeat from "./models/subscription-seat"
 import {
   PaymentStatus,
+  type SeatType,
   SubscriptionStatus,
   type SubscriptionBillingAccount,
   type SubscriptionBillingAccountCreateInput,
@@ -17,17 +18,44 @@ const DEFAULT_PLAN_CODE = "business"
 const DEFAULT_PLAN_NAME = "Business"
 const BILLING_CYCLE_DAYS = 30
 
-function cloneAccount(account: SubscriptionBillingAccount): SubscriptionBillingAccount {
-  return {
-    ...account,
-    billing_cycle: { ...account.billing_cycle },
-    members: account.members.map((member) => ({ ...member })),
-  }
+type PersistedSubscriptionSeat = {
+  id: string
+  member_name: string
+  member_email: string
+  role: SubscriptionBillingMember["role"]
+  seat_type: SeatType
+  date_added: Date | string
 }
 
-const billingAccountsStore: SubscriptionBillingAccount[] = subscriptionBillingFixture.accounts.map((account) =>
-  cloneAccount(account)
-)
+type PersistedSubscriptionAccount = {
+  id: string
+  domain: string
+  plan_code: string
+  plan_name: string
+  subscription_status: SubscriptionStatus
+  entitled: boolean
+  payment_status: PaymentStatus
+  billing_cycle_start: Date | string
+  billing_cycle_end: Date | string
+  renewal_at: Date | string | null
+  chatgpt_seats_in_use: number
+  codex_seats_in_use: number
+  seats?: PersistedSubscriptionSeat[]
+}
+
+type SubscriptionPersistenceCrud = {
+  listSubscriptionAccounts(
+    filters?: Record<string, unknown>,
+    config?: {
+      relations?: string[]
+      order?: Record<string, "ASC" | "DESC" | string>
+    }
+  ): Promise<PersistedSubscriptionAccount[]>
+  createSubscriptionAccounts(data: Record<string, unknown>[] | Record<string, unknown>): Promise<PersistedSubscriptionAccount[] | PersistedSubscriptionAccount>
+  createSubscriptionSeats(data: Record<string, unknown>[] | Record<string, unknown>): Promise<PersistedSubscriptionSeat[] | PersistedSubscriptionSeat>
+  updateSubscriptionAccounts(data: Record<string, unknown>[] | Record<string, unknown>): Promise<PersistedSubscriptionAccount[] | PersistedSubscriptionAccount>
+  deleteSubscriptionSeats(ids: string[] | string): Promise<string[]>
+}
 
 function sanitizeDomain(value: string): string {
   return value.trim().toLowerCase()
@@ -52,6 +80,15 @@ function parseIsoDate(value: string, label: string): string {
     throw new SubscriptionAccountValidationError(`${label} must be a valid date`)
   }
   return parsed.toISOString()
+}
+
+function toDate(value: Date | string, label: string): Date {
+  const parsed = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(parsed.getTime())) {
+    throw new SubscriptionAccountValidationError(`${label} must be a valid date`)
+  }
+
+  return parsed
 }
 
 function normalizeMember(member: SubscriptionBillingMember): SubscriptionBillingMember {
@@ -128,6 +165,77 @@ function normalizeUpdatedAccount(input: SubscriptionBillingAccountUpdateInput): 
   }
 }
 
+function sortMembers(a: PersistedSubscriptionSeat, b: PersistedSubscriptionSeat): number {
+  const byDate = toDate(a.date_added, "Member added date").getTime() - toDate(b.date_added, "Member added date").getTime()
+  if (byDate !== 0) {
+    return byDate
+  }
+
+  return a.member_name.localeCompare(b.member_name)
+}
+
+function toBillingMember(member: PersistedSubscriptionSeat): SubscriptionBillingMember {
+  return {
+    id: member.id,
+    name: member.member_name,
+    email: member.member_email,
+    role: member.role,
+    seat_type: member.seat_type,
+    date_added: toDate(member.date_added, "Member added date").toISOString(),
+  }
+}
+
+function toBillingAccount(account: PersistedSubscriptionAccount): SubscriptionBillingAccount {
+  const members = [...(account.seats ?? [])].sort(sortMembers).map(toBillingMember)
+
+  return {
+    id: account.id,
+    domain: account.domain,
+    plan_code: account.plan_code,
+    plan_name: account.plan_name,
+    subscription_status: account.subscription_status,
+    entitled: account.entitled,
+    payment_status: account.payment_status,
+    billing_cycle: {
+      start: toDate(account.billing_cycle_start, "Billing cycle start").toISOString(),
+      end: toDate(account.billing_cycle_end, "Billing cycle end").toISOString(),
+    },
+    renewal_at: account.renewal_at ? toDate(account.renewal_at, "Renewal date").toISOString() : null,
+    chatgpt_seats_in_use: account.chatgpt_seats_in_use,
+    codex_seats_in_use: account.codex_seats_in_use,
+    members,
+  }
+}
+
+function toPersistedAccountPayload(account: SubscriptionBillingAccount) {
+  return {
+    id: account.id,
+    domain: account.domain,
+    plan_code: account.plan_code,
+    plan_name: account.plan_name,
+    subscription_status: account.subscription_status,
+    entitled: account.entitled,
+    payment_status: account.payment_status,
+    billing_cycle_start: toDate(account.billing_cycle.start, "Billing cycle start"),
+    billing_cycle_end: toDate(account.billing_cycle.end, "Billing cycle end"),
+    renewal_at: account.renewal_at ? toDate(account.renewal_at, "Renewal date") : null,
+    chatgpt_seats_in_use: account.chatgpt_seats_in_use,
+    codex_seats_in_use: account.codex_seats_in_use,
+  }
+}
+
+function toPersistedSeatPayload(accountId: string, member: SubscriptionBillingMember) {
+  return {
+    id: member.id,
+    member_name: member.name,
+    member_email: member.email,
+    role: member.role,
+    seat_type: member.seat_type,
+    date_added: toDate(member.date_added, "Member added date"),
+    account_id: accountId,
+  }
+}
+
 export class SubscriptionAccountValidationError extends Error {
   constructor(message: string) {
     super(message)
@@ -146,21 +254,60 @@ class SubscriptionModuleService extends MedusaService({
   SubscriptionAccount,
   SubscriptionSeat,
 }) {
+  private get persistence(): SubscriptionPersistenceCrud {
+    return this as unknown as SubscriptionPersistenceCrud
+  }
+
+  private async listStoredAccounts(): Promise<PersistedSubscriptionAccount[]> {
+    return await this.persistence.listSubscriptionAccounts(
+      {},
+      {
+        relations: ["seats"],
+        order: {
+          created_at: "ASC",
+        },
+      }
+    )
+  }
+
+  private async ensureSeededAccounts(): Promise<PersistedSubscriptionAccount[]> {
+    const accounts = await this.listStoredAccounts()
+    if (accounts.length > 0) {
+      return accounts
+    }
+
+    await this.persistence.createSubscriptionAccounts(
+      subscriptionBillingFixture.accounts.map((account) => toPersistedAccountPayload(account))
+    )
+
+    const seatPayloads = subscriptionBillingFixture.accounts.flatMap((account) =>
+      account.members.map((member) => toPersistedSeatPayload(account.id, member))
+    )
+
+    if (seatPayloads.length > 0) {
+      await this.persistence.createSubscriptionSeats(seatPayloads)
+    }
+
+    return await this.listStoredAccounts()
+  }
+
   async getBillingSummary(): Promise<SubscriptionBillingSummary> {
+    const accounts = await this.ensureSeededAccounts()
+
     return {
-      accounts: billingAccountsStore.map((account) => cloneAccount(account)),
+      accounts: accounts.map((account) => toBillingAccount(account)),
     }
   }
 
   async addBillingAccount(input: SubscriptionBillingAccountCreateInput): Promise<SubscriptionBillingAccount> {
+    const existingAccounts = await this.ensureSeededAccounts()
+
     const domain = sanitizeDomain(input.domain ?? "")
     if (!domain) {
       throw new SubscriptionAccountValidationError("Domain is required")
     }
 
-    const duplicate = billingAccountsStore.find(
-      (account) => account.domain.toLowerCase() === domain
-    )
+    const duplicate = existingAccounts.find((account) => account.domain.toLowerCase() === domain)
     if (duplicate) {
       throw new SubscriptionAccountConflictError(`Subscription account already exists for ${domain}`)
     }
@@ -175,7 +322,7 @@ class SubscriptionModuleService extends MedusaService({
         : (input.entitled ?? true)
 
     const baseId = buildAccountId(domain)
-    const existingIds = new Set(billingAccountsStore.map((account) => account.id))
+    const existingIds = new Set(existingAccounts.map((account) => account.id))
     let accountId = baseId
     let suffix = 2
     while (existingIds.has(accountId)) {
@@ -183,7 +330,7 @@ class SubscriptionModuleService extends MedusaService({
       suffix += 1
     }
 
-    const account: SubscriptionBillingAccount = {
+    const createdAccount = (await this.persistence.createSubscriptionAccounts({
       id: accountId,
       domain,
       plan_code: input.plan_code?.trim() || DEFAULT_PLAN_CODE,
@@ -191,26 +338,26 @@ class SubscriptionModuleService extends MedusaService({
       subscription_status: normalizedStatus,
       entitled,
       payment_status: input.payment_status ?? PaymentStatus.PAID,
-      billing_cycle: {
-        start: now.toISOString(),
-        end: cycleEnd.toISOString(),
-      },
-      renewal_at: input.renewal_at ?? cycleEnd.toISOString(),
+      billing_cycle_start: now,
+      billing_cycle_end: cycleEnd,
+      renewal_at: input.renewal_at ? toDate(input.renewal_at, "Renewal date") : cycleEnd,
       chatgpt_seats_in_use: Math.max(0, Math.floor(input.chatgpt_seats_in_use ?? 0)),
       codex_seats_in_use: Math.max(0, Math.floor(input.codex_seats_in_use ?? 0)),
-      members: [],
-    }
+    })) as PersistedSubscriptionAccount
 
-    billingAccountsStore.push(account)
-
-    return cloneAccount(account)
+    return toBillingAccount({
+      ...createdAccount,
+      seats: createdAccount.seats ?? [],
+    })
   }
 
   async updateBillingAccounts(
     accounts: SubscriptionBillingAccountUpdateInput[]
   ): Promise<SubscriptionBillingSummary> {
-    const currentIds = new Set(billingAccountsStore.map((account) => account.id))
-    if (accounts.length !== billingAccountsStore.length) {
+    const currentAccounts = await this.ensureSeededAccounts()
+    const currentIds = new Set(currentAccounts.map((account) => account.id))
+
+    if (accounts.length !== currentAccounts.length) {
       throw new SubscriptionAccountValidationError(
         "Billing account updates must preserve the existing account set"
       )
@@ -220,14 +367,10 @@ class SubscriptionModuleService extends MedusaService({
     const normalizedAccounts = accounts.map((account) => {
       const normalizedAccount = normalizeUpdatedAccount(account)
       if (!currentIds.has(normalizedAccount.id)) {
-        throw new SubscriptionAccountValidationError(
-          `Unknown billing account ${normalizedAccount.id}`
-        )
+        throw new SubscriptionAccountValidationError(`Unknown billing account ${normalizedAccount.id}`)
       }
       if (seenIds.has(normalizedAccount.id)) {
-        throw new SubscriptionAccountValidationError(
-          `Duplicate billing account ${normalizedAccount.id}`
-        )
+        throw new SubscriptionAccountValidationError(`Duplicate billing account ${normalizedAccount.id}`)
       }
       seenIds.add(normalizedAccount.id)
       return normalizedAccount
@@ -243,14 +386,28 @@ class SubscriptionModuleService extends MedusaService({
       seenDomains.add(account.domain)
     }
 
-    billingAccountsStore.splice(
-      0,
-      billingAccountsStore.length,
-      ...normalizedAccounts.map((account) => cloneAccount(account))
+    await this.persistence.updateSubscriptionAccounts(
+      normalizedAccounts.map((account) => toPersistedAccountPayload(account))
     )
 
+    const existingSeatIds = currentAccounts.flatMap((account) =>
+      (account.seats ?? []).map((seat) => seat.id)
+    )
+    if (existingSeatIds.length > 0) {
+      await this.persistence.deleteSubscriptionSeats(existingSeatIds)
+    }
+
+    const nextSeatPayloads = normalizedAccounts.flatMap((account) =>
+      account.members.map((member) => toPersistedSeatPayload(account.id, member))
+    )
+    if (nextSeatPayloads.length > 0) {
+      await this.persistence.createSubscriptionSeats(nextSeatPayloads)
+    }
+
+    const updatedAccounts = await this.listStoredAccounts()
+
     return {
-      accounts: billingAccountsStore.map((account) => cloneAccount(account)),
+      accounts: updatedAccounts.map((account) => toBillingAccount(account)),
     }
   }
 }
