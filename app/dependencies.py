@@ -15,6 +15,7 @@ from app.modules.api_keys.repository import ApiKeysRepository
 from app.modules.api_keys.service import ApiKeysService
 from app.modules.audit.repository import AuditRepository
 from app.modules.audit.service import AuditLogsService
+from app.modules.billing.medusa_client import MedusaBillingSummaryClient
 from app.modules.billing.repository import BillingRepository
 from app.modules.billing.service import BillingService
 from app.modules.dashboard.repository import DashboardRepository
@@ -172,7 +173,7 @@ def get_billing_context(
     session: AsyncSession = Depends(get_session),
 ) -> BillingContext:
     repository = BillingRepository(session)
-    service = BillingService(repository)
+    service = BillingService(repository, MedusaBillingSummaryClient())
     return BillingContext(session=session, repository=repository, service=service)
 
 

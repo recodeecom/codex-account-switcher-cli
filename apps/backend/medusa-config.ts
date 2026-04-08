@@ -133,6 +133,9 @@ module.exports = defineConfig({
   },
   modules: [
     {
+      resolve: "./src/modules/subscription",
+    },
+    {
       resolve: "@medusajs/medusa/file",
       options: {
         providers: [
