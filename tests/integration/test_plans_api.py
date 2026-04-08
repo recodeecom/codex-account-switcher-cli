@@ -37,7 +37,8 @@ async def test_plans_api_lists_and_returns_detail(async_client):
             [
                 f"# Plan Checkpoints: {slug}",
                 "",
-                "- 2026-04-08T00:00:00Z | role=planner | id=P1 | state=READY | boot",
+                "- 2026-04-08T00:00:00Z | role=planner | id=P1 | state=DONE | planning complete",
+                "- 2026-04-08T00:15:00Z | role=executor | id=E1 | state=IN_PROGRESS | implementing role progress",
                 "",
             ]
         ),
@@ -59,6 +60,21 @@ async def test_plans_api_lists_and_returns_detail(async_client):
         ),
         encoding="utf-8",
     )
+    executor_dir = plan_dir / "executor"
+    executor_dir.mkdir(parents=True, exist_ok=False)
+    (executor_dir / "tasks.md").write_text(
+        "\n".join(
+            [
+                "# executor tasks",
+                "",
+                "## 4. Checkpoints",
+                "",
+                "- [ ] [E1] IN_PROGRESS - implement detail panel",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
 
     try:
         listed = await async_client.get("/api/projects/plans")
@@ -70,6 +86,16 @@ async def test_plans_api_lists_and_returns_detail(async_client):
         assert matching[0]["roles"][0]["role"] == "planner"
         assert matching[0]["roles"][0]["totalCheckpoints"] == 2
         assert matching[0]["roles"][0]["doneCheckpoints"] == 1
+        assert matching[0]["roles"][-1]["role"] == "designer"
+        assert matching[0]["roles"][-1]["totalCheckpoints"] == 0
+        assert matching[0]["roles"][-1]["doneCheckpoints"] == 0
+        assert matching[0]["overallProgress"]["totalCheckpoints"] == 3
+        assert matching[0]["overallProgress"]["doneCheckpoints"] == 1
+        assert matching[0]["overallProgress"]["percentComplete"] == 33
+        assert matching[0]["currentCheckpoint"]["role"] == "executor"
+        assert matching[0]["currentCheckpoint"]["checkpointId"] == "E1"
+        assert matching[0]["currentCheckpoint"]["state"] == "IN_PROGRESS"
+        assert matching[0]["currentCheckpoint"]["message"] == "implementing role progress"
 
         detail = await async_client.get(f"/api/projects/plans/{slug}")
         assert detail.status_code == 200
@@ -81,6 +107,17 @@ async def test_plans_api_lists_and_returns_detail(async_client):
         assert detail_payload["roles"][0]["role"] == "planner"
         assert detail_payload["roles"][0]["totalCheckpoints"] == 2
         assert detail_payload["roles"][0]["doneCheckpoints"] == 1
+        assert detail_payload["roles"][-1]["role"] == "designer"
+        assert detail_payload["roles"][-1]["totalCheckpoints"] == 0
+        assert detail_payload["roles"][-1]["doneCheckpoints"] == 0
+        assert detail_payload["overallProgress"]["percentComplete"] == 33
+        assert detail_payload["currentCheckpoint"]["role"] == "executor"
+        assert detail_payload["currentCheckpoint"]["checkpointId"] == "E1"
+        assert detail_payload["currentCheckpoint"]["state"] == "IN_PROGRESS"
+        assert (
+            detail_payload["currentCheckpoint"]["message"]
+            == "implementing role progress"
+        )
     finally:
         if plan_dir.exists():
             for candidate in sorted(plan_dir.rglob("*"), reverse=True):

@@ -15,35 +15,26 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useOpenSpecPlans } from "@/features/plans/hooks/use-open-spec-plans";
+import { cn } from "@/lib/utils";
 import { getErrorMessageOrNull } from "@/utils/errors";
 import { formatTimeLong } from "@/utils/formatters";
-import { cn } from "@/lib/utils";
 
 function roleCompletionLabel(done: number, total: number): string {
   return `${done}/${total}`;
 }
 
-function planProgress(roles: { doneCheckpoints: number; totalCheckpoints: number }[]): {
-  done: number;
-  total: number;
-  percent: number;
-} {
-  const done = roles.reduce((acc, role) => acc + role.doneCheckpoints, 0);
-  const total = roles.reduce((acc, role) => acc + role.totalCheckpoints, 0);
-
-  if (total <= 0) {
-    return { done, total, percent: 0 };
-  }
-
-  return {
-    done,
-    total,
-    percent: Math.round((done / total) * 100),
-  };
+function isFinishedProgress(progress: { doneCheckpoints: number; totalCheckpoints: number }): boolean {
+  return progress.totalCheckpoints > 0 && progress.doneCheckpoints >= progress.totalCheckpoints;
 }
 
-function isFinishedProgress(progress: { done: number; total: number }): boolean {
-  return progress.total > 0 && progress.done >= progress.total;
+function getDisplayStatus(
+  status: string,
+  progress: { doneCheckpoints: number; totalCheckpoints: number },
+): string {
+  if (isFinishedProgress(progress)) {
+    return "Finished";
+  }
+  return status;
 }
 
 function statusBadgeClass(status: string): string {
@@ -65,11 +56,28 @@ function statusBadgeClass(status: string): string {
     return "border-red-500/30 bg-red-500/15 text-red-300";
   }
 
-  if (normalizedStatus.startsWith("proposed")) {
-    return "border-amber-500/30 bg-amber-500/15 text-amber-300";
+  return "border-slate-500/30 bg-slate-500/15 text-slate-300";
+}
+
+function formatRoleLabel(role: string): string {
+  return role
+    .split(/[_-]/g)
+    .map((segment) => (segment ? `${segment[0].toUpperCase()}${segment.slice(1)}` : ""))
+    .join(" ");
+}
+
+function formatCheckpointState(state: string): string {
+  return state.toLowerCase().replace(/_/g, " ");
+}
+
+function formatCheckpointTimestamp(timestamp: string): string {
+  const parsed = Date.parse(timestamp);
+  if (Number.isNaN(parsed)) {
+    return timestamp;
   }
 
-  return "border-slate-500/30 bg-slate-500/15 text-slate-300";
+  const formatted = formatTimeLong(new Date(parsed).toISOString());
+  return `${formatted.date} ${formatted.time}`;
 }
 
 export function PlansPage() {
@@ -79,11 +87,12 @@ export function PlansPage() {
   const entries = plansQuery.data?.entries ?? [];
   const listError = getErrorMessageOrNull(plansQuery.error);
   const detailError = getErrorMessageOrNull(planDetailQuery.error);
+  const planDetail = planDetailQuery.data;
 
   const selectedEntry = entries.find((entry) => entry.slug === effectiveSelectedSlug) ?? null;
   const sortedEntries = [...entries].sort((left, right) => {
-    const leftFinished = isFinishedProgress(planProgress(left.roles));
-    const rightFinished = isFinishedProgress(planProgress(right.roles));
+    const leftFinished = isFinishedProgress(left.overallProgress);
+    const rightFinished = isFinishedProgress(right.overallProgress);
 
     if (leftFinished === rightFinished) {
       return 0;
@@ -92,11 +101,9 @@ export function PlansPage() {
     return leftFinished ? 1 : -1;
   });
 
-  const selectedEntryProgress = selectedEntry ? planProgress(selectedEntry.roles) : null;
-  const selectedEntryDisplayStatus =
-    selectedEntry && selectedEntryProgress && isFinishedProgress(selectedEntryProgress)
-      ? "Finished"
-      : selectedEntry?.status ?? null;
+  const selectedEntryDisplayStatus = selectedEntry
+    ? getDisplayStatus(selectedEntry.status, selectedEntry.overallProgress)
+    : null;
 
   return (
     <section className="space-y-6">
@@ -133,15 +140,18 @@ export function PlansPage() {
               <TableBody>
                 {sortedEntries.map((entry) => {
                   const updatedAt = formatTimeLong(entry.updatedAt);
-                  const progress = planProgress(entry.roles);
-                  const isFinished = isFinishedProgress(progress);
-                  const displayStatus = isFinished ? "Finished" : entry.status;
+                  const isFinished = isFinishedProgress(entry.overallProgress);
+                  const displayStatus = getDisplayStatus(entry.status, entry.overallProgress);
+                  const progressLabel =
+                    entry.overallProgress.totalCheckpoints > 0
+                      ? `${roleCompletionLabel(entry.overallProgress.doneCheckpoints, entry.overallProgress.totalCheckpoints)} checkpoints • ${entry.overallProgress.percentComplete}%`
+                      : "No checkpoints yet";
 
                   return (
                     <TableRow
                       key={entry.slug}
                       data-testid={`plan-row-${entry.slug}`}
-                    className={cn(
+                      className={cn(
                         isFinished ? "cursor-not-allowed opacity-60" : "cursor-pointer",
                         entry.slug === effectiveSelectedSlug ? "bg-muted/50" : undefined,
                       )}
@@ -157,12 +167,8 @@ export function PlansPage() {
                           <p className="truncate font-medium">{entry.title}</p>
                           <p className="truncate text-xs text-muted-foreground">{entry.slug}</p>
                           <div className="space-y-1">
-                            <Progress value={progress.percent} className="h-1.5 bg-muted/70" />
-                            <p className="text-[11px] text-muted-foreground">
-                              {progress.total > 0
-                                ? `${roleCompletionLabel(progress.done, progress.total)} checkpoints • ${progress.percent}%`
-                                : "No checkpoints yet"}
-                            </p>
+                            <Progress value={entry.overallProgress.percentComplete} className="h-1.5" />
+                            <p className="text-[11px] text-muted-foreground">{progressLabel}</p>
                           </div>
                         </div>
                       </TableCell>
@@ -203,18 +209,64 @@ export function PlansPage() {
                   </AlertMessage>
                 ) : planDetailQuery.isLoading ? (
                   <SpinnerBlock label="Loading plan details…" />
-                ) : planDetailQuery.data ? (
+                ) : planDetail ? (
                   <div className="space-y-4">
+                    <div className="space-y-2 rounded-lg border border-border/60 bg-background/30 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-xs uppercase tracking-wide text-muted-foreground">Overall progress</p>
+                        <p className="text-xs font-medium text-muted-foreground" data-testid="plan-progress-percent">
+                          {planDetail.overallProgress.percentComplete}%
+                        </p>
+                      </div>
+                      <Progress
+                        value={planDetail.overallProgress.percentComplete}
+                        className="h-2"
+                        data-testid="plan-progress-bar"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        {roleCompletionLabel(
+                          planDetail.overallProgress.doneCheckpoints,
+                          planDetail.overallProgress.totalCheckpoints,
+                        )}{" "}
+                        checkpoints complete
+                      </p>
+                    </div>
+
+                    <div className="space-y-2 rounded-lg border border-border/60 bg-background/30 p-3">
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Where plan left off</p>
+                      {planDetail.currentCheckpoint ? (
+                        <div className="space-y-2" data-testid="plan-current-checkpoint">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-medium">
+                              {formatRoleLabel(planDetail.currentCheckpoint.role)} ·{" "}
+                              {planDetail.currentCheckpoint.checkpointId}
+                            </p>
+                            <Badge variant="outline" className="capitalize">
+                              {formatCheckpointState(planDetail.currentCheckpoint.state)}
+                            </Badge>
+                          </div>
+                          <p className="text-sm text-muted-foreground">
+                            {planDetail.currentCheckpoint.message || "No checkpoint message provided."}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatCheckpointTimestamp(planDetail.currentCheckpoint.timestamp)}
+                          </p>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No checkpoint activity recorded yet.</p>
+                      )}
+                    </div>
+
                     <div className="space-y-2">
                       <p className="text-xs uppercase tracking-wide text-muted-foreground">Role checkpoints</p>
                       <div className="grid gap-2 sm:grid-cols-2">
-                        {planDetailQuery.data.roles.map((role) => (
+                        {planDetail.roles.map((role) => (
                           <div
                             key={role.role}
                             className="rounded-lg border border-border/60 bg-background/40 px-3 py-2"
                           >
                             <div className="flex items-center justify-between">
-                              <span className="text-sm font-medium capitalize">{role.role}</span>
+                              <span className="text-sm font-medium">{formatRoleLabel(role.role)}</span>
                               <span className="text-xs text-muted-foreground">
                                 {roleCompletionLabel(role.doneCheckpoints, role.totalCheckpoints)}
                               </span>
@@ -226,15 +278,15 @@ export function PlansPage() {
 
                     <div className="space-y-2">
                       <p className="text-xs uppercase tracking-wide text-muted-foreground">Summary</p>
-                      <pre className="max-h-56 overflow-auto rounded-lg border border-border/60 bg-background/30 p-3 text-xs leading-relaxed whitespace-pre-wrap">
-                        {planDetailQuery.data.summaryMarkdown}
+                      <pre className="max-h-56 overflow-auto whitespace-pre-wrap rounded-lg border border-border/60 bg-background/30 p-3 text-xs leading-relaxed">
+                        {planDetail.summaryMarkdown}
                       </pre>
                     </div>
 
                     <div className="space-y-2">
                       <p className="text-xs uppercase tracking-wide text-muted-foreground">Checkpoints log</p>
-                      <pre className="max-h-56 overflow-auto rounded-lg border border-border/60 bg-background/30 p-3 text-xs leading-relaxed whitespace-pre-wrap">
-                        {planDetailQuery.data.checkpointsMarkdown}
+                      <pre className="max-h-56 overflow-auto whitespace-pre-wrap rounded-lg border border-border/60 bg-background/30 p-3 text-xs leading-relaxed">
+                        {planDetail.checkpointsMarkdown}
                       </pre>
                     </div>
                   </div>

@@ -76,6 +76,8 @@ const EXPECTED_ENDPOINTS = [
 	"DELETE /api/devices/:deviceId",
 	// projects
 	"GET /api/projects",
+	"GET /api/projects/plans",
+	"GET /api/projects/plans/:planSlug",
 	"POST /api/projects",
 	"PUT /api/projects/:projectId",
 	"DELETE /api/projects/:projectId",

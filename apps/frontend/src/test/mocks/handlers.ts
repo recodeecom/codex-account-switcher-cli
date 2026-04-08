@@ -194,6 +194,33 @@ type MockState = {
 		createdAt: string;
 		updatedAt: string;
 	}>;
+	openSpecPlans: Array<{
+		slug: string;
+		title: string;
+		status: string;
+		updatedAt: string;
+		roles: Array<{
+			role: string;
+			totalCheckpoints: number;
+			doneCheckpoints: number;
+			tasksMarkdown: string;
+			checkpointsMarkdown: string | null;
+		}>;
+		overallProgress: {
+			totalCheckpoints: number;
+			doneCheckpoints: number;
+			percentComplete: number;
+		};
+		currentCheckpoint: {
+			timestamp: string;
+			role: string;
+			checkpointId: string;
+			state: string;
+			message: string;
+		} | null;
+		summaryMarkdown: string;
+		checkpointsMarkdown: string;
+	}>;
 	billingAccounts: z.infer<typeof BillingAccountSchema>[];
 	stickySessions: Array<{
 		key: string;
@@ -224,6 +251,7 @@ function createInitialState(): MockState {
 		firewallEntries: [],
 		devices: [],
 		projects: [],
+		openSpecPlans: createDefaultOpenSpecPlans(),
 		billingAccounts: createDefaultBillingAccounts(),
 		stickySessions: [],
 		medusaCustomer: {
@@ -234,6 +262,151 @@ function createInitialState(): MockState {
 			phone: null,
 		},
 	};
+}
+
+function createDefaultOpenSpecPlans(): MockState["openSpecPlans"] {
+	return [
+		{
+			slug: "projects-plans-page",
+			title: "projects-plans-page",
+			status: "approved",
+			updatedAt: new Date("2026-04-08T09:51:46Z").toISOString(),
+			roles: [
+				{
+					role: "planner",
+					totalCheckpoints: 1,
+					doneCheckpoints: 1,
+					tasksMarkdown: "# planner tasks\\n\\n- [x] [P1] DONE - Draft completed",
+					checkpointsMarkdown: null,
+				},
+				{
+					role: "architect",
+					totalCheckpoints: 1,
+					doneCheckpoints: 1,
+					tasksMarkdown: "# architect tasks\\n\\n- [x] [A1] DONE - Architecture approved",
+					checkpointsMarkdown: null,
+				},
+				{
+					role: "critic",
+					totalCheckpoints: 1,
+					doneCheckpoints: 1,
+					tasksMarkdown: "# critic tasks\\n\\n- [x] [C1] DONE - Critic approved",
+					checkpointsMarkdown: null,
+				},
+				{
+					role: "executor",
+					totalCheckpoints: 1,
+					doneCheckpoints: 0,
+					tasksMarkdown: "# executor tasks\\n\\n- [ ] [E1] READY - Execution pending",
+					checkpointsMarkdown: null,
+				},
+				{
+					role: "writer",
+					totalCheckpoints: 1,
+					doneCheckpoints: 0,
+					tasksMarkdown: "# writer tasks\\n\\n- [ ] [W1] READY - Docs pending",
+					checkpointsMarkdown: null,
+				},
+				{
+					role: "verifier",
+					totalCheckpoints: 1,
+					doneCheckpoints: 0,
+					tasksMarkdown: "# verifier tasks\\n\\n- [ ] [V1] READY - Verification pending",
+					checkpointsMarkdown: null,
+				},
+				{
+					role: "designer",
+					totalCheckpoints: 1,
+					doneCheckpoints: 0,
+					tasksMarkdown: "# designer tasks\\n\\n- [ ] [D1] READY - Design review pending",
+					checkpointsMarkdown: null,
+				},
+			],
+			overallProgress: {
+				totalCheckpoints: 7,
+				doneCheckpoints: 3,
+				percentComplete: 43,
+			},
+			currentCheckpoint: {
+				timestamp: "2026-04-08T09:52:21Z",
+				role: "executor",
+				checkpointId: "E1",
+				state: "IN_PROGRESS",
+				message: "Implementing plans progress UI",
+			},
+			summaryMarkdown:
+				"# Plan Summary: projects-plans-page\\n\\n- **Mode:** ralplan\\n- **Status:** approved\\n",
+			checkpointsMarkdown:
+				"# Plan Checkpoints: projects-plans-page\\n\\n- 2026-04-08T09:52:21Z | role=executor | id=E1 | state=IN_PROGRESS | Implementing plans progress UI\\n",
+		},
+		{
+			slug: "ralplan-openspec-plan-export",
+			title: "ralplan-openspec-plan-export",
+			status: "proposed",
+			updatedAt: new Date("2026-04-08T09:46:52Z").toISOString(),
+			roles: [
+				{
+					role: "planner",
+					totalCheckpoints: 1,
+					doneCheckpoints: 0,
+					tasksMarkdown: "# planner tasks\\n\\n- [ ] [P1] READY - Draft pending",
+					checkpointsMarkdown: null,
+				},
+				{
+					role: "architect",
+					totalCheckpoints: 1,
+					doneCheckpoints: 0,
+					tasksMarkdown: "# architect tasks\\n\\n- [ ] [A1] READY - Review pending",
+					checkpointsMarkdown: null,
+				},
+				{
+					role: "critic",
+					totalCheckpoints: 1,
+					doneCheckpoints: 0,
+					tasksMarkdown: "# critic tasks\\n\\n- [ ] [C1] READY - Critic pending",
+					checkpointsMarkdown: null,
+				},
+				{
+					role: "executor",
+					totalCheckpoints: 1,
+					doneCheckpoints: 0,
+					tasksMarkdown: "# executor tasks\\n\\n- [ ] [E1] READY - Execution pending",
+					checkpointsMarkdown: null,
+				},
+				{
+					role: "writer",
+					totalCheckpoints: 1,
+					doneCheckpoints: 0,
+					tasksMarkdown: "# writer tasks\\n\\n- [ ] [W1] READY - Docs pending",
+					checkpointsMarkdown: null,
+				},
+				{
+					role: "verifier",
+					totalCheckpoints: 1,
+					doneCheckpoints: 0,
+					tasksMarkdown: "# verifier tasks\\n\\n- [ ] [V1] READY - Verification pending",
+					checkpointsMarkdown: null,
+				},
+				{
+					role: "designer",
+					totalCheckpoints: 1,
+					doneCheckpoints: 0,
+					tasksMarkdown: "# designer tasks\\n\\n- [ ] [D1] READY - Design pending",
+					checkpointsMarkdown: null,
+				},
+			],
+			overallProgress: {
+				totalCheckpoints: 7,
+				doneCheckpoints: 0,
+				percentComplete: 0,
+			},
+			currentCheckpoint: null,
+			summaryMarkdown:
+				"# Plan Summary: ralplan-openspec-plan-export\\n\\n- **Mode:** ralplan\\n- **Status:** proposed\\n",
+			checkpointsMarkdown:
+				"# Plan Checkpoints: ralplan-openspec-plan-export\\n\\nNo checkpoints recorded yet.\\n",
+		},
+	];
 }
 
 function createDefaultBillingAccounts(): z.infer<typeof BillingAccountSchema>[] {
@@ -1170,6 +1343,58 @@ export const handlers = [
 		}
 		state.devices = state.devices.filter((entry) => entry.id !== deviceId);
 		return HttpResponse.json({ status: "deleted" });
+	}),
+
+	http.get("/api/projects/plans", () => {
+		return HttpResponse.json({
+			entries: state.openSpecPlans.map((plan) => ({
+				slug: plan.slug,
+				title: plan.title,
+				status: plan.status,
+				updatedAt: plan.updatedAt,
+				roles: plan.roles.map((role) => ({
+					role: role.role,
+					totalCheckpoints: role.totalCheckpoints,
+					doneCheckpoints: role.doneCheckpoints,
+				})),
+				overallProgress: plan.overallProgress,
+				currentCheckpoint: plan.currentCheckpoint,
+			})),
+		});
+	}),
+
+	http.get("/api/projects/plans/:planSlug", ({ params }) => {
+		const planSlug = String(params.planSlug);
+		const plan = state.openSpecPlans.find((entry) => entry.slug === planSlug);
+		if (!plan) {
+			return HttpResponse.json(
+				{
+					error: {
+						code: "plan_not_found",
+						message: "Plan not found",
+					},
+				},
+				{ status: 404 },
+			);
+		}
+
+		return HttpResponse.json({
+			slug: plan.slug,
+			title: plan.title,
+			status: plan.status,
+			updatedAt: plan.updatedAt,
+			summaryMarkdown: plan.summaryMarkdown,
+			checkpointsMarkdown: plan.checkpointsMarkdown,
+			roles: plan.roles.map((role) => ({
+				role: role.role,
+				totalCheckpoints: role.totalCheckpoints,
+				doneCheckpoints: role.doneCheckpoints,
+				tasksMarkdown: role.tasksMarkdown,
+				checkpointsMarkdown: role.checkpointsMarkdown,
+			})),
+			overallProgress: plan.overallProgress,
+			currentCheckpoint: plan.currentCheckpoint,
+		});
 	}),
 
 	http.get("/api/projects", () => {
