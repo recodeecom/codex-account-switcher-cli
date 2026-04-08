@@ -1770,6 +1770,7 @@ def test_read_live_codex_process_session_counts_by_snapshot_maps_multiple_pre_sw
     attribution = read_live_codex_process_session_attribution()
     counts = read_live_codex_process_session_counts_by_snapshot()
     assert attribution.counts_by_snapshot == {"tokio": 2}
+    assert attribution.fallback_mapped_session_pids_by_snapshot == {"tokio": [404, 405]}
     assert attribution.unattributed_session_pids == []
     assert counts == {"tokio": 2}
 
@@ -2679,6 +2680,15 @@ def test_read_live_codex_process_session_counts_by_snapshot_preserves_previous_u
 
     counts_after_switch = read_live_codex_process_session_counts_by_snapshot()
     assert counts_after_switch == {"tokio": 2, "nagy.viktordp@gmail.com": 1}
+
+    attribution_after_switch = read_live_codex_process_session_attribution()
+    assert attribution_after_switch.counts_by_snapshot == {
+        "tokio": 2,
+        "nagy.viktordp@gmail.com": 1,
+    }
+    assert attribution_after_switch.fallback_mapped_session_pids_by_snapshot == {
+        "tokio": [901, 902]
+    }
 
 
 def test_read_local_codex_task_previews_by_snapshot_reads_default_and_runtime_profiles(

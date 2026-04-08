@@ -120,12 +120,20 @@ class _UnlabeledDefaultScopeProcessOwner:
     snapshot_name: str
     started_at: float
     observed_at: float
+    used_unlabeled_default_scope_fallback: bool = False
 
 
 @dataclass(frozen=True)
 class _UnlabeledDefaultScopeSessionOwner:
     snapshot_name: str
     observed_at: float
+    used_unlabeled_default_scope_fallback: bool = False
+
+
+@dataclass(frozen=True)
+class _ResolvedProcessSnapshotAttribution:
+    snapshot_name: str | None
+    used_unlabeled_default_scope_fallback: bool = False
 
 
 @dataclass(frozen=True)
@@ -133,6 +141,7 @@ class LocalCodexProcessSessionAttribution:
     counts_by_snapshot: dict[str, int]
     unattributed_session_pids: list[int]
     mapped_session_pids_by_snapshot: dict[str, list[int]] = field(default_factory=dict)
+    fallback_mapped_session_pids_by_snapshot: dict[str, list[int]] = field(default_factory=dict)
     omx_session_pids_by_snapshot: dict[str, list[int]] = field(default_factory=dict)
     task_preview_by_pid: dict[int, str] = field(default_factory=dict)
     task_previews_by_pid: dict[int, list[str]] = field(default_factory=dict)
@@ -368,7 +377,7 @@ def _read_default_scope_rollout_paths_by_snapshot_from_live_processes() -> _Defa
             suppress_unlabeled_default_scope_fallback=(
                 pid in ambiguous_uncached_unlabeled_default_scope_pids
             ),
-        )
+        ).snapshot_name
         if not snapshot_name:
             continue
         has_mapped_processes = True
@@ -487,6 +496,7 @@ def read_live_codex_process_session_attribution() -> LocalCodexProcessSessionAtt
             counts_by_snapshot={},
             unattributed_session_pids=[],
             mapped_session_pids_by_snapshot={},
+            fallback_mapped_session_pids_by_snapshot={},
             omx_session_pids_by_snapshot={},
             task_preview_by_pid={},
             task_previews_by_pid={},
@@ -510,11 +520,12 @@ def read_live_codex_process_session_attribution() -> LocalCodexProcessSessionAtt
     counts: dict[str, int] = {}
     unattributed_session_pids: list[int] = []
     mapped_session_pids_by_snapshot: dict[str, list[int]] = {}
+    fallback_mapped_session_pids_by_snapshot: dict[str, list[int]] = {}
     omx_session_pids_by_snapshot: dict[str, list[int]] = {}
     task_preview_by_pid: dict[int, str] = {}
     task_previews_by_pid: dict[int, list[str]] = {}
     for pid, env in processes:
-        snapshot_name = _resolve_process_snapshot_name_for_accounting(
+        resolved_attribution = _resolve_process_snapshot_name_for_accounting(
             pid,
             env=env,
             default_current_path=default_current_path,
@@ -523,6 +534,7 @@ def read_live_codex_process_session_attribution() -> LocalCodexProcessSessionAtt
                 pid in ambiguous_uncached_unlabeled_default_scope_pids
             ),
         )
+        snapshot_name = resolved_attribution.snapshot_name
         task_previews = _resolve_process_task_previews(pid, env=env, limit=2)
         if task_previews:
             task_previews_by_pid[pid] = task_previews
@@ -532,10 +544,16 @@ def read_live_codex_process_session_attribution() -> LocalCodexProcessSessionAtt
             continue
         counts[snapshot_name] = counts.get(snapshot_name, 0) + 1
         mapped_session_pids_by_snapshot.setdefault(snapshot_name, []).append(pid)
+        if resolved_attribution.used_unlabeled_default_scope_fallback:
+            fallback_mapped_session_pids_by_snapshot.setdefault(snapshot_name, []).append(
+                pid
+            )
         if _is_omx_managed_codex_command(_read_process_cmdline(pid)):
             omx_session_pids_by_snapshot.setdefault(snapshot_name, []).append(pid)
 
     for session_pids in mapped_session_pids_by_snapshot.values():
+        session_pids.sort()
+    for session_pids in fallback_mapped_session_pids_by_snapshot.values():
         session_pids.sort()
     for session_pids in omx_session_pids_by_snapshot.values():
         session_pids.sort()
@@ -544,6 +562,7 @@ def read_live_codex_process_session_attribution() -> LocalCodexProcessSessionAtt
         counts_by_snapshot=counts,
         unattributed_session_pids=sorted(unattributed_session_pids),
         mapped_session_pids_by_snapshot=mapped_session_pids_by_snapshot,
+        fallback_mapped_session_pids_by_snapshot=fallback_mapped_session_pids_by_snapshot,
         omx_session_pids_by_snapshot=omx_session_pids_by_snapshot,
         task_preview_by_pid=task_preview_by_pid,
         task_previews_by_pid=task_previews_by_pid,
@@ -605,6 +624,8 @@ def _resolve_rollout_started_at_from_path(path: Path) -> float | None:
     file_mtime = _safe_mtime(path)
     if file_mtime <= 0:
         return parsed_ts
+    if abs(parsed_ts - file_mtime) > (18 * 3600):
+        return parsed_ts
 
     # rollout filename start timestamps are local-time strings; align to file
     # mtime by searching whole-hour offsets so mapping works across host/container
@@ -655,7 +676,7 @@ def terminate_live_codex_processes_for_snapshot(snapshot_name: str) -> int:
             suppress_unlabeled_default_scope_fallback=(
                 pid in ambiguous_uncached_unlabeled_default_scope_pids
             ),
-        )
+        ).snapshot_name
         if resolved_snapshot_name == normalized_snapshot_name:
             target_pids.append(pid)
 
@@ -674,7 +695,7 @@ def _resolve_process_snapshot_name_for_accounting(
     default_current_path: Path,
     default_auth_path: Path,
     suppress_unlabeled_default_scope_fallback: bool = False,
-) -> str | None:
+) -> _ResolvedProcessSnapshotAttribution:
     process_default_current_path, process_default_auth_path = _resolve_process_default_auth_scope_paths(
         env=env or {},
         default_current_path=default_current_path,
@@ -688,19 +709,49 @@ def _resolve_process_snapshot_name_for_accounting(
         allow_unlabeled_default_scope_mapping=False,
     )
     if snapshot_name:
-        _remember_unlabeled_default_scope_snapshot_name(pid, snapshot_name)
-        _remember_unlabeled_default_scope_session_snapshot_name(pid, snapshot_name)
-        return snapshot_name
+        _remember_unlabeled_default_scope_snapshot_name(
+            pid,
+            snapshot_name,
+            used_unlabeled_default_scope_fallback=False,
+        )
+        _remember_unlabeled_default_scope_session_snapshot_name(
+            pid,
+            snapshot_name,
+            used_unlabeled_default_scope_fallback=False,
+        )
+        return _ResolvedProcessSnapshotAttribution(snapshot_name=snapshot_name)
 
     resolved_from_cache = _resolve_cached_unlabeled_default_scope_snapshot_name(pid)
     if resolved_from_cache:
-        _remember_unlabeled_default_scope_session_snapshot_name(pid, resolved_from_cache)
-        return resolved_from_cache
+        used_unlabeled_default_scope_fallback = _uses_pre_switch_unlabeled_default_scope_owner(
+            snapshot_name=resolved_from_cache.snapshot_name,
+            default_current_path=process_default_current_path,
+        )
+        _remember_unlabeled_default_scope_session_snapshot_name(
+            pid,
+            resolved_from_cache.snapshot_name,
+            used_unlabeled_default_scope_fallback=used_unlabeled_default_scope_fallback,
+        )
+        return _ResolvedProcessSnapshotAttribution(
+            snapshot_name=resolved_from_cache.snapshot_name,
+            used_unlabeled_default_scope_fallback=used_unlabeled_default_scope_fallback,
+        )
 
     resolved_from_session_cache = _resolve_cached_unlabeled_default_scope_session_snapshot_name(pid)
     if resolved_from_session_cache:
-        _remember_unlabeled_default_scope_snapshot_name(pid, resolved_from_session_cache)
-        return resolved_from_session_cache
+        used_unlabeled_default_scope_fallback = _uses_pre_switch_unlabeled_default_scope_owner(
+            snapshot_name=resolved_from_session_cache.snapshot_name,
+            default_current_path=process_default_current_path,
+        )
+        _remember_unlabeled_default_scope_snapshot_name(
+            pid,
+            resolved_from_session_cache.snapshot_name,
+            used_unlabeled_default_scope_fallback=used_unlabeled_default_scope_fallback,
+        )
+        return _ResolvedProcessSnapshotAttribution(
+            snapshot_name=resolved_from_session_cache.snapshot_name,
+            used_unlabeled_default_scope_fallback=used_unlabeled_default_scope_fallback,
+        )
 
     if not _is_eligible_unlabeled_default_scope_process(
         pid=pid,
@@ -708,10 +759,10 @@ def _resolve_process_snapshot_name_for_accounting(
         default_current_path=process_default_current_path,
         default_auth_path=process_default_auth_path,
     ):
-        return None
+        return _ResolvedProcessSnapshotAttribution(snapshot_name=None)
 
     if suppress_unlabeled_default_scope_fallback:
-        return None
+        return _ResolvedProcessSnapshotAttribution(snapshot_name=None)
 
     fallback_snapshot = _resolve_process_snapshot_name(
         pid,
@@ -720,10 +771,34 @@ def _resolve_process_snapshot_name_for_accounting(
         default_auth_path=process_default_auth_path,
         allow_unlabeled_default_scope_mapping=True,
     )
+    used_unlabeled_default_scope_fallback = _uses_pre_switch_unlabeled_default_scope_owner(
+        snapshot_name=fallback_snapshot,
+        default_current_path=process_default_current_path,
+    )
     if fallback_snapshot:
-        _remember_unlabeled_default_scope_snapshot_name(pid, fallback_snapshot)
-        _remember_unlabeled_default_scope_session_snapshot_name(pid, fallback_snapshot)
-    return fallback_snapshot
+        _remember_unlabeled_default_scope_snapshot_name(
+            pid,
+            fallback_snapshot,
+            used_unlabeled_default_scope_fallback=used_unlabeled_default_scope_fallback,
+        )
+        _remember_unlabeled_default_scope_session_snapshot_name(
+            pid,
+            fallback_snapshot,
+            used_unlabeled_default_scope_fallback=used_unlabeled_default_scope_fallback,
+        )
+    return _ResolvedProcessSnapshotAttribution(
+        snapshot_name=fallback_snapshot,
+        used_unlabeled_default_scope_fallback=used_unlabeled_default_scope_fallback,
+    )
+
+
+def _uses_pre_switch_unlabeled_default_scope_owner(
+    *,
+    snapshot_name: str | None,
+    default_current_path: Path,
+) -> bool:
+    current_snapshot_name = _read_current_snapshot_name(default_current_path)
+    return bool(snapshot_name and current_snapshot_name and snapshot_name != current_snapshot_name)
 
 
 def _resolve_ambiguous_uncached_unlabeled_default_scope_pids(
@@ -881,7 +956,9 @@ def _resolve_process_default_auth_scope_paths(
     return default_current_path, default_auth_path
 
 
-def _resolve_cached_unlabeled_default_scope_snapshot_name(pid: int) -> str | None:
+def _resolve_cached_unlabeled_default_scope_snapshot_name(
+    pid: int,
+) -> _ResolvedProcessSnapshotAttribution | None:
     owner = _unlabeled_default_scope_process_owner_cache.get(pid)
     if owner is None:
         return None
@@ -899,11 +976,17 @@ def _resolve_cached_unlabeled_default_scope_snapshot_name(pid: int) -> str | Non
         snapshot_name=owner.snapshot_name,
         started_at=owner.started_at,
         observed_at=time.time(),
+        used_unlabeled_default_scope_fallback=owner.used_unlabeled_default_scope_fallback,
     )
-    return owner.snapshot_name
+    return _ResolvedProcessSnapshotAttribution(
+        snapshot_name=owner.snapshot_name,
+        used_unlabeled_default_scope_fallback=owner.used_unlabeled_default_scope_fallback,
+    )
 
 
-def _resolve_cached_unlabeled_default_scope_session_snapshot_name(pid: int) -> str | None:
+def _resolve_cached_unlabeled_default_scope_session_snapshot_name(
+    pid: int,
+) -> _ResolvedProcessSnapshotAttribution | None:
     session_id = _resolve_process_rollout_session_id(pid)
     if session_id is None:
         return None
@@ -923,12 +1006,21 @@ def _resolve_cached_unlabeled_default_scope_session_snapshot_name(pid: int) -> s
         _UnlabeledDefaultScopeSessionOwner(
             snapshot_name=owner.snapshot_name,
             observed_at=now_ts,
+            used_unlabeled_default_scope_fallback=owner.used_unlabeled_default_scope_fallback,
         )
     )
-    return owner.snapshot_name
+    return _ResolvedProcessSnapshotAttribution(
+        snapshot_name=owner.snapshot_name,
+        used_unlabeled_default_scope_fallback=owner.used_unlabeled_default_scope_fallback,
+    )
 
 
-def _remember_unlabeled_default_scope_snapshot_name(pid: int, snapshot_name: str) -> None:
+def _remember_unlabeled_default_scope_snapshot_name(
+    pid: int,
+    snapshot_name: str,
+    *,
+    used_unlabeled_default_scope_fallback: bool,
+) -> None:
     started_at = _read_process_started_at(pid)
     if started_at is None:
         return
@@ -937,6 +1029,7 @@ def _remember_unlabeled_default_scope_snapshot_name(pid: int, snapshot_name: str
         snapshot_name=snapshot_name,
         started_at=started_at,
         observed_at=time.time(),
+        used_unlabeled_default_scope_fallback=used_unlabeled_default_scope_fallback,
     )
     _prune_unlabeled_default_scope_process_owner_cache()
 
@@ -944,6 +1037,8 @@ def _remember_unlabeled_default_scope_snapshot_name(pid: int, snapshot_name: str
 def _remember_unlabeled_default_scope_session_snapshot_name(
     pid: int,
     snapshot_name: str,
+    *,
+    used_unlabeled_default_scope_fallback: bool,
 ) -> None:
     session_id = _resolve_process_rollout_session_id(pid)
     if session_id is None:
@@ -953,6 +1048,7 @@ def _remember_unlabeled_default_scope_session_snapshot_name(
         _UnlabeledDefaultScopeSessionOwner(
             snapshot_name=snapshot_name,
             observed_at=time.time(),
+            used_unlabeled_default_scope_fallback=used_unlabeled_default_scope_fallback,
         )
     )
     _prune_unlabeled_default_scope_session_owner_cache()

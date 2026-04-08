@@ -193,7 +193,7 @@ function parseCheckpointLines(checkpointsMarkdown: string): ParsedCheckpointLine
   });
 }
 
-function buildPlanStarterPrompt(
+export function buildPlanStarterPrompt(
   planDetail: OpenSpecPlanDetail,
   displayStatus: string,
   summaryLines: string[],
@@ -204,6 +204,7 @@ function buildPlanStarterPrompt(
   const currentCheckpoint = planDetail.currentCheckpoint;
 
   const lines = [
+    "$ralph",
     "You are a new Codex session/account continuing an existing OpenSpec implementation plan.",
     `Repository: /home/deadpool/Documents/codex-lb`,
     `Plan workspace: ${planPath}`,

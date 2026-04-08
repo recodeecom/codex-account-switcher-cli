@@ -69,6 +69,9 @@ async def live_usage() -> Response:
     counts_by_snapshot_raw = attribution.counts_by_snapshot
     unattributed_session_pids = attribution.unattributed_session_pids
     mapped_session_pids_by_snapshot_raw = attribution.mapped_session_pids_by_snapshot
+    fallback_mapped_session_pids_by_snapshot_raw = (
+        attribution.fallback_mapped_session_pids_by_snapshot
+    )
     task_preview_by_pid = attribution.task_preview_by_pid
     snapshot_alias_map = await _read_live_usage_snapshot_alias_map()
     mapped_session_pids_by_snapshot: dict[str, list[int]] = {}
@@ -77,6 +80,14 @@ async def live_usage() -> Response:
         mapped_session_pids_by_snapshot.setdefault(target_snapshot_name, []).extend(session_pids)
     for snapshot_name, session_pids in mapped_session_pids_by_snapshot.items():
         mapped_session_pids_by_snapshot[snapshot_name] = sorted(set(session_pids))
+    fallback_mapped_session_pids_by_snapshot: dict[str, list[int]] = {}
+    for snapshot_name, session_pids in fallback_mapped_session_pids_by_snapshot_raw.items():
+        target_snapshot_name = snapshot_alias_map.get(snapshot_name, snapshot_name)
+        fallback_mapped_session_pids_by_snapshot.setdefault(
+            target_snapshot_name, []
+        ).extend(session_pids)
+    for snapshot_name, session_pids in fallback_mapped_session_pids_by_snapshot.items():
+        fallback_mapped_session_pids_by_snapshot[snapshot_name] = sorted(set(session_pids))
 
     counts_by_snapshot: dict[str, int] = {
         snapshot_name: len(session_pids)
@@ -127,7 +138,7 @@ async def live_usage() -> Response:
         for snapshot_name, snapshot_emails in account_emails_by_snapshot_sets.items()
     }
 
-    if unattributed_session_pids and task_previews_by_snapshot:
+    if task_previews_by_snapshot:
         snapshot_names_by_task_preview = _build_snapshot_names_by_task_preview(
             task_previews_by_snapshot
         )
@@ -154,14 +165,54 @@ async def live_usage() -> Response:
                     inferred_snapshot_name, []
                 ).append(pid)
 
+            fallback_snapshot_name_by_pid = {
+                pid: snapshot_name
+                for snapshot_name, session_pids in fallback_mapped_session_pids_by_snapshot.items()
+                for pid in session_pids
+            }
+            for pid, current_snapshot_name in fallback_snapshot_name_by_pid.items():
+                session_previews = [
+                    normalized
+                    for normalized in (
+                        _normalize_task_preview(preview)
+                        for preview in task_previews_by_pid.get(pid, [])
+                    )
+                    if normalized
+                ]
+                inferred_snapshot_name = _infer_snapshot_name_from_session_task_previews(
+                    session_previews=session_previews,
+                    snapshot_names_by_task_preview=snapshot_names_by_task_preview,
+                )
+                if (
+                    inferred_snapshot_name is None
+                    or inferred_snapshot_name == current_snapshot_name
+                ):
+                    continue
+
+                mapped_session_pids_by_snapshot[current_snapshot_name] = [
+                    candidate_pid
+                    for candidate_pid in mapped_session_pids_by_snapshot.get(
+                        current_snapshot_name, []
+                    )
+                    if candidate_pid != pid
+                ]
+                mapped_session_pids_by_snapshot.setdefault(
+                    inferred_snapshot_name, []
+                ).append(pid)
+
             unattributed_session_pids = reattributed_unattributed_session_pids
             for snapshot_name, session_pids in mapped_session_pids_by_snapshot.items():
                 normalized_session_pids = sorted(set(session_pids))
                 mapped_session_pids_by_snapshot[snapshot_name] = normalized_session_pids
-                counts_by_snapshot[snapshot_name] = max(
-                    counts_by_snapshot.get(snapshot_name, 0),
-                    len(normalized_session_pids),
-                )
+            mapped_session_pids_by_snapshot = {
+                snapshot_name: session_pids
+                for snapshot_name, session_pids in mapped_session_pids_by_snapshot.items()
+                if session_pids
+            }
+            counts_by_snapshot = {
+                snapshot_name: len(session_pids)
+                for snapshot_name, session_pids in mapped_session_pids_by_snapshot.items()
+            }
 
     session_task_previews_by_snapshot: dict[str, dict[int, list[str]]] = {}
     mapped_session_task_preview_count = 0

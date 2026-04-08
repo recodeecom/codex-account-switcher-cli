@@ -3,7 +3,9 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { BillingAccountsResponse } from "@/features/billing/schemas";
+import type { DashboardOverview } from "@/features/dashboard/schemas";
 import { useBilling } from "@/features/billing/hooks/use-billing";
+import { useDashboard } from "@/features/dashboard/hooks/use-dashboard";
 import { renderWithProviders } from "@/test/utils";
 
 import { BillingPage } from "./billing-page";
@@ -12,7 +14,12 @@ vi.mock("@/features/billing/hooks/use-billing", () => ({
   useBilling: vi.fn(),
 }));
 
+vi.mock("@/features/dashboard/hooks/use-dashboard", () => ({
+  useDashboard: vi.fn(),
+}));
+
 const useBillingMock = vi.mocked(useBilling);
+const useDashboardMock = vi.mocked(useDashboard);
 
 const billingSummary: BillingAccountsResponse = {
   accounts: [
@@ -71,12 +78,104 @@ const billingSummary: BillingAccountsResponse = {
   ],
 };
 
+const dashboardOverview: DashboardOverview = {
+  lastSyncAt: "2026-04-08T10:00:00.000Z",
+  accounts: [
+    {
+      accountId: "acc-edixai-owner",
+      email: "admin@edixai.com",
+      displayName: "Edix.ai (You)",
+      planType: "team",
+      status: "active",
+      usage: null,
+      auth: null,
+      codexAuth: { hasSnapshot: true },
+      additionalQuotas: [],
+    },
+    {
+      accountId: "acc-edixai-helper",
+      email: "helper@edixai.com",
+      displayName: "Edix.ai Helper",
+      planType: "team",
+      status: "active",
+      usage: null,
+      auth: null,
+      codexAuth: { hasSnapshot: true },
+      additionalQuotas: [],
+    },
+    {
+      accountId: "acc-gmail-fallback",
+      email: "personal@gmail.com",
+      displayName: "Personal Gmail",
+      planType: "team",
+      status: "active",
+      usage: null,
+      auth: null,
+      codexAuth: { hasSnapshot: true },
+      additionalQuotas: [],
+    },
+    {
+      accountId: "acc-kozpont-owner",
+      email: "admin@kozpontihusbolt.hu",
+      displayName: "Kozpont Admin",
+      planType: "team",
+      status: "active",
+      usage: null,
+      auth: null,
+      codexAuth: { hasSnapshot: true },
+      additionalQuotas: [],
+    },
+  ],
+  summary: {
+    primaryWindow: {
+      remainingPercent: 100,
+      capacityCredits: 100,
+      remainingCredits: 100,
+      resetAt: null,
+      windowMinutes: null,
+    },
+    secondaryWindow: null,
+    cost: {
+      currency: "EUR",
+      totalUsd7d: 0,
+    },
+    metrics: null,
+  },
+  windows: {
+    primary: {
+      windowKey: "primary",
+      windowMinutes: null,
+      accounts: [],
+    },
+    secondary: null,
+  },
+  trends: {
+    requests: [],
+    tokens: [],
+    cost: [],
+    errorRate: [],
+  },
+  additionalQuotas: [],
+};
+
+function mockDashboardQuery(data: DashboardOverview = dashboardOverview) {
+  useDashboardMock.mockReturnValue({
+    data,
+    isLoading: false,
+    isPending: false,
+    isError: false,
+    error: null,
+  } as never);
+}
+
 function mockBillingQuery(
   overrides?: Record<string, unknown>,
   createMutationOverrides?: Record<string, unknown>,
   updateMutationOverrides?: Record<string, unknown>,
   deleteMutationOverrides?: Record<string, unknown>,
 ) {
+  mockDashboardQuery();
+
   const mutateAsync = vi.fn().mockResolvedValue(undefined);
   const updateMutateAsync = vi.fn().mockResolvedValue(undefined);
   const deleteMutateAsync = vi.fn().mockResolvedValue(undefined);
@@ -119,6 +218,7 @@ function mockBillingQuery(
 describe("BillingPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockDashboardQuery();
   });
 
   it("renders live subscription summary cards and entitlement state", () => {
@@ -199,6 +299,20 @@ describe("BillingPage", () => {
     expect(within(dialog).getByText("admin@edixai.com")).toBeInTheDocument();
   });
 
+  it("groups dashboard accounts into billed business accounts by email domain and fallback assignment", async () => {
+    const user = userEvent.setup();
+    mockBillingQuery();
+
+    renderWithProviders(<BillingPage />);
+
+    await user.click(screen.getByRole("button", { name: "Watch edixai.com accounts list" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "edixai.com · Accounts list" });
+    expect(within(dialog).getByText("helper@edixai.com")).toBeInTheDocument();
+    expect(within(dialog).getByText("personal@gmail.com")).toBeInTheDocument();
+    expect(within(dialog).queryByText("admin@kozpontihusbolt.hu")).not.toBeInTheDocument();
+  });
+
   it("opens the edit dialog and submits updated seat settings", async () => {
     const user = userEvent.setup();
     const { updateMutateAsync } = mockBillingQuery();
@@ -221,6 +335,40 @@ describe("BillingPage", () => {
           chatgptSeatsInUse: 7,
           codexSeatsInUse: 3,
         },
+        billingSummary.accounts[1],
+      ],
+    });
+  });
+
+  it("lets operators add and remove billed members from the account list dialog and saves recomputed seat totals", async () => {
+    const user = userEvent.setup();
+    const { updateMutateAsync } = mockBillingQuery();
+
+    renderWithProviders(<BillingPage />);
+
+    await user.click(screen.getByRole("button", { name: "Watch edixai.com accounts list" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "edixai.com · Accounts list" });
+    await user.click(within(dialog).getByRole("button", { name: "Add account" }));
+    await user.type(within(dialog).getByLabelText("Account name"), "New Billing User");
+    await user.type(within(dialog).getByLabelText("Account email"), "new.user@edixai.com");
+    await user.click(within(dialog).getByRole("button", { name: "Add member" }));
+
+    await user.click(within(dialog).getByRole("button", { name: "Remove admin@edixai.com" }));
+    await user.click(within(dialog).getByRole("button", { name: "Save account list" }));
+
+    expect(updateMutateAsync).toHaveBeenCalledWith({
+      accounts: [
+        expect.objectContaining({
+          id: "business-plan-edixai",
+          chatgptSeatsInUse: 3,
+          codexSeatsInUse: 0,
+          members: expect.arrayContaining([
+            expect.objectContaining({ email: "helper@edixai.com" }),
+            expect.objectContaining({ email: "personal@gmail.com" }),
+            expect.objectContaining({ email: "new.user@edixai.com" }),
+          ]),
+        }),
         billingSummary.accounts[1],
       ],
     });

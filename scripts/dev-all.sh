@@ -186,6 +186,59 @@ if latest:
 PY
 }
 
+port_from_url() {
+  local url="$1"
+  python3 - "$url" <<'PY'
+import sys
+from urllib.parse import urlparse
+
+parsed = urlparse(sys.argv[1])
+if parsed.port:
+    print(parsed.port)
+PY
+}
+
+wait_for_url_from_log() {
+  local log_file="$1"
+  local marker="$2"
+  local timeout_seconds="$3"
+  local label="$4"
+  local watched_pid="$5"
+  local fallback_url="$6"
+  local attempts=$((timeout_seconds * 5))
+
+  while (( attempts > 0 )); do
+    local url
+    url="$(extract_latest_url "$log_file" "$marker" || true)"
+    if [[ -n "$url" ]]; then
+      local url_port
+      url_port="$(port_from_url "$url" || true)"
+      if [[ -n "$url_port" ]] && port_in_use "$url_port"; then
+        printf '%s\n' "$url"
+        return 0
+      fi
+    fi
+
+    local fallback_port
+    fallback_port="$(port_from_url "$fallback_url" || true)"
+    if [[ -n "$fallback_port" ]] && port_in_use "$fallback_port"; then
+      printf '%s\n' "$fallback_url"
+      return 0
+    fi
+
+    if [[ -n "$watched_pid" ]] && ! is_pid_alive "$watched_pid"; then
+      tail_log_on_failure "$label" "$log_file"
+      exit 1
+    fi
+
+    attempts=$((attempts - 1))
+    sleep 0.2
+  done
+
+  tail_log_on_failure "$label" "$log_file"
+  exit 1
+}
+
 cleanup() {
   set +e
   for pid in "$frontend_pid" "$backend_pid" "$app_pid"; do
@@ -251,10 +304,13 @@ echo "[dev] Starting frontend on http://localhost:${DEFAULT_FRONTEND_PORT}"
   sh ./scripts/run-frontend-dev.sh
 ) >>"$FRONTEND_LOG_FILE" 2>&1 &
 frontend_pid="$!"
-wait_for_port "$DEFAULT_FRONTEND_PORT" 30 "frontend" "$frontend_pid" "$FRONTEND_LOG_FILE"
-
-frontend_url="$(extract_latest_url "$FRONTEND_LOG_FILE" "Frontend dev server:" || true)"
-frontend_url="${frontend_url:-http://localhost:${DEFAULT_FRONTEND_PORT}}"
+frontend_url="$(wait_for_url_from_log \
+  "$FRONTEND_LOG_FILE" \
+  "Frontend dev server:" \
+  30 \
+  "frontend" \
+  "$frontend_pid" \
+  "http://localhost:${DEFAULT_FRONTEND_PORT}")"
 app_url="http://localhost:${APP_PORT}"
 backend_url="$(extract_latest_url "$BACKEND_LOG_FILE" "Admin URL" || true)"
 backend_url="${backend_url:-http://localhost:${medusa_port}/app}"
@@ -267,6 +323,7 @@ echo "  frontend ${frontend_url}"
 echo
 echo "[dev] Watch logs with:"
 echo "  bun run logs -watch app"
+echo "  bun run logs -watch server"
 echo "  bun run logs -watch backend"
 echo "  bun run logs -watch frontend"
 
