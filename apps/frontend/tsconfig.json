@@ -24,12 +24,6 @@
     "paths": {
       "@/*": [
         "./src/*"
-      ],
-      "react-hook-form": [
-        "./src/types/react-hook-form-compat.d.ts"
-      ],
-      "vitest/config": [
-        "./src/types/vitest-config-compat.d.ts"
       ]
     },
     "esModuleInterop": true

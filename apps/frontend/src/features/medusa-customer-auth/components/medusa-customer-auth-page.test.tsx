@@ -28,6 +28,14 @@ describe("MedusaCustomerAuthPage", () => {
     setAuthState({});
   });
 
+  it("renders the customer login form without crashing", () => {
+    render(<MedusaCustomerAuthPage />);
+
+    expect(screen.getByLabelText("Email")).toBeInTheDocument();
+    expect(screen.getByLabelText("Password")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sign in" })).toBeInTheDocument();
+  });
+
   it("renders the auth shell without decorative logo or card backgrounds", () => {
     render(<MedusaCustomerAuthPage />);
 
