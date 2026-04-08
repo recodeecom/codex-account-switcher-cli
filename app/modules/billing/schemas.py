@@ -25,7 +25,13 @@ class BillingCycle(DashboardModel):
 class BillingAccount(DashboardModel):
     id: str
     domain: str
+    plan_code: str
+    plan_name: str
+    subscription_status: Literal["trialing", "active", "past_due", "canceled", "expired"]
+    entitled: bool
+    payment_status: Literal["paid", "requires_action", "past_due", "unpaid"]
     billing_cycle: BillingCycle
+    renewal_at: datetime | None = None
     chatgpt_seats_in_use: int = Field(ge=0)
     codex_seats_in_use: int = Field(ge=0)
     members: list[BillingMember]

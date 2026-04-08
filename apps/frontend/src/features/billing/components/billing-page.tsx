@@ -1,15 +1,17 @@
 import { format } from "date-fns";
 import {
+  AlertTriangle,
   Building2,
   CalendarClock,
-  Euro,
+  CreditCard,
   Eye,
-  MoreHorizontal,
+  ShieldCheck,
   Sparkles,
   Users2,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 
+import { EmptyState } from "@/components/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,21 +22,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { SpinnerBlock } from "@/components/ui/spinner";
 import {
   Table,
   TableBody,
@@ -43,206 +32,25 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useBilling } from "@/features/billing/hooks/use-billing";
+import type { BillingAccount } from "@/features/billing/schemas";
+import { getErrorMessageOrNull } from "@/utils/errors";
 
-type BusinessPlanAccount = {
-  id: string;
-  domain: string;
-  chatgptSeatsInUse: number;
-  codexSeatsInUse: number;
-  members: BusinessPlanMember[];
-};
+function formatStatusLabel(value: BillingAccount["subscriptionStatus"] | BillingAccount["paymentStatus"]) {
+  const normalized = value.replaceAll("_", " ");
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
 
-type BusinessPlanMember = {
-  id: string;
-  name: string;
-  email: string;
-  role: "Owner" | "Member";
-  seatType: "ChatGPT" | "Codex";
-  dateAdded: string;
-};
-
-const CHATGPT_MONTHLY_SEAT_PRICE_EUR = 26;
-const BILLING_CYCLE_START = new Date(2026, 2, 23);
-const BILLING_CYCLE_END = new Date(2026, 3, 23);
-
-const BUSINESS_PLAN_ACCOUNTS: BusinessPlanAccount[] = [
-  {
-    id: "business-plan-edixai",
-    domain: "edixai.com",
-    chatgptSeatsInUse: 5,
-    codexSeatsInUse: 5,
-    members: [
-      {
-        id: "member-bianka-belovics",
-        name: "Bianka Belovics",
-        email: "bia@edixai.com",
-        role: "Member",
-        seatType: "ChatGPT",
-        dateAdded: "Mar 30, 2026",
-      },
-      {
-        id: "member-business-webu",
-        name: "business webu",
-        email: "webubusiness@gmail.com",
-        role: "Member",
-        seatType: "ChatGPT",
-        dateAdded: "Mar 31, 2026",
-      },
-      {
-        id: "member-csoves",
-        name: "Csoves",
-        email: "csoves@edixai.com",
-        role: "Member",
-        seatType: "Codex",
-        dateAdded: "Mar 23, 2026",
-      },
-      {
-        id: "member-denver",
-        name: "denver",
-        email: "denver@edixai.com",
-        role: "Member",
-        seatType: "Codex",
-        dateAdded: "Mar 23, 2026",
-      },
-      {
-        id: "member-edixai-owner",
-        name: "Edix.ai (You)",
-        email: "admin@edixai.com",
-        role: "Owner",
-        seatType: "ChatGPT",
-        dateAdded: "Mar 23, 2026",
-      },
-      {
-        id: "member-nagy-viktor-csoves",
-        name: "Nagy Viktor",
-        email: "csoves.com@gmail.com",
-        role: "Member",
-        seatType: "Codex",
-        dateAdded: "Apr 3, 2026",
-      },
-      {
-        id: "member-nagy-viktor-second",
-        name: "Nagy Viktor",
-        email: "nagyvikt007@gmail.com",
-        role: "Member",
-        seatType: "Codex",
-        dateAdded: "Apr 3, 2026",
-      },
-      {
-        id: "member-viktor",
-        name: "Viktor",
-        email: "thedailyscooby@gmail.com",
-        role: "Member",
-        seatType: "ChatGPT",
-        dateAdded: "Apr 3, 2026",
-      },
-      {
-        id: "member-viktor-nagy",
-        name: "Viktor Nagy",
-        email: "nagyviktordp@edixai.com",
-        role: "Member",
-        seatType: "Codex",
-        dateAdded: "Apr 3, 2026",
-      },
-      {
-        id: "member-zeus",
-        name: "Zeus",
-        email: "zeus@edixai.com",
-        role: "Member",
-        seatType: "ChatGPT",
-        dateAdded: "Apr 1, 2026",
-      },
-    ],
-  },
-  {
-    id: "business-plan-kozpont",
-    domain: "kozpontihusbolt.hu",
-    chatgptSeatsInUse: 5,
-    codexSeatsInUse: 5,
-    members: [
-      {
-        id: "member-kozpont-admin",
-        name: "Kozpont Admin",
-        email: "admin@kozpontihusbolt.hu",
-        role: "Owner",
-        seatType: "ChatGPT",
-        dateAdded: "Mar 23, 2026",
-      },
-      {
-        id: "member-kozpont-support",
-        name: "Support Team",
-        email: "support@kozpontihusbolt.hu",
-        role: "Member",
-        seatType: "ChatGPT",
-        dateAdded: "Mar 24, 2026",
-      },
-      {
-        id: "member-kozpont-ops",
-        name: "Ops Coordinator",
-        email: "ops@kozpontihusbolt.hu",
-        role: "Member",
-        seatType: "ChatGPT",
-        dateAdded: "Mar 25, 2026",
-      },
-      {
-        id: "member-kozpont-sales",
-        name: "Sales Lead",
-        email: "sales@kozpontihusbolt.hu",
-        role: "Member",
-        seatType: "ChatGPT",
-        dateAdded: "Mar 28, 2026",
-      },
-      {
-        id: "member-kozpont-finance",
-        name: "Finance",
-        email: "finance@kozpontihusbolt.hu",
-        role: "Member",
-        seatType: "ChatGPT",
-        dateAdded: "Mar 29, 2026",
-      },
-      {
-        id: "member-kozpont-codex-1",
-        name: "Automation 1",
-        email: "codex1@kozpontihusbolt.hu",
-        role: "Member",
-        seatType: "Codex",
-        dateAdded: "Mar 26, 2026",
-      },
-      {
-        id: "member-kozpont-codex-2",
-        name: "Automation 2",
-        email: "codex2@kozpontihusbolt.hu",
-        role: "Member",
-        seatType: "Codex",
-        dateAdded: "Mar 27, 2026",
-      },
-      {
-        id: "member-kozpont-codex-3",
-        name: "Automation 3",
-        email: "codex3@kozpontihusbolt.hu",
-        role: "Member",
-        seatType: "Codex",
-        dateAdded: "Mar 30, 2026",
-      },
-      {
-        id: "member-kozpont-codex-4",
-        name: "Automation 4",
-        email: "codex4@kozpontihusbolt.hu",
-        role: "Member",
-        seatType: "Codex",
-        dateAdded: "Mar 31, 2026",
-      },
-      {
-        id: "member-kozpont-codex-5",
-        name: "Automation 5",
-        email: "codex5@kozpontihusbolt.hu",
-        role: "Member",
-        seatType: "Codex",
-        dateAdded: "Apr 1, 2026",
-      },
-    ],
-  },
-];
+function formatDisplayDate(value: Date | string | null | undefined): string {
+  if (!value) {
+    return "—";
+  }
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "—";
+  }
+  return format(date, "MMM d, yyyy");
+}
 
 function getInitials(value: string): string {
   const words = value
@@ -261,101 +69,36 @@ function getInitials(value: string): string {
   return `${words[0][0]}${words[1][0]}`.toUpperCase();
 }
 
-function countSeatsInUse(members: BusinessPlanMember[]): Pick<BusinessPlanAccount, "chatgptSeatsInUse" | "codexSeatsInUse"> {
-  return members.reduce(
-    (accumulator, member) => {
-      if (member.seatType === "ChatGPT") {
-        accumulator.chatgptSeatsInUse += 1;
-      } else {
-        accumulator.codexSeatsInUse += 1;
-      }
-
-      return accumulator;
-    },
-    { chatgptSeatsInUse: 0, codexSeatsInUse: 0 },
-  );
-}
-
 export function BillingPage() {
-  const [businessPlanAccounts, setBusinessPlanAccounts] = useState(BUSINESS_PLAN_ACCOUNTS);
-  const [businessPlanDetailsOpen, setBusinessPlanDetailsOpen] = useState(false);
+  const { billingQuery } = useBilling();
   const [selectedBusinessAccountId, setSelectedBusinessAccountId] = useState<string | null>(null);
 
+  const accounts = useMemo(() => billingQuery.data?.accounts ?? [], [billingQuery.data]);
   const selectedBusinessAccount = useMemo(
     () =>
       selectedBusinessAccountId === null
         ? null
-        : businessPlanAccounts.find((account) => account.id === selectedBusinessAccountId) ?? null,
-    [businessPlanAccounts, selectedBusinessAccountId],
+        : accounts.find((account) => account.id === selectedBusinessAccountId) ?? null,
+    [accounts, selectedBusinessAccountId],
   );
 
-  const cycleLabel = useMemo(
-    () => `${format(BILLING_CYCLE_START, "MMM d")} - ${format(BILLING_CYCLE_END, "MMM d")}`,
-    [],
+  const entitledCount = useMemo(
+    () => accounts.filter((account) => account.entitled).length,
+    [accounts],
   );
-
-  const businessPlanTotals = useMemo(
-    () =>
-      businessPlanAccounts.reduce(
-        (accumulator, account) => ({
-          chatgptSeatsInUse: accumulator.chatgptSeatsInUse + account.chatgptSeatsInUse,
-          codexSeatsInUse: accumulator.codexSeatsInUse + account.codexSeatsInUse,
-        }),
-        { chatgptSeatsInUse: 0, codexSeatsInUse: 0 },
-      ),
-    [businessPlanAccounts],
+  const totalChatgptSeats = useMemo(
+    () => accounts.reduce((sum, account) => sum + account.chatgptSeatsInUse, 0),
+    [accounts],
   );
-
-  const businessPlanTotalMonthlyCost = useMemo(
-    () =>
-      businessPlanAccounts.reduce(
-        (accumulator, account) =>
-          accumulator + account.chatgptSeatsInUse * CHATGPT_MONTHLY_SEAT_PRICE_EUR,
-        0,
-      ),
-    [businessPlanAccounts],
+  const totalCodexSeats = useMemo(
+    () => accounts.reduce((sum, account) => sum + account.codexSeatsInUse, 0),
+    [accounts],
   );
-
-  function updateMemberSeatType(
-    accountId: string,
-    memberId: string,
-    nextSeatType: BusinessPlanMember["seatType"],
-  ) {
-    setBusinessPlanAccounts((previousAccounts) =>
-      previousAccounts.map((account) => {
-        if (account.id !== accountId) {
-          return account;
-        }
-
-        const members = account.members.map((member) =>
-          member.id === memberId ? { ...member, seatType: nextSeatType } : member,
-        );
-
-        return {
-          ...account,
-          members,
-          ...countSeatsInUse(members),
-        };
-      }),
-    );
-  }
-
-  function removeMemberAccount(accountId: string, memberId: string) {
-    setBusinessPlanAccounts((previousAccounts) =>
-      previousAccounts.map((account) => {
-        if (account.id !== accountId) {
-          return account;
-        }
-
-        const members = account.members.filter((member) => member.id !== memberId);
-        return {
-          ...account,
-          members,
-          ...countSeatsInUse(members),
-        };
-      }),
-    );
-  }
+  const notEntitledCount = accounts.length - entitledCount;
+  const errorMessage = getErrorMessageOrNull(
+    billingQuery.error,
+    "Failed to load live billing summary.",
+  );
 
   return (
     <div className="animate-fade-in-up space-y-6">
@@ -364,317 +107,290 @@ export function BillingPage() {
           <div>
             <div className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-muted/50 px-3 py-1 text-xs text-muted-foreground">
               <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
-              Business Billing
+              Live subscription state from Medusa
             </div>
             <h1 className="mt-3 text-3xl font-semibold tracking-tight">Billing</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              View all business accounts in your plan and track combined monthly seat costs.
+              Review live plan status, entitlement state, renewals, and seat usage for billed accounts.
             </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              className="rounded-full px-5"
-              onClick={() => setBusinessPlanDetailsOpen(true)}
-            >
-              Business plan details
-            </Button>
-            <Button type="button" variant="secondary" className="rounded-full px-5">
-              Switch to annual billing and save 19%
-            </Button>
           </div>
         </div>
       </div>
 
-      <Card className="overflow-hidden border-border/70">
-        <CardHeader className="space-y-4 bg-card/70 pb-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <CardTitle className="text-3xl">Business Plan</CardTitle>
-                <Badge className="bg-emerald-500/15 text-emerald-500 hover:bg-emerald-500/15">Monthly</Badge>
+      {(billingQuery.isLoading || billingQuery.isPending) && !billingQuery.data ? (
+        <Card className="border-border/70">
+          <CardContent className="py-10">
+            <SpinnerBlock label="Loading live billing summary..." />
+          </CardContent>
+        </Card>
+      ) : billingQuery.isError ? (
+        <Card className="border-amber-500/40 bg-amber-500/5">
+          <CardContent className="flex flex-col gap-3 py-8">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/15 text-amber-600">
+                <AlertTriangle className="h-5 w-5" aria-hidden="true" />
               </div>
-              <p className="mt-2 flex items-center gap-2 text-base text-muted-foreground">
-                <CalendarClock className="h-4 w-4" aria-hidden="true" />
-                Current cycle: {cycleLabel}
-              </p>
+              <div>
+                <p className="text-sm font-semibold text-foreground">
+                  Live billing summary unavailable
+                </p>
+                <p className="text-sm text-muted-foreground">{errorMessage}</p>
+              </div>
             </div>
-          </div>
-        </CardHeader>
-
-        <CardContent className="space-y-5 pt-6">
+            <p className="text-xs text-muted-foreground">
+              Billing falls closed when Medusa cannot provide trustworthy subscription state.
+            </p>
+          </CardContent>
+        </Card>
+      ) : accounts.length === 0 ? (
+        <EmptyState
+          icon={Building2}
+          title="No billed accounts yet"
+          description="Medusa has not returned any subscription accounts for this dashboard."
+        />
+      ) : (
+        <>
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-xl border border-border/70 bg-muted/30 p-4">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Business accounts</p>
-              <p className="mt-2 text-2xl font-semibold">{businessPlanAccounts.length}</p>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                Billed accounts
+              </p>
+              <p className="mt-2 text-2xl font-semibold">{accounts.length}</p>
             </div>
             <div className="rounded-xl border border-border/70 bg-muted/30 p-4">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">ChatGPT seats in use</p>
-              <p className="mt-2 text-2xl font-semibold">{businessPlanTotals.chatgptSeatsInUse}</p>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                Entitled accounts
+              </p>
+              <p className="mt-2 text-2xl font-semibold">
+                {entitledCount} of {accounts.length}
+              </p>
             </div>
             <div className="rounded-xl border border-border/70 bg-muted/30 p-4">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Codex seats in use</p>
-              <p className="mt-2 text-2xl font-semibold">{businessPlanTotals.codexSeatsInUse}</p>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                ChatGPT seats in use
+              </p>
+              <p className="mt-2 text-2xl font-semibold">{totalChatgptSeats}</p>
             </div>
             <div className="rounded-xl border border-border/70 bg-muted/30 p-4">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Monthly ChatGPT cost</p>
-              <p className="mt-2 text-2xl font-semibold">€{businessPlanTotalMonthlyCost}</p>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                Codex seats in use
+              </p>
+              <p className="mt-2 text-2xl font-semibold">{totalCodexSeats}</p>
             </div>
           </div>
 
-          <div className="rounded-xl bg-indigo-100/90 px-4 py-3 text-base font-medium text-indigo-900 dark:bg-indigo-500/20 dark:text-indigo-100">
-            Up to 5 seats free for 1 month
-          </div>
-
-          <div className="overflow-hidden rounded-xl border border-border/70">
-            <Table>
-              <TableHeader className="bg-muted/30">
-                <TableRow>
-                  <TableHead>Business account</TableHead>
-                  <TableHead>ChatGPT seats</TableHead>
-                  <TableHead>Codex seats</TableHead>
-                  <TableHead>Monthly ChatGPT cost</TableHead>
-                  <TableHead className="w-[130px] text-right">Accounts list</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {businessPlanAccounts.map((account) => {
-                  const accountMonthlyCost = account.chatgptSeatsInUse * CHATGPT_MONTHLY_SEAT_PRICE_EUR;
-                  return (
-                    <TableRow key={account.id}>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-muted text-xs font-semibold uppercase text-muted-foreground">
-                            {account.domain.slice(0, 1)}
-                          </div>
-                          <div className="font-medium">{account.domain}</div>
-                        </div>
-                      </TableCell>
-                      <TableCell>{account.chatgptSeatsInUse} seats in use</TableCell>
-                      <TableCell>{account.codexSeatsInUse} seats in use</TableCell>
-                      <TableCell>€{accountMonthlyCost}/month</TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-8 rounded-full px-3"
-                          aria-label={`Watch ${account.domain} accounts list`}
-                          onClick={() => setSelectedBusinessAccountId(account.id)}
-                        >
-                          <Eye className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
-                          Watch
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
-
-          <Separator />
-
-          <p className="text-sm text-muted-foreground">
-            Total business plan monthly cost: €{businessPlanTotalMonthlyCost}/month · Renews on{" "}
-            {format(BILLING_CYCLE_END, "MMM d")}
-          </p>
-        </CardContent>
-      </Card>
-
-      <Dialog open={businessPlanDetailsOpen} onOpenChange={setBusinessPlanDetailsOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Business plan details</DialogTitle>
-            <DialogDescription>
-              Full multi-account overview with total active seats and monthly business-plan totals.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="rounded-xl border border-border/70 bg-muted/30 p-3">
-              <p className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-muted-foreground">
-                <Building2 className="h-3.5 w-3.5" />
-                Accounts
-              </p>
-              <p className="mt-1.5 text-xl font-semibold">{businessPlanAccounts.length}</p>
+          {notEntitledCount > 0 ? (
+            <div className="rounded-xl border border-amber-500/40 bg-amber-500/5 px-4 py-3 text-sm text-amber-700 dark:text-amber-200">
+              {notEntitledCount} account{notEntitledCount === 1 ? "" : "s"} currently not entitled. Review plan
+              status and payment health before granting premium dashboard access.
             </div>
-            <div className="rounded-xl border border-border/70 bg-muted/30 p-3">
-              <p className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-muted-foreground">
-                <Euro className="h-3.5 w-3.5" />
-                Monthly total
-              </p>
-              <p className="mt-1.5 text-xl font-semibold">€{businessPlanTotalMonthlyCost}</p>
+          ) : (
+            <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-200">
+              All billed accounts are currently entitled for premium dashboard access.
             </div>
-            <div className="rounded-xl border border-border/70 bg-muted/30 p-3">
-              <p className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-muted-foreground">
-                <Users2 className="h-3.5 w-3.5" />
-                ChatGPT seats
-              </p>
-              <p className="mt-1.5 text-xl font-semibold">{businessPlanTotals.chatgptSeatsInUse}</p>
-            </div>
-            <div className="rounded-xl border border-border/70 bg-muted/30 p-3">
-              <p className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-muted-foreground">
-                <Users2 className="h-3.5 w-3.5" />
-                Codex seats
-              </p>
-              <p className="mt-1.5 text-xl font-semibold">{businessPlanTotals.codexSeatsInUse}</p>
-            </div>
-          </div>
+          )}
 
-          <div className="space-y-4">
-            <div className="overflow-hidden rounded-xl border border-border/70">
-              <Table>
-                <TableHeader className="bg-muted/30">
-                  <TableRow>
-                    <TableHead>Business account</TableHead>
-                    <TableHead>ChatGPT seats</TableHead>
-                    <TableHead>Codex seats</TableHead>
-                    <TableHead>Monthly ChatGPT cost</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {businessPlanAccounts.map((account) => {
-                    const accountMonthlyCost =
-                      account.chatgptSeatsInUse * CHATGPT_MONTHLY_SEAT_PRICE_EUR;
-                    return (
-                      <TableRow key={account.id}>
-                        <TableCell className="font-medium">{account.domain}</TableCell>
-                        <TableCell>{account.chatgptSeatsInUse} seats in use</TableCell>
-                        <TableCell>{account.codexSeatsInUse} seats in use</TableCell>
-                        <TableCell>€{accountMonthlyCost}/month</TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-
-            <div className="space-y-2 rounded-xl border border-border/80 bg-muted/50 px-4 py-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-sm font-semibold text-foreground">
-                  Total business plan monthly cost: €{businessPlanTotalMonthlyCost}/month
-                </p>
-                <p className="text-xs text-muted-foreground">Renews on {format(BILLING_CYCLE_END, "MMM d")}</p>
+          <Card className="overflow-hidden border-border/70">
+            <CardHeader className="space-y-4 bg-card/70 pb-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <CardTitle className="text-3xl">Subscription accounts</CardTitle>
+                    <Badge variant="secondary">Live</Badge>
+                  </div>
+                  <p className="mt-2 flex items-center gap-2 text-base text-muted-foreground">
+                    <CalendarClock className="h-4 w-4" aria-hidden="true" />
+                    Renewals and entitlement state are read directly from Medusa.
+                  </p>
+                </div>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Combined seats in use: {businessPlanTotals.chatgptSeatsInUse} ChatGPT and{" "}
-                {businessPlanTotals.codexSeatsInUse} Codex.
-              </p>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+            </CardHeader>
 
-      <Dialog
-        open={selectedBusinessAccountId !== null}
-        onOpenChange={(open) => {
-          if (!open) {
-            setSelectedBusinessAccountId(null);
-          }
-        }}
-      >
-        <DialogContent className="w-[96vw] max-w-[96vw] sm:max-w-[96vw] 2xl:max-w-[1400px]">
-          <DialogHeader>
-            <DialogTitle>{selectedBusinessAccount?.domain} · Accounts list</DialogTitle>
-            <DialogDescription>
-              Check and edit seat assignments for members in this business account.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="overflow-hidden rounded-xl border border-border/70">
-            <Table>
-              <TableHeader className="bg-muted/30">
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Seat type</TableHead>
-                  <TableHead>Date added</TableHead>
-                  <TableHead className="w-[50px]" />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {selectedBusinessAccount
-                  ? selectedBusinessAccount.members.map((member) => (
-                      <TableRow key={member.id}>
+            <CardContent className="space-y-5 pt-6">
+              <div className="overflow-hidden rounded-xl border border-border/70">
+                <Table>
+                  <TableHeader className="bg-muted/30">
+                    <TableRow>
+                      <TableHead>Business account</TableHead>
+                      <TableHead>Plan</TableHead>
+                      <TableHead>Subscription</TableHead>
+                      <TableHead>Payment</TableHead>
+                      <TableHead>Renewal</TableHead>
+                      <TableHead>Seats</TableHead>
+                      <TableHead className="w-[130px] text-right">Accounts list</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {accounts.map((account) => (
+                      <TableRow key={account.id}>
                         <TableCell>
-                          <div className="flex items-center gap-3">
-                            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-[11px] font-semibold uppercase text-white">
-                              {getInitials(member.name)}
+                          <div className="flex items-center gap-2">
+                            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-muted text-xs font-semibold uppercase text-muted-foreground">
+                              {account.domain.slice(0, 1)}
                             </div>
                             <div>
-                              <p className="font-medium">{member.name}</p>
-                              <p className="text-sm text-muted-foreground">{member.email}</p>
+                              <div className="font-medium">{account.domain}</div>
+                              <div className="text-xs text-muted-foreground">{account.id}</div>
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell>{member.role}</TableCell>
                         <TableCell>
-                          <Select
-                            value={member.seatType}
-                            onValueChange={(nextSeatType) =>
-                              updateMemberSeatType(
-                                selectedBusinessAccount.id,
-                                member.id,
-                                nextSeatType === "Codex" ? "Codex" : "ChatGPT",
-                              )
-                            }
-                          >
-                            <SelectTrigger
-                              size="sm"
-                              className="h-8 w-[140px]"
-                              aria-label={`Seat type for ${member.name}`}
-                            >
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="ChatGPT">ChatGPT</SelectItem>
-                              <SelectItem value="Codex">Codex</SelectItem>
-                            </SelectContent>
-                          </Select>
+                          <div className="space-y-1">
+                            <p className="font-medium">{account.planName}</p>
+                            <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                              {account.planCode}
+                            </p>
+                          </div>
                         </TableCell>
-                        <TableCell>{member.dateAdded}</TableCell>
                         <TableCell>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon-sm"
-                                className="h-8 w-8 text-muted-foreground"
-                                aria-label={`Open actions for ${member.name}`}
-                              >
-                                <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-56">
-                              <DropdownMenuLabel>{member.name}</DropdownMenuLabel>
-                              <DropdownMenuItem
-                                variant="destructive"
-                                onSelect={() => removeMemberAccount(selectedBusinessAccount.id, member.id)}
-                              >
-                                Remove account
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                          <div className="flex flex-wrap gap-2">
+                            <Badge variant={account.entitled ? "secondary" : "outline"}>
+                              {formatStatusLabel(account.subscriptionStatus)}
+                            </Badge>
+                            {!account.entitled ? (
+                              <Badge variant="destructive">Not entitled</Badge>
+                            ) : (
+                              <Badge className="bg-emerald-500/15 text-emerald-600 hover:bg-emerald-500/15">
+                                Entitled
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2 text-sm">
+                            <CreditCard className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                            {formatStatusLabel(account.paymentStatus)}
+                          </div>
+                        </TableCell>
+                        <TableCell>{formatDisplayDate(account.renewalAt)}</TableCell>
+                        <TableCell>
+                          {account.chatgptSeatsInUse} ChatGPT · {account.codexSeatsInUse} Codex
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-8 rounded-full px-3"
+                            aria-label={`Watch ${account.domain} accounts list`}
+                            onClick={() => setSelectedBusinessAccountId(account.id)}
+                          >
+                            <Eye className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+                            Watch
+                          </Button>
                         </TableCell>
                       </TableRow>
-                    ))
-                  : null}
-                {selectedBusinessAccount && selectedBusinessAccount.members.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={5} className="py-8 text-center text-sm text-muted-foreground">
-                      This business account has no members.
-                    </TableCell>
-                  </TableRow>
-                ) : null}
-              </TableBody>
-            </Table>
-          </div>
-        </DialogContent>
-      </Dialog>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Dialog
+            open={selectedBusinessAccountId !== null}
+            onOpenChange={(open) => {
+              if (!open) {
+                setSelectedBusinessAccountId(null);
+              }
+            }}
+          >
+            <DialogContent className="w-[96vw] max-w-[96vw] sm:max-w-[96vw] 2xl:max-w-[1200px]">
+              <DialogHeader>
+                <DialogTitle>{selectedBusinessAccount?.domain} · Accounts list</DialogTitle>
+                <DialogDescription>
+                  {selectedBusinessAccount
+                    ? `${selectedBusinessAccount.planName} · ${formatStatusLabel(
+                        selectedBusinessAccount.subscriptionStatus,
+                      )} · Renews ${formatDisplayDate(selectedBusinessAccount.renewalAt)}`
+                    : "Live subscription members and seat assignments."}
+                </DialogDescription>
+              </DialogHeader>
+
+              {selectedBusinessAccount ? (
+                <div className="space-y-4">
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-xl border border-border/70 bg-muted/30 p-3">
+                      <p className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-muted-foreground">
+                        <ShieldCheck className="h-3.5 w-3.5" />
+                        Entitlement
+                      </p>
+                      <p className="mt-1.5 text-xl font-semibold">
+                        {selectedBusinessAccount.entitled ? "Active" : "Blocked"}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-border/70 bg-muted/30 p-3">
+                      <p className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-muted-foreground">
+                        <CalendarClock className="h-3.5 w-3.5" />
+                        Billing cycle
+                      </p>
+                      <p className="mt-1.5 text-sm font-semibold">
+                        {formatDisplayDate(selectedBusinessAccount.billingCycle.start)} –{" "}
+                        {formatDisplayDate(selectedBusinessAccount.billingCycle.end)}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-border/70 bg-muted/30 p-3">
+                      <p className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-muted-foreground">
+                        <Users2 className="h-3.5 w-3.5" />
+                        Seats in use
+                      </p>
+                      <p className="mt-1.5 text-sm font-semibold">
+                        {selectedBusinessAccount.chatgptSeatsInUse} ChatGPT ·{" "}
+                        {selectedBusinessAccount.codexSeatsInUse} Codex
+                      </p>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  <div className="overflow-hidden rounded-xl border border-border/70">
+                    <Table>
+                      <TableHeader className="bg-muted/30">
+                        <TableRow>
+                          <TableHead>Name</TableHead>
+                          <TableHead>Role</TableHead>
+                          <TableHead>Seat type</TableHead>
+                          <TableHead>Date added</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {selectedBusinessAccount.members.map((member) => (
+                          <TableRow key={member.id}>
+                            <TableCell>
+                              <div className="flex items-center gap-3">
+                                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-[11px] font-semibold uppercase text-white">
+                                  {getInitials(member.name)}
+                                </div>
+                                <div>
+                                  <p className="font-medium">{member.name}</p>
+                                  <p className="text-sm text-muted-foreground">{member.email}</p>
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell>{member.role}</TableCell>
+                            <TableCell>{member.seatType}</TableCell>
+                            <TableCell>{formatDisplayDate(member.dateAdded)}</TableCell>
+                          </TableRow>
+                        ))}
+                        {selectedBusinessAccount.members.length === 0 ? (
+                          <TableRow>
+                            <TableCell
+                              colSpan={4}
+                              className="py-8 text-center text-sm text-muted-foreground"
+                            >
+                              This business account has no members.
+                            </TableCell>
+                          </TableRow>
+                        ) : null}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              ) : null}
+            </DialogContent>
+          </Dialog>
+        </>
+      )}
     </div>
   );
 }

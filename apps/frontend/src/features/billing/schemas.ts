@@ -17,7 +17,13 @@ export const BillingCycleSchema = z.object({
 export const BillingAccountSchema = z.object({
   id: z.string().min(1),
   domain: z.string().min(1),
+  planCode: z.string().min(1),
+  planName: z.string().min(1),
+  subscriptionStatus: z.enum(["trialing", "active", "past_due", "canceled", "expired"]),
+  entitled: z.boolean(),
+  paymentStatus: z.enum(["paid", "requires_action", "past_due", "unpaid"]),
   billingCycle: BillingCycleSchema,
+  renewalAt: z.coerce.date().nullable(),
   chatgptSeatsInUse: z.number().int().nonnegative(),
   codexSeatsInUse: z.number().int().nonnegative(),
   members: z.array(BillingMemberSchema),

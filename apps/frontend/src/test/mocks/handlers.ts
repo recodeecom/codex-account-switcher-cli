@@ -236,10 +236,16 @@ function createDefaultBillingAccounts(): z.infer<typeof BillingAccountSchema>[] 
 		{
 			id: "business-plan-edixai",
 			domain: "edixai.com",
+			planCode: "business",
+			planName: "Business",
+			subscriptionStatus: "active",
+			entitled: true,
+			paymentStatus: "paid",
 			billingCycle: {
 				start: new Date("2026-03-23T00:00:00.000Z"),
 				end: new Date("2026-04-23T00:00:00.000Z"),
 			},
+			renewalAt: new Date("2026-04-23T00:00:00.000Z"),
 			chatgptSeatsInUse: 5,
 			codexSeatsInUse: 5,
 			members: [
@@ -264,10 +270,16 @@ function createDefaultBillingAccounts(): z.infer<typeof BillingAccountSchema>[] 
 		{
 			id: "business-plan-kozpont",
 			domain: "kozpontihusbolt.hu",
+			planCode: "business",
+			planName: "Business",
+			subscriptionStatus: "past_due",
+			entitled: false,
+			paymentStatus: "past_due",
 			billingCycle: {
 				start: new Date("2026-03-26T00:00:00.000Z"),
 				end: new Date("2026-04-26T00:00:00.000Z"),
 			},
+			renewalAt: new Date("2026-04-26T00:00:00.000Z"),
 			chatgptSeatsInUse: 5,
 			codexSeatsInUse: 5,
 			members: [
@@ -300,10 +312,16 @@ function createDefaultBillingAccounts(): z.infer<typeof BillingAccountSchema>[] 
 		{
 			id: "business-plan-kronakert",
 			domain: "kronakert.hu",
+			planCode: "trial",
+			planName: "Trial",
+			subscriptionStatus: "trialing",
+			entitled: true,
+			paymentStatus: "paid",
 			billingCycle: {
 				start: new Date("2026-04-01T00:00:00.000Z"),
 				end: new Date("2026-05-01T00:00:00.000Z"),
 			},
+			renewalAt: new Date("2026-05-01T00:00:00.000Z"),
 			chatgptSeatsInUse: 3,
 			codexSeatsInUse: 3,
 			members: [
