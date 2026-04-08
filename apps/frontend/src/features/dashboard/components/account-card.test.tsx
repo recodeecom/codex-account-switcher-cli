@@ -87,6 +87,7 @@ describe("AccountCard", () => {
   });
 
   it("shows OMX badge in the right-side token-card badge row", () => {
+    const nowIso = new Date().toISOString();
     const account = createAccountSummary({
       codexLiveSessionCount: 1,
       codexSessionCount: 1,
@@ -98,6 +99,8 @@ describe("AccountCard", () => {
         hasLiveSession: true,
         isOmxBoosted: true,
       },
+      lastUsageRecordedAtPrimary: nowIso,
+      lastUsageRecordedAtSecondary: nowIso,
     });
 
     render(<AccountCard account={account} />);
@@ -566,7 +569,7 @@ describe("AccountCard", () => {
 
     render(<AccountCard account={account} />);
 
-    expect(screen.getByRole("button", { name: "Currently used" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Use this account" })).toBeEnabled();
   });
 
   it("disables use this account button for working-now accounts when weekly quota is depleted", () => {
@@ -591,8 +594,8 @@ describe("AccountCard", () => {
 
     render(<AccountCard account={account} />);
 
-    expect(screen.getByRole("button", { name: "Currently used" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Currently used" })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "Use this account" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Use this account" })).toHaveAttribute(
       "title",
       "Weekly quota shown as 0%.",
     );
@@ -1340,8 +1343,6 @@ describe("AccountCard", () => {
       },
       resetAtPrimary: null,
       resetAtSecondary: null,
-      lastUsageRecordedAtPrimary: null,
-      lastUsageRecordedAtSecondary: null,
       codexLiveSessionCount: 1,
       codexSessionCount: 1,
       codexAuth: {
@@ -1351,6 +1352,8 @@ describe("AccountCard", () => {
         isActiveSnapshot: true,
         hasLiveSession: true,
       },
+      lastUsageRecordedAtPrimary: nowIso,
+      lastUsageRecordedAtSecondary: nowIso,
       liveQuotaDebug: {
         snapshotsConsidered: ["odin"],
         overrideApplied: false,
@@ -1464,7 +1467,8 @@ describe("AccountCard", () => {
     expect(screen.queryByText("9%")).not.toBeInTheDocument();
     expect(screen.queryByText("26%")).not.toBeInTheDocument();
     expect(screen.getAllByText("--").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("Telemetry pending").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText("Telemetry pending")).not.toBeInTheDocument();
+    expect(screen.getAllByText(/waiting for new task/i).length).toBeGreaterThan(0);
   });
 
   it("keeps baseline usage bars when deferred mixed-session fallback is not trusted", () => {
@@ -1550,6 +1554,39 @@ describe("AccountCard", () => {
       screen.getByText("Merged fallback summary and shipped diagnostics"),
     ).toBeInTheDocument();
     expect(screen.getByText("working...")).toBeInTheDocument();
+  });
+
+  it("renders the OMX planning graph in place of the prompt pill for $ralplan tasks", () => {
+    const account = createAccountSummary({
+      codexLiveSessionCount: 1,
+      codexSessionCount: 1,
+      codexCurrentTaskPreview:
+        "$ralplan can you make this card show planning mode runtime state",
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+    });
+
+    render(<AccountCard account={account} />);
+
+    expect(screen.queryByText("Prompt task")).not.toBeInTheDocument();
+    const planningGraph = screen.getByTestId("omx-planning-prompt-graph");
+    expect(planningGraph).toBeInTheDocument();
+    expect(
+      within(planningGraph).getByText(
+        "$ralplan can you make this card show planning mode runtime state",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Web")).toBeInTheDocument();
+    expect(screen.getByText("Plan")).toBeInTheDocument();
+    expect(screen.getByText("DB")).toBeInTheDocument();
+    expect(screen.getByText("API")).toBeInTheDocument();
+    expect(screen.getByText("Deploy")).toBeInTheDocument();
+    expect(screen.getByText("LLM")).toBeInTheDocument();
   });
 
   it("shows a Next.js badge when task previews mention next.js or turbopack", () => {
@@ -2408,7 +2445,7 @@ describe("AccountCard", () => {
     expect(sessionsValue).toHaveTextContent(/^0$/);
   });
 
-  it("shows working indicator when tracked codex sessions exist without live telemetry", () => {
+  it("does not show working indicator when tracked codex sessions exist without live telemetry", () => {
     const account = createAccountSummary({
       codexLiveSessionCount: 0,
       codexTrackedSessionCount: 2,
@@ -2428,10 +2465,7 @@ describe("AccountCard", () => {
 
     render(<AccountCard account={account} />);
 
-    const workingIndicator = screen.getByText("working...");
-    expect(workingIndicator).toBeInTheDocument();
-    expect(workingIndicator.closest("div")?.className).not.toContain("bg-cyan-500/10");
-    expect(workingIndicator.closest("div")?.className).toContain("border-cyan-500/35");
+    expect(screen.queryByText("working...")).not.toBeInTheDocument();
     expect(screen.queryByText("Live token status")).not.toBeInTheDocument();
     expect(screen.getByText("63%")).toBeInTheDocument();
   });

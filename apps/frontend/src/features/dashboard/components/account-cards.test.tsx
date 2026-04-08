@@ -302,7 +302,7 @@ describe("AccountCards", () => {
     ]);
   });
 
-  it("keeps accounts with active CLI task signals in working-now even if status is deactivated", () => {
+  it("keeps deactivated task-only accounts out of working-now", () => {
     const taskingDeactivated = createAccountSummary({
       accountId: "acc_tasking_deactivated",
       email: "tasking-deactivated@example.com",
@@ -342,14 +342,18 @@ describe("AccountCards", () => {
       />,
     );
 
-    expect(screen.getByRole("heading", { name: "Working now" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Working now" })).not.toBeInTheDocument();
+    expect(
+      screen.getByText("No account is working now currently."),
+    ).toBeInTheDocument();
     const cards = Array.from(container.querySelectorAll(".card-hover"));
     expect(cards).toHaveLength(2);
+    const taskingCard = cards.find((card) =>
+      card.textContent?.includes("tasking-deactivated@example.com"),
+    );
+    expect(taskingCard).toBeDefined();
     expect(
-      within(cards[0] as HTMLElement).getByText("tasking-deactivated@example.com"),
-    ).toBeInTheDocument();
-    expect(
-      within(cards[0] as HTMLElement).getByText("Investigate session handoff mismatch"),
+      within(taskingCard as HTMLElement).getByText("Investigate session handoff mismatch"),
     ).toBeInTheDocument();
   });
 
@@ -543,7 +547,7 @@ describe("AccountCards", () => {
     expect(screen.getByText("depleted-idle@example.com")).toBeInTheDocument();
   });
 
-  it("keeps no-live-telemetry accounts in working-now when snapshot still reports a live session", () => {
+  it("keeps no-live-telemetry accounts out of working-now when scoped live samples are missing", () => {
     const account = createAccountSummary({
       accountId: "acc_itrexsale",
       email: "itrexsale@example.com",
@@ -587,7 +591,10 @@ describe("AccountCards", () => {
       />,
     );
 
-    expect(screen.getByRole("heading", { name: "Working now" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Working now" })).not.toBeInTheDocument();
+    expect(
+      screen.getByText("No account is working now currently."),
+    ).toBeInTheDocument();
     expect(screen.getByText("itrexsale@example.com")).toBeInTheDocument();
   });
 
@@ -1191,7 +1198,9 @@ describe("AccountCards", () => {
     let cardText = cards.map((card) => card.textContent ?? "");
     expect(cardText[0]).toContain("normal-high");
 
-    fireEvent.click(screen.getByRole("button", { name: "Usage-limit available" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Usage-limit soon available" }),
+    );
 
     cards = Array.from(container.querySelectorAll(".card-hover"));
     cardText = cards.map((card) => card.textContent ?? "");
@@ -1308,7 +1317,7 @@ describe("AccountCards", () => {
     expect(screen.getByText("2 live sessions")).toBeInTheDocument();
   });
 
-  it("places tracked-session accounts in the working-now section", () => {
+  it("keeps tracked-session-only accounts out of the working-now section", () => {
     const tracked = createAccountSummary({
       accountId: "acc_tracked",
       email: "tracked@example.com",
@@ -1346,12 +1355,15 @@ describe("AccountCards", () => {
 
     render(<AccountCards accounts={[idle, tracked]} primaryWindow={null} secondaryWindow={null} />);
 
-    expect(screen.getByRole("heading", { name: "Working now" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Working now" })).not.toBeInTheDocument();
+    expect(
+      screen.getByText("No account is working now currently."),
+    ).toBeInTheDocument();
     expect(screen.getByText("tracked@example.com")).toBeInTheDocument();
     expect(screen.queryByText("live sessions")).not.toBeInTheDocument();
   });
 
-  it("places fresh session-task-preview accounts in the working-now section", () => {
+  it("keeps fresh session-task-preview-only accounts out of the working-now section", () => {
     const taskPreviewOnly = createAccountSummary({
       accountId: "acc_task_preview_only",
       email: "task-preview-only@example.com",
@@ -1386,7 +1398,10 @@ describe("AccountCards", () => {
       />,
     );
 
-    expect(screen.getByRole("heading", { name: "Working now" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Working now" })).not.toBeInTheDocument();
+    expect(
+      screen.getByText("No account is working now currently."),
+    ).toBeInTheDocument();
     expect(screen.getByText("task-preview-only@example.com")).toBeInTheDocument();
   });
 

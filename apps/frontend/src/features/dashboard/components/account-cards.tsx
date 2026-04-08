@@ -38,8 +38,6 @@ const ACCOUNT_CARDS_CLOCK_TICK_MS = 5_000;
 const EMAIL_AUTOCORRECT_MAX_DISTANCE = 3;
 const ACCOUNT_GRID_CLASSNAME =
   "grid auto-rows-fr items-stretch gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,21.5rem),1fr))] [&_.card-hover]:h-full";
-const STATUS_ONLY_TASK_PREVIEW_RE =
-  /^(?:task\s+)?(?:is\s+)?(?:already\s+)?(?:done|complete(?:d)?|finished)(?:\s+already)?[.!]?$/i;
 
 type OtherAccountsSortMode =
   | "available-first"
@@ -58,32 +56,6 @@ function matchesOtherAccountEmailQuery(
     return true;
   }
   return normalizeEmailSearchValue(account.email).includes(normalizedQuery);
-}
-
-function hasMeaningfulTaskPreview(
-  taskPreview: string | null | undefined,
-): boolean {
-  const normalized = taskPreview?.trim().replace(/\s+/g, " ") ?? "";
-  if (!normalized) {
-    return false;
-  }
-  if (/^warning\b/i.test(normalized)) {
-    return false;
-  }
-  if (STATUS_ONLY_TASK_PREVIEW_RE.test(normalized)) {
-    return false;
-  }
-  return true;
-}
-
-function hasAssignedTaskSignal(account: AccountSummary): boolean {
-  if (hasMeaningfulTaskPreview(account.codexCurrentTaskPreview)) {
-    return true;
-  }
-  const sessionTaskPreviews = account.codexSessionTaskPreviews ?? [];
-  return sessionTaskPreviews.some((preview) =>
-    hasMeaningfulTaskPreview(preview.taskPreview),
-  );
 }
 
 function computeLevenshteinDistance(source: string, target: string): number {
@@ -647,8 +619,7 @@ export function AccountCards({
       });
 
       const hasWorkingNowSignal = isAccountWorkingNow(account, nowMs);
-      const hasTaskSignal = hasAssignedTaskSignal(account);
-      if (hasWorkingNowSignal || hasTaskSignal) {
+      if (hasWorkingNowSignal) {
         working.push(account);
         continue;
       }
@@ -828,7 +799,17 @@ export function AccountCards({
           </div>
           {renderGrid(groupedAccounts.working, "working")}
         </section>
-      ) : null}
+      ) : (
+        <section className="rounded-xl border border-dashed border-border/70 bg-background/25 px-4 py-6 text-center md:px-5">
+          <p className="text-sm font-medium text-zinc-200">
+            No account is working now currently.
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Live accounts appear here automatically when active CLI telemetry is
+            detected.
+          </p>
+        </section>
+      )}
 
       {groupedAccounts.remaining.length > 0 ? (
         <section className="space-y-3 rounded-2xl border border-border/60 bg-background/35 p-3.5 md:p-4">

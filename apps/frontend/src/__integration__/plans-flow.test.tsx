@@ -22,6 +22,11 @@ describe("plans flow integration", () => {
     expect(screen.getByTestId("plan-summary-content")).toHaveTextContent("ralplan");
     expect(await screen.findByTestId("plan-checkpoints-content")).toHaveTextContent("Executor");
     expect(screen.getByTestId("plan-checkpoints-content")).toHaveTextContent("Implementing plans progress UI");
+    expect(await screen.findByTestId("plan-runtime-observer")).toHaveTextContent("Live plan observer");
+    expect(await screen.findByTestId("plan-runtime-agents")).toHaveTextContent("executor");
+    expect(screen.getByTestId("plan-runtime-agents")).toHaveTextContent("gpt-5.3-codex");
+    expect(await screen.findByTestId("plan-runtime-events")).toHaveTextContent("Executor spawned");
+    expect(await screen.findByTestId("plan-runtime-resume")).toHaveTextContent("Can resume: Yes");
   });
 
   it("shows fallback when no current checkpoint exists", async () => {
@@ -120,6 +125,32 @@ describe("plans flow integration", () => {
           currentCheckpoint: null,
         }),
       ),
+      http.get("/api/projects/plans/:planSlug/runtime", () =>
+        HttpResponse.json({
+          available: false,
+          sessionId: "019d6cae-f82e-7670-a403-b5fae5c6e85c",
+          correlationConfidence: "medium",
+          mode: "ralplan",
+          phase: "planning",
+          active: false,
+          updatedAt: new Date("2026-04-08T10:20:00Z").toISOString(),
+          agents: [],
+          events: [],
+          lastCheckpoint: null,
+          lastError: {
+            timestamp: "2026-04-08T10:19:58Z",
+            code: "agent_events_missing",
+            message: "Agent telemetry missing",
+            source: "runtime",
+            recoverable: true,
+          },
+          canResume: true,
+          partial: true,
+          staleAfterSeconds: 30,
+          reasons: ["agent_events_missing"],
+          unavailableReason: "agent_events_missing",
+        }),
+      ),
     );
 
     window.history.pushState({}, "", "/projects/plans");
@@ -128,6 +159,8 @@ describe("plans flow integration", () => {
     expect(await screen.findByRole("heading", { name: "Plans" })).toBeInTheDocument();
     expect(await screen.findByText("No checkpoint activity recorded yet.")).toBeInTheDocument();
     expect(await screen.findByText("No checkpoint log entries yet.")).toBeInTheDocument();
+    expect(await screen.findByText(/Runtime data unavailable/i)).toBeInTheDocument();
+    expect(await screen.findByTestId("plan-runtime-resume")).toHaveTextContent("Can resume: Yes");
   });
 
   it("shows a copy starter prompt action for the selected plan", async () => {

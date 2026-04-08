@@ -2,6 +2,7 @@ import { get } from "@/lib/api-client";
 
 import {
   OpenSpecPlanDetailSchema,
+  OpenSpecPlanRuntimeSchema,
   OpenSpecPlansResponseSchema,
 } from "@/features/plans/schemas";
 
@@ -13,4 +14,11 @@ export function listOpenSpecPlans() {
 
 export function getOpenSpecPlan(planSlug: string) {
   return get(`${OPEN_SPEC_PLANS_PATH}/${encodeURIComponent(planSlug)}`, OpenSpecPlanDetailSchema);
+}
+
+export function getOpenSpecPlanRuntime(planSlug: string) {
+  return get(
+    `${OPEN_SPEC_PLANS_PATH}/${encodeURIComponent(planSlug)}/runtime`,
+    OpenSpecPlanRuntimeSchema,
+  );
 }

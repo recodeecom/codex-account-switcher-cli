@@ -57,3 +57,53 @@ class OpenSpecPlanDetail(DashboardModel):
     roles: list[OpenSpecPlanRoleDetail]
     overall_progress: PlanOverallProgress
     current_checkpoint: PlanCheckpoint | None
+
+
+class PlanRuntimeAgent(DashboardModel):
+    name: str
+    role: str | None
+    model: str | None
+    status: str | None
+    started_at: str | None
+    updated_at: str | None
+    source: str
+    authoritative: bool
+
+
+class PlanRuntimeEvent(DashboardModel):
+    ts: str
+    kind: str
+    message: str
+    agent_name: str | None
+    role: str | None
+    model: str | None
+    status: str | None
+    source: str
+    authoritative: bool
+
+
+class PlanRuntimeError(DashboardModel):
+    timestamp: str
+    code: str | None
+    message: str
+    source: str | None
+    recoverable: bool | None
+
+
+class OpenSpecPlanRuntime(DashboardModel):
+    available: bool
+    session_id: str | None
+    correlation_confidence: str | None
+    mode: str | None
+    phase: str | None
+    active: bool
+    updated_at: datetime | None
+    agents: list[PlanRuntimeAgent]
+    events: list[PlanRuntimeEvent]
+    last_checkpoint: PlanCheckpoint | None
+    last_error: PlanRuntimeError | None
+    can_resume: bool
+    partial: bool
+    stale_after_seconds: int | None
+    reasons: list[str]
+    unavailable_reason: str | None

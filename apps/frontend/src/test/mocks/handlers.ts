@@ -225,6 +225,55 @@ type MockState = {
 		} | null;
 		summaryMarkdown: string;
 		checkpointsMarkdown: string;
+		runtime: {
+			available: boolean;
+			sessionId: string | null;
+			correlationConfidence: string | null;
+			mode: string | null;
+			phase: string | null;
+			active: boolean;
+			updatedAt: string | null;
+			agents: Array<{
+				name: string;
+				role: string | null;
+				model: string | null;
+				status: string | null;
+				startedAt: string | null;
+				updatedAt: string | null;
+				source: string;
+				authoritative: boolean;
+			}>;
+			events: Array<{
+				ts: string;
+				kind: string;
+				message: string;
+				agentName: string | null;
+				role: string | null;
+				model: string | null;
+				status: string | null;
+				source: string;
+				authoritative: boolean;
+			}>;
+			lastCheckpoint: {
+				timestamp: string;
+				role: string;
+				checkpointId: string;
+				state: string;
+				message: string;
+			} | null;
+			lastError: {
+				timestamp: string;
+				code: string | null;
+				message: string;
+				source: string | null;
+				recoverable: boolean | null;
+			} | null;
+			canResume: boolean;
+			partial: boolean;
+			staleAfterSeconds: number | null;
+			reasons: string[];
+			unavailableReason: string | null;
+		};
 	}>;
 	billingAccounts: z.infer<typeof BillingAccountSchema>[];
 	stickySessions: Array<{
@@ -343,6 +392,64 @@ function createDefaultOpenSpecPlans(): MockState["openSpecPlans"] {
 				"# Plan Summary: projects-plans-page\\n\\n- **Mode:** ralplan\\n- **Status:** approved\\n",
 			checkpointsMarkdown:
 				"# Plan Checkpoints: projects-plans-page\\n\\n- 2026-04-08T09:52:21Z | role=executor | id=E1 | state=IN_PROGRESS | Implementing plans progress UI\\n",
+			runtime: {
+				available: true,
+				sessionId: "019d6cae-f82e-7670-a403-b5fae5c6e85c",
+				correlationConfidence: "high",
+				mode: "ralplan",
+				phase: "planning",
+				active: true,
+				updatedAt: new Date("2026-04-08T09:53:00Z").toISOString(),
+				agents: [
+					{
+						name: "executor",
+						role: "executor",
+						model: "gpt-5.3-codex",
+						status: "running",
+						startedAt: "2026-04-08T09:52:10Z",
+						updatedAt: "2026-04-08T09:53:00Z",
+						source: "ralplan-runtime",
+						authoritative: true,
+					},
+				],
+				events: [
+					{
+						ts: "2026-04-08T09:52:10Z",
+						kind: "agent_spawned",
+						message: "Executor spawned",
+						agentName: "executor",
+						role: "executor",
+						model: "gpt-5.3-codex",
+						status: "running",
+						source: "ralplan-runtime",
+						authoritative: true,
+					},
+					{
+						ts: "2026-04-08T09:53:00Z",
+						kind: "session_start",
+						message: "Session started",
+						agentName: null,
+						role: null,
+						model: null,
+						status: "active",
+						source: "omx-2026-04-08.jsonl",
+						authoritative: false,
+					},
+				],
+				lastCheckpoint: {
+					timestamp: "2026-04-08T09:52:21Z",
+					role: "executor",
+					checkpointId: "E1",
+					state: "IN_PROGRESS",
+					message: "Implementing plans progress UI",
+				},
+				lastError: null,
+				canResume: true,
+				partial: false,
+				staleAfterSeconds: 5,
+				reasons: ["plan_session_mapping"],
+				unavailableReason: null,
+			},
 		},
 		{
 			slug: "ralplan-openspec-plan-export",
@@ -410,6 +517,24 @@ function createDefaultOpenSpecPlans(): MockState["openSpecPlans"] {
 				"# Plan Summary: ralplan-openspec-plan-export\\n\\n- **Mode:** ralplan\\n- **Status:** proposed\\n",
 			checkpointsMarkdown:
 				"# Plan Checkpoints: ralplan-openspec-plan-export\\n\\nNo checkpoints recorded yet.\\n",
+			runtime: {
+				available: false,
+				sessionId: null,
+				correlationConfidence: null,
+				mode: null,
+				phase: null,
+				active: false,
+				updatedAt: null,
+				agents: [],
+				events: [],
+				lastCheckpoint: null,
+				lastError: null,
+				canResume: false,
+				partial: false,
+				staleAfterSeconds: 30,
+				reasons: ["correlation_unresolved"],
+				unavailableReason: "correlation_unresolved",
+			},
 		},
 	];
 }
@@ -1431,6 +1556,35 @@ export const handlers = [
 			overallProgress: plan.overallProgress,
 			currentCheckpoint: plan.currentCheckpoint,
 		});
+	}),
+
+	http.get("/api/projects/plans/:planSlug/runtime", ({ params }) => {
+		const planSlug = String(params.planSlug);
+		const plan = state.openSpecPlans.find((entry) => entry.slug === planSlug);
+		if (!plan) {
+			return HttpResponse.json(
+				{
+					available: false,
+					sessionId: null,
+					correlationConfidence: null,
+					mode: null,
+					phase: null,
+					active: false,
+					updatedAt: null,
+					agents: [],
+					events: [],
+					lastCheckpoint: null,
+					lastError: null,
+					canResume: false,
+					partial: false,
+					staleAfterSeconds: 30,
+					reasons: ["correlation_unresolved"],
+					unavailableReason: "correlation_unresolved",
+				},
+				{ status: 200 },
+			);
+		}
+		return HttpResponse.json(plan.runtime);
 	}),
 
 	http.get("/api/projects", () => {

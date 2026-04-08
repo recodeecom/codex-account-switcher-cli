@@ -6,11 +6,15 @@ from app.core.auth.dependencies import set_dashboard_error_format, validate_dash
 from app.core.exceptions import DashboardNotFoundError, DashboardServiceUnavailableError
 from app.modules.plans.schemas import (
     OpenSpecPlanDetail,
+    OpenSpecPlanRuntime,
     OpenSpecPlansResponse,
     OpenSpecPlanRoleDetail,
     OpenSpecPlanSummary,
     PlanCheckpoint,
     PlanOverallProgress,
+    PlanRuntimeAgent,
+    PlanRuntimeError,
+    PlanRuntimeEvent,
     PlanRoleProgress,
 )
 from app.modules.plans.service import OpenSpecPlansError, OpenSpecPlansService
@@ -124,4 +128,85 @@ async def get_open_spec_plan(
             if detail.current_checkpoint is not None
             else None
         ),
+    )
+
+
+@router.get("/{plan_slug}/runtime", response_model=OpenSpecPlanRuntime)
+async def get_open_spec_plan_runtime(
+    plan_slug: str,
+    service: OpenSpecPlansService = Depends(get_plans_service),
+) -> OpenSpecPlanRuntime:
+    try:
+        runtime = service.get_plan_runtime(plan_slug)
+    except OpenSpecPlansError as exc:
+        raise DashboardServiceUnavailableError(
+            "Unable to read OpenSpec plan runtime",
+            code="plans_runtime_unavailable",
+        ) from exc
+
+    if runtime is None:
+        raise DashboardNotFoundError("Plan not found", code="plan_not_found")
+
+    return OpenSpecPlanRuntime(
+        available=runtime.available,
+        session_id=runtime.session_id,
+        correlation_confidence=runtime.correlation_confidence,
+        mode=runtime.mode,
+        phase=runtime.phase,
+        active=runtime.active,
+        updated_at=runtime.updated_at,
+        agents=[
+            PlanRuntimeAgent(
+                name=agent.name,
+                role=agent.role,
+                model=agent.model,
+                status=agent.status,
+                started_at=agent.started_at,
+                updated_at=agent.updated_at,
+                source=agent.source,
+                authoritative=agent.authoritative,
+            )
+            for agent in runtime.agents
+        ],
+        events=[
+            PlanRuntimeEvent(
+                ts=event.ts,
+                kind=event.kind,
+                message=event.message,
+                agent_name=event.agent_name,
+                role=event.role,
+                model=event.model,
+                status=event.status,
+                source=event.source,
+                authoritative=event.authoritative,
+            )
+            for event in runtime.events
+        ],
+        last_checkpoint=(
+            PlanCheckpoint(
+                timestamp=runtime.last_checkpoint.timestamp,
+                role=runtime.last_checkpoint.role,
+                checkpoint_id=runtime.last_checkpoint.checkpoint_id,
+                state=runtime.last_checkpoint.state,
+                message=runtime.last_checkpoint.message,
+            )
+            if runtime.last_checkpoint is not None
+            else None
+        ),
+        last_error=(
+            PlanRuntimeError(
+                timestamp=runtime.last_error.timestamp,
+                code=runtime.last_error.code,
+                message=runtime.last_error.message,
+                source=runtime.last_error.source,
+                recoverable=runtime.last_error.recoverable,
+            )
+            if runtime.last_error is not None
+            else None
+        ),
+        can_resume=runtime.can_resume,
+        partial=runtime.partial,
+        stale_after_seconds=runtime.stale_after_seconds,
+        reasons=runtime.reasons,
+        unavailable_reason=runtime.unavailable_reason,
     )

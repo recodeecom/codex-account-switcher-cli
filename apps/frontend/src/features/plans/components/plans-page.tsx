@@ -209,6 +209,30 @@ function formatCheckpointTimestamp(timestamp: string): string {
   return `${formatted.date} ${formatted.time}`;
 }
 
+function formatRuntimeTimestamp(timestamp: string | null): string {
+  if (!timestamp) {
+    return "Unknown";
+  }
+  return formatCheckpointTimestamp(timestamp);
+}
+
+function runtimeStatusBadgeClass(status: string | null): string {
+  const normalizedStatus = status?.trim().toLowerCase().replace(/\s+/g, "_");
+  if (!normalizedStatus) {
+    return "border-slate-500/30 bg-slate-500/15 text-slate-300";
+  }
+  if (["running", "active", "in_progress"].includes(normalizedStatus)) {
+    return "border-sky-500/40 bg-sky-500/20 text-sky-200";
+  }
+  if (["done", "completed", "finished", "idle", "waiting"].includes(normalizedStatus)) {
+    return "border-emerald-500/40 bg-emerald-500/20 text-emerald-200";
+  }
+  if (["failed", "error", "blocked", "rejected"].includes(normalizedStatus)) {
+    return "border-red-500/40 bg-red-500/20 text-red-200";
+  }
+  return "border-amber-500/40 bg-amber-500/20 text-amber-200";
+}
+
 function normalizeMarkdownLine(line: string): string {
   return line
     .trim()
@@ -393,12 +417,14 @@ export function buildPlanStarterPrompt(
 
 export function PlansPage() {
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
-  const { plansQuery, planDetailQuery, effectiveSelectedSlug } = useOpenSpecPlans(selectedSlug);
+  const { plansQuery, planDetailQuery, planRuntimeQuery, effectiveSelectedSlug } = useOpenSpecPlans(selectedSlug);
 
   const entries = plansQuery.data?.entries ?? [];
   const listError = getErrorMessageOrNull(plansQuery.error);
   const detailError = getErrorMessageOrNull(planDetailQuery.error);
+  const runtimeError = getErrorMessageOrNull(planRuntimeQuery.error);
   const planDetail = planDetailQuery.data;
+  const planRuntime = planRuntimeQuery.data;
 
   const selectedEntry = entries.find((entry) => entry.slug === effectiveSelectedSlug) ?? null;
   const sortedEntries = [...entries].sort((left, right) => {
@@ -593,6 +619,168 @@ export function PlansPage() {
                         </div>
                       ) : (
                         <p className="text-sm text-muted-foreground">No checkpoint activity recorded yet.</p>
+                      )}
+                    </div>
+
+                    <div className="space-y-2 rounded-lg border border-border/60 bg-background/30 p-3" data-testid="plan-runtime-observer">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-xs uppercase tracking-wide text-muted-foreground">Live plan observer</p>
+                        {planRuntimeQuery.isFetching ? (
+                          <Badge variant="outline" className="text-[10px]">
+                            Refreshing
+                          </Badge>
+                        ) : null}
+                      </div>
+                      {runtimeError ? (
+                        <AlertMessage variant="error">Couldn’t load runtime observer: {runtimeError}</AlertMessage>
+                      ) : planRuntimeQuery.isLoading ? (
+                        <p className="text-sm text-muted-foreground">Loading runtime observer…</p>
+                      ) : planRuntime ? (
+                        <div className="space-y-3">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <Badge variant="outline" className="text-[10px]">
+                              Session {planRuntime.sessionId ?? "unresolved"}
+                            </Badge>
+                            {planRuntime.mode ? (
+                              <Badge variant="outline" className="text-[10px] capitalize">
+                                {planRuntime.mode}
+                              </Badge>
+                            ) : null}
+                            {planRuntime.phase ? (
+                              <Badge variant="outline" className="text-[10px] capitalize">
+                                {planRuntime.phase.replace(/_/g, " ")}
+                              </Badge>
+                            ) : null}
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                "text-[10px] capitalize",
+                                runtimeStatusBadgeClass(planRuntime.active ? "active" : "inactive"),
+                              )}
+                            >
+                              {planRuntime.active ? "Active" : "Inactive"}
+                            </Badge>
+                            {planRuntime.partial ? (
+                              <Badge variant="outline" className="text-[10px]">
+                                Partial
+                              </Badge>
+                            ) : null}
+                            {planRuntime.correlationConfidence ? (
+                              <Badge variant="outline" className="text-[10px] capitalize">
+                                {planRuntime.correlationConfidence} confidence
+                              </Badge>
+                            ) : null}
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            Last update: {formatRuntimeTimestamp(planRuntime.updatedAt)}
+                          </p>
+
+                          {!planRuntime.available ? (
+                            <div className="rounded-md border border-amber-500/25 bg-amber-500/10 px-2.5 py-2 text-xs text-amber-100/90">
+                              Runtime data unavailable
+                              {planRuntime.unavailableReason ? ` (${planRuntime.unavailableReason.replace(/_/g, " ")})` : ""}.
+                            </div>
+                          ) : null}
+
+                          {planRuntime.reasons.length > 0 ? (
+                            <p className="text-xs text-muted-foreground">
+                              Reasons: {planRuntime.reasons.join(", ")}
+                            </p>
+                          ) : null}
+
+                          <div className="space-y-1.5" data-testid="plan-runtime-agents">
+                            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                              Active lanes
+                            </p>
+                            {planRuntime.agents.length > 0 ? (
+                              <div className="grid gap-1.5 sm:grid-cols-2">
+                                {planRuntime.agents.map((agent) => (
+                                  <div
+                                    key={`${agent.name}-${agent.role ?? "role"}-${agent.model ?? "model"}`}
+                                    className="rounded-md border border-border/50 bg-background/60 px-2.5 py-2 text-xs"
+                                  >
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      <p className="font-medium text-foreground">{agent.name}</p>
+                                      <Badge
+                                        variant="outline"
+                                        className={cn("text-[10px] capitalize", runtimeStatusBadgeClass(agent.status))}
+                                      >
+                                        {(agent.status ?? "unknown").replace(/_/g, " ")}
+                                      </Badge>
+                                    </div>
+                                    <p className="mt-1 text-muted-foreground">
+                                      {agent.role ? formatRoleLabel(agent.role) : "Unknown role"}
+                                      {agent.model ? ` · ${agent.model}` : ""}
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-xs text-muted-foreground">
+                                No authoritative agent roster available.
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="space-y-1.5" data-testid="plan-runtime-events">
+                            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                              Timeline
+                            </p>
+                            {planRuntime.events.length > 0 ? (
+                              <div className="max-h-44 space-y-1.5 overflow-auto rounded-md border border-border/50 bg-background/60 p-2">
+                                {planRuntime.events.slice(0, 12).map((event, index) => (
+                                  <div key={`${event.ts}-${event.kind}-${index}`} className="rounded border border-border/40 bg-background/70 px-2 py-1.5 text-xs">
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      <p className="text-muted-foreground">{formatRuntimeTimestamp(event.ts)}</p>
+                                      <Badge variant="outline" className="text-[10px] capitalize">
+                                        {event.kind.replace(/_/g, " ")}
+                                      </Badge>
+                                      {event.status ? (
+                                        <Badge
+                                          variant="outline"
+                                          className={cn("text-[10px] capitalize", runtimeStatusBadgeClass(event.status))}
+                                        >
+                                          {event.status.replace(/_/g, " ")}
+                                        </Badge>
+                                      ) : null}
+                                    </div>
+                                    <p className="mt-1 text-foreground/90">
+                                      {event.message}
+                                      {event.agentName ? ` · ${event.agentName}` : ""}
+                                      {event.model ? ` (${event.model})` : ""}
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-xs text-muted-foreground">No runtime timeline events yet.</p>
+                            )}
+                          </div>
+
+                          <div className="space-y-1.5 rounded-md border border-border/50 bg-background/60 p-2" data-testid="plan-runtime-resume">
+                            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Resume state</p>
+                            {planRuntime.lastCheckpoint ? (
+                              <p className="text-xs text-foreground/90">
+                                Last checkpoint: {formatRoleLabel(planRuntime.lastCheckpoint.role)} ·{" "}
+                                {planRuntime.lastCheckpoint.checkpointId} ·{" "}
+                                {formatCheckpointState(planRuntime.lastCheckpoint.state)}
+                              </p>
+                            ) : (
+                              <p className="text-xs text-muted-foreground">No checkpoint recovery marker recorded.</p>
+                            )}
+                            {planRuntime.lastError ? (
+                              <p className="text-xs text-amber-100/90">
+                                Last error: {planRuntime.lastError.message}
+                                {planRuntime.lastError.code ? ` (${planRuntime.lastError.code})` : ""}
+                              </p>
+                            ) : null}
+                            <p className="text-xs text-muted-foreground">
+                              Can resume: {planRuntime.canResume ? "Yes" : "No"}
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No runtime observer data available.</p>
                       )}
                     </div>
 

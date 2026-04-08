@@ -380,10 +380,6 @@ def _read_default_scope_rollout_paths_by_snapshot_from_live_processes() -> _Defa
         ).snapshot_name
         if not snapshot_name:
             continue
-        has_mapped_processes = True
-        mapped_process_counts_by_snapshot[snapshot_name] = (
-            mapped_process_counts_by_snapshot.get(snapshot_name, 0) + 1
-        )
 
         # In containerized deployments the process-side /proc symlink can
         # expose host paths (for example /home/user/.codex/sessions/...)
@@ -396,6 +392,11 @@ def _read_default_scope_rollout_paths_by_snapshot_from_live_processes() -> _Defa
         )
         if rollout_path is None:
             continue
+
+        has_mapped_processes = True
+        mapped_process_counts_by_snapshot[snapshot_name] = (
+            mapped_process_counts_by_snapshot.get(snapshot_name, 0) + 1
+        )
 
         rollout_paths_by_snapshot.setdefault(snapshot_name, set()).add(rollout_path)
 
