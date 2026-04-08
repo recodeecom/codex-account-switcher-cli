@@ -80,6 +80,117 @@ function formatCheckpointTimestamp(timestamp: string): string {
   return `${formatted.date} ${formatted.time}`;
 }
 
+function normalizeMarkdownLine(line: string): string {
+  return line
+    .trim()
+    .replace(/^#{1,6}\s+/, "")
+    .replace(/^[-*]\s+/, "")
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .trim();
+}
+
+function parseSummaryLines(summaryMarkdown: string): string[] {
+  const normalizedMarkdown = summaryMarkdown.replace(/\\n/g, "\n");
+
+  return normalizedMarkdown
+    .split("\n")
+    .map((line) => normalizeMarkdownLine(line))
+    .filter((line) => line.length > 0);
+}
+
+type ParsedCheckpointEntry = {
+  timestamp: string;
+  role: string | null;
+  checkpointId: string | null;
+  state: string | null;
+  message: string | null;
+};
+
+type ParsedCheckpointLine =
+  | { type: "entry"; entry: ParsedCheckpointEntry }
+  | { type: "text"; text: string };
+
+function parseCheckpointEntry(line: string): ParsedCheckpointEntry | null {
+  const normalized = normalizeMarkdownLine(line);
+  if (!normalized || /^no checkpoints recorded yet\.?$/i.test(normalized)) {
+    return null;
+  }
+
+  const segments = normalized.split("|").map((segment) => segment.trim()).filter(Boolean);
+  if (segments.length < 2) {
+    return null;
+  }
+
+  const [timestamp, ...rest] = segments;
+  let role: string | null = null;
+  let checkpointId: string | null = null;
+  let state: string | null = null;
+  const messageSegments: string[] = [];
+
+  for (const segment of rest) {
+    const separatorIndex = segment.indexOf("=");
+    if (separatorIndex < 0) {
+      messageSegments.push(segment);
+      continue;
+    }
+
+    const key = segment.slice(0, separatorIndex).trim().toLowerCase();
+    const value = segment.slice(separatorIndex + 1).trim();
+    if (!value) {
+      continue;
+    }
+
+    if (key === "role") {
+      role = value;
+      continue;
+    }
+    if (key === "id" || key === "checkpoint") {
+      checkpointId = value;
+      continue;
+    }
+    if (key === "state") {
+      state = value;
+      continue;
+    }
+
+    messageSegments.push(`${key}: ${value}`);
+  }
+
+  return {
+    timestamp,
+    role,
+    checkpointId,
+    state,
+    message: messageSegments.length > 0 ? messageSegments.join(" • ") : null,
+  };
+}
+
+function parseCheckpointLines(checkpointsMarkdown: string): ParsedCheckpointLine[] {
+  const normalizedMarkdown = checkpointsMarkdown.replace(/\\n/g, "\n");
+  const lines = normalizedMarkdown
+    .split("\n")
+    .map((line) => normalizeMarkdownLine(line))
+    .filter((line) => line.length > 0 && !/^plan checkpoints:/i.test(line));
+
+  if (lines.length === 0) {
+    return [];
+  }
+
+  return lines.map((line) => {
+    if (/^no checkpoints recorded yet\.?$/i.test(line)) {
+      return { type: "text", text: "No checkpoints recorded yet." } as const;
+    }
+
+    const parsedEntry = parseCheckpointEntry(line);
+    if (!parsedEntry) {
+      return { type: "text", text: line } as const;
+    }
+
+    return { type: "entry", entry: parsedEntry } as const;
+  });
+}
+
 export function PlansPage() {
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const { plansQuery, planDetailQuery, effectiveSelectedSlug } = useOpenSpecPlans(selectedSlug);
@@ -104,6 +215,8 @@ export function PlansPage() {
   const selectedEntryDisplayStatus = selectedEntry
     ? getDisplayStatus(selectedEntry.status, selectedEntry.overallProgress)
     : null;
+  const summaryLines = planDetail ? parseSummaryLines(planDetail.summaryMarkdown) : [];
+  const checkpointLines = planDetail ? parseCheckpointLines(planDetail.checkpointsMarkdown) : [];
 
   return (
     <section className="space-y-6">
@@ -278,16 +391,91 @@ export function PlansPage() {
 
                     <div className="space-y-2">
                       <p className="text-xs uppercase tracking-wide text-muted-foreground">Summary</p>
-                      <pre className="max-h-56 overflow-auto whitespace-pre-wrap rounded-lg border border-border/60 bg-background/30 p-3 text-xs leading-relaxed">
-                        {planDetail.summaryMarkdown}
-                      </pre>
+                      <div
+                        className="max-h-56 space-y-2 overflow-auto rounded-lg border border-border/60 bg-background/30 p-3"
+                        data-testid="plan-summary-content"
+                      >
+                        {summaryLines.length > 0 ? (
+                          summaryLines.map((line, index) => {
+                            const keyValueMatch = line.match(/^([^:]{1,40}):\s*(.+)$/);
+                            if (!keyValueMatch) {
+                              return (
+                                <p key={`${index}-${line}`} className="text-xs leading-relaxed text-foreground/90">
+                                  {line}
+                                </p>
+                              );
+                            }
+
+                            return (
+                              <div
+                                key={`${index}-${line}`}
+                                className="rounded-md border border-border/50 bg-background/50 px-2.5 py-1.5"
+                              >
+                                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                                  {keyValueMatch[1]}
+                                </p>
+                                <p className="text-xs leading-relaxed text-foreground">{keyValueMatch[2]}</p>
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <p className="text-xs text-muted-foreground">No summary details available.</p>
+                        )}
+                      </div>
                     </div>
 
                     <div className="space-y-2">
                       <p className="text-xs uppercase tracking-wide text-muted-foreground">Checkpoints log</p>
-                      <pre className="max-h-56 overflow-auto whitespace-pre-wrap rounded-lg border border-border/60 bg-background/30 p-3 text-xs leading-relaxed">
-                        {planDetail.checkpointsMarkdown}
-                      </pre>
+                      <div
+                        className="max-h-56 space-y-2 overflow-auto rounded-lg border border-border/60 bg-background/30 p-3"
+                        data-testid="plan-checkpoints-content"
+                      >
+                        {checkpointLines.length > 0 ? (
+                          checkpointLines.map((line, index) => {
+                            if (line.type === "text") {
+                              return (
+                                <p key={`${index}-${line.text}`} className="text-xs leading-relaxed text-muted-foreground">
+                                  {line.text}
+                                </p>
+                              );
+                            }
+
+                            return (
+                              <div
+                                key={`${line.entry.timestamp}-${index}`}
+                                className="rounded-md border border-border/50 bg-background/50 p-2.5"
+                                data-testid={`plan-checkpoint-entry-${index}`}
+                              >
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <p className="text-[11px] font-medium text-muted-foreground">
+                                    {formatCheckpointTimestamp(line.entry.timestamp)}
+                                  </p>
+                                  {line.entry.role ? (
+                                    <Badge variant="outline" className="text-[10px]">
+                                      {formatRoleLabel(line.entry.role)}
+                                    </Badge>
+                                  ) : null}
+                                  {line.entry.checkpointId ? (
+                                    <Badge variant="outline" className="text-[10px]">
+                                      {line.entry.checkpointId}
+                                    </Badge>
+                                  ) : null}
+                                  {line.entry.state ? (
+                                    <Badge variant="outline" className="text-[10px] capitalize">
+                                      {formatCheckpointState(line.entry.state)}
+                                    </Badge>
+                                  ) : null}
+                                </div>
+                                <p className="mt-1 text-xs leading-relaxed text-foreground/90">
+                                  {line.entry.message ?? "Checkpoint event recorded."}
+                                </p>
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <p className="text-xs text-muted-foreground">No checkpoint log entries yet.</p>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ) : null}

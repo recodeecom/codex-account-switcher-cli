@@ -16,6 +16,10 @@ describe("plans flow integration", () => {
     expect(await screen.findByTestId("plan-progress-percent")).toHaveTextContent("43%");
     expect(await screen.findByTestId("plan-current-checkpoint")).toHaveTextContent("Executor · E1");
     expect(screen.getByText("Designer")).toBeInTheDocument();
+    expect(await screen.findByTestId("plan-summary-content")).toHaveTextContent("Mode");
+    expect(screen.getByTestId("plan-summary-content")).toHaveTextContent("ralplan");
+    expect(await screen.findByTestId("plan-checkpoints-content")).toHaveTextContent("Executor");
+    expect(screen.getByTestId("plan-checkpoints-content")).toHaveTextContent("Implementing plans progress UI");
   });
 
   it("shows fallback when no current checkpoint exists", async () => {
@@ -121,5 +125,6 @@ describe("plans flow integration", () => {
 
     expect(await screen.findByRole("heading", { name: "Plans" })).toBeInTheDocument();
     expect(await screen.findByText("No checkpoint activity recorded yet.")).toBeInTheDocument();
+    expect(await screen.findByText("No checkpoint log entries yet.")).toBeInTheDocument();
   });
 });

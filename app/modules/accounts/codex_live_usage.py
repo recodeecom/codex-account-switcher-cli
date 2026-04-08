@@ -54,6 +54,15 @@ _TASK_PREVIEW_LEADING_LIVE_USAGE_BLOCK_RE = re.compile(
 _TASK_PREVIEW_LEADING_LIVE_USAGE_MAPPING_BLOCK_RE = re.compile(
     r"(?is)^\s*<live_usage_mapping\b[^>]*>.*?</live_usage_mapping>\s*"
 )
+_TASK_PREVIEW_LEADING_SKILL_BLOCK_RE = re.compile(
+    r"(?is)^\s*<skill\b[^>]*>.*?</skill>\s*"
+)
+_TASK_PREVIEW_LEADING_HOOK_PROMPT_BLOCK_RE = re.compile(
+    r"(?is)^\s*<hook_prompt\b[^>]*>.*?</hook_prompt>\s*"
+)
+_TASK_PREVIEW_LEADING_SUBAGENT_NOTIFICATION_BLOCK_RE = re.compile(
+    r"(?is)^\s*<subagent_notification\b[^>]*>.*?</subagent_notification>\s*"
+)
 _TASK_PREVIEW_BOOTSTRAP_AGENTS_HEADER_RE = re.compile(
     r"(?is)^\s*#\s*agents\.md\s+instructions\s+for[^\n]*\n?"
 )
@@ -2787,7 +2796,7 @@ def _sanitize_codex_task_preview(text: str) -> str | None:
     redacted = _TASK_PREVIEW_EMAIL_RE.sub("[redacted-email]", normalized)
     redacted = _TASK_PREVIEW_BEARER_RE.sub("bearer [redacted]", redacted)
     redacted = _TASK_PREVIEW_SECRET_ASSIGNMENT_RE.sub(r"\1=[redacted]", redacted)
-    trimmed = _strip_leading_live_usage_payload(redacted).strip()
+    trimmed = _strip_leading_control_payload(redacted).strip()
     trimmed = _strip_trailing_live_usage_payload(trimmed).strip()
     if not trimmed:
         return None
@@ -2804,7 +2813,7 @@ def _sanitize_codex_task_preview(text: str) -> str | None:
     return trimmed[: _TASK_PREVIEW_SOFT_MAX_LENGTH - 1].rstrip() + "…"
 
 
-def _strip_leading_live_usage_payload(text: str) -> str:
+def _strip_leading_control_payload(text: str) -> str:
     normalized = text.strip()
     previous = ""
     while normalized and normalized != previous:
@@ -2819,6 +2828,21 @@ def _strip_leading_live_usage_payload(text: str) -> str:
             normalized,
             count=1,
         ).strip()
+        normalized = _TASK_PREVIEW_LEADING_SKILL_BLOCK_RE.sub(
+            "",
+            normalized,
+            count=1,
+        ).strip()
+        normalized = _TASK_PREVIEW_LEADING_HOOK_PROMPT_BLOCK_RE.sub(
+            "",
+            normalized,
+            count=1,
+        ).strip()
+        normalized = _TASK_PREVIEW_LEADING_SUBAGENT_NOTIFICATION_BLOCK_RE.sub(
+            "",
+            normalized,
+            count=1,
+        ).strip()
     return normalized
 
 
@@ -2829,6 +2853,9 @@ def _strip_trailing_live_usage_payload(text: str) -> str:
         for index in (
             lowered.find("<live_usage"),
             lowered.find("<live_usage_mapping"),
+            lowered.find("<skill"),
+            lowered.find("<hook_prompt"),
+            lowered.find("<subagent_notification"),
         )
         if index >= 0
     ]

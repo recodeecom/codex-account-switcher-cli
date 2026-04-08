@@ -16,6 +16,7 @@ import { RecentRequestsTable } from "@/features/dashboard/components/recent-requ
 import { mergeRequestLogUsageSummaryWithLiveFallback } from "@/features/dashboard/request-log-usage-fallback";
 import { UsageDonuts } from "@/features/dashboard/components/usage-donuts";
 import { useDashboard } from "@/features/dashboard/hooks/use-dashboard";
+import { useDashboardLiveSocket } from "@/features/dashboard/hooks/use-dashboard-live-socket";
 import { useRequestLogs } from "@/features/dashboard/hooks/use-request-logs";
 import { buildDashboardView } from "@/features/dashboard/utils";
 import type { AccountSummary } from "@/features/dashboard/schemas";
@@ -31,7 +32,8 @@ export function DashboardPage() {
   const queryClient = useQueryClient();
   const [manualRefreshInFlight, setManualRefreshInFlight] = useState(false);
   const isDark = useThemeStore((s) => s.theme === "dark");
-  const dashboardQuery = useDashboard();
+  const dashboardLiveSocketConnected = useDashboardLiveSocket();
+  const dashboardQuery = useDashboard({ websocketConnected: dashboardLiveSocketConnected });
   const { filters, logsQuery, optionsQuery, usageSummaryQuery, updateFilters } =
     useRequestLogs();
   const {

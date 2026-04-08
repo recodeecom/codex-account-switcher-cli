@@ -32,6 +32,8 @@ const WEEKLY_DEPLETED_SORT_THRESHOLD_PERCENT = 5;
 const QUOTA_SORT_BUCKET_PERCENT = 5;
 const ACCOUNT_CARDS_CLOCK_TICK_MS = 5_000;
 const EMAIL_AUTOCORRECT_MAX_DISTANCE = 3;
+const ACCOUNT_GRID_CLASSNAME =
+  "grid auto-rows-fr items-stretch gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,21.5rem),1fr))] [&_.card-hover]:h-full";
 const STATUS_ONLY_TASK_PREVIEW_RE =
   /^(?:task\s+)?(?:is\s+)?(?:already\s+)?(?:done|complete(?:d)?|finished)(?:\s+already)?[.!]?$/i;
 
@@ -717,14 +719,14 @@ export function AccountCards({
   }
 
   const renderGrid = (items: AccountSummary[], keyPrefix: string) => (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-2 2xl:grid-cols-3">
+    <div className={ACCOUNT_GRID_CLASSNAME}>
       {items.map((account, index) => (
         <div
           key={`${keyPrefix}-${account.accountId}`}
           className={
             keyPrefix === "working"
-              ? "min-w-0 animate-working-account-enter"
-              : "min-w-0 animate-fade-in-up"
+              ? "h-full min-w-0 animate-working-account-enter"
+              : "h-full min-w-0 animate-fade-in-up"
           }
           style={
             keyPrefix === "working"
@@ -830,8 +832,8 @@ export function AccountCards({
       ) : null}
 
       {groupedAccounts.remaining.length > 0 ? (
-        <section className="space-y-2.5">
-          <div className="flex flex-wrap items-center justify-between gap-2.5 px-0.5">
+        <section className="space-y-3 rounded-2xl border border-border/60 bg-background/35 p-3.5 md:p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2.5">
             <div className="flex min-w-0 items-center gap-2.5">
               <h3 className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
                 Other accounts

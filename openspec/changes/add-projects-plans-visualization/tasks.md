@@ -11,6 +11,7 @@
 - [x] 2.3 Add frontend integration tests for Plans navigation and visualization
 - [x] 2.4 Add frontend assertions for progress bar percentage and “where left off” checkpoint card states
 - [x] 2.5 Update frontend MSW handler coverage for new plans endpoints/fields
+- [x] 2.6 Add frontend assertions for user-friendly summary/checkpoint log rendering
 
 ## 3. Implementation
 
@@ -19,3 +20,4 @@
 - [x] 3.3 Implement frontend nav submenu + `/projects/plans` route + Plans page feature
 - [x] 3.4 Update frontend API/hook/schemas for expanded plans contract
 - [x] 3.5 Render progress bar + current checkpoint summary UI while preserving existing summary/checkpoints markdown panes
+- [x] 3.6 Improve summary/checkpoints presentation from raw markdown blocks to scannable UI cards with fallback text handling

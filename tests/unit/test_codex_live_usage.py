@@ -3192,6 +3192,122 @@ def test_read_local_codex_task_previews_by_session_id_strips_trailing_live_usage
     assert previews[session_id].text == "task should map per session in dashboard card"
 
 
+def test_read_local_codex_task_previews_by_session_id_ignores_control_wrapper_only_payloads(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    sessions_root = tmp_path / "sessions"
+    monkeypatch.setenv("CODEX_SESSIONS_DIR", str(sessions_root))
+    monkeypatch.setenv("CODEX_AUTH_RUNTIME_ROOT", str(tmp_path / "runtimes"))
+
+    day_dir = _sessions_day_dir(sessions_root, now)
+    session_id = "019d5a6a-4665-7873-9714-9efb95b24283"
+    rollout_path = day_dir / f"rollout-2026-04-04T21-33-36-{session_id}.jsonl"
+
+    payload = {
+        "timestamp": (now - timedelta(seconds=2)).isoformat().replace("+00:00", "Z"),
+        "type": "response_item",
+        "payload": {
+            "type": "message",
+            "role": "user",
+            "content": [
+                {
+                    "type": "input_text",
+                    "text": '<hook_prompt hook_run_id="stop:4">OMX Ralph is still active</hook_prompt>',
+                }
+            ],
+        },
+    }
+
+    rollout_path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+    ts = now.timestamp()
+    os.utime(rollout_path, (ts, ts))
+
+    previews = read_local_codex_task_previews_by_session_id(now=now)
+    assert session_id not in previews
+
+
+def test_read_local_codex_task_previews_by_session_id_strips_leading_control_wrapper_and_keeps_task_text(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    sessions_root = tmp_path / "sessions"
+    monkeypatch.setenv("CODEX_SESSIONS_DIR", str(sessions_root))
+    monkeypatch.setenv("CODEX_AUTH_RUNTIME_ROOT", str(tmp_path / "runtimes"))
+
+    day_dir = _sessions_day_dir(sessions_root, now)
+    session_id = "019d5a6a-4665-7873-9714-9efb95b24284"
+    rollout_path = day_dir / f"rollout-2026-04-04T21-33-37-{session_id}.jsonl"
+
+    payload = {
+        "timestamp": (now - timedelta(seconds=2)).isoformat().replace("+00:00", "Z"),
+        "type": "response_item",
+        "payload": {
+            "type": "message",
+            "role": "user",
+            "content": [
+                {
+                    "type": "input_text",
+                    "text": (
+                        "<subagent_notification>{\"status\":\"completed\"}</subagent_notification> "
+                        "please improve websocket updates for live usage"
+                    ),
+                }
+            ],
+        },
+    }
+
+    rollout_path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+    ts = now.timestamp()
+    os.utime(rollout_path, (ts, ts))
+
+    previews = read_local_codex_task_previews_by_session_id(now=now)
+    assert session_id in previews
+    assert previews[session_id].text == "please improve websocket updates for live usage"
+
+
+def test_read_local_codex_task_previews_by_session_id_strips_trailing_control_wrapper_payload(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    sessions_root = tmp_path / "sessions"
+    monkeypatch.setenv("CODEX_SESSIONS_DIR", str(sessions_root))
+    monkeypatch.setenv("CODEX_AUTH_RUNTIME_ROOT", str(tmp_path / "runtimes"))
+
+    day_dir = _sessions_day_dir(sessions_root, now)
+    session_id = "019d5a6a-4665-7873-9714-9efb95b24285"
+    rollout_path = day_dir / f"rollout-2026-04-04T21-33-38-{session_id}.jsonl"
+
+    payload = {
+        "timestamp": (now - timedelta(seconds=2)).isoformat().replace("+00:00", "Z"),
+        "type": "response_item",
+        "payload": {
+            "type": "message",
+            "role": "user",
+            "content": [
+                {
+                    "type": "input_text",
+                    "text": (
+                        "keep live usage synced per session "
+                        "<skill><name>plan</name><path>/tmp/skill</path></skill>"
+                    ),
+                }
+            ],
+        },
+    }
+
+    rollout_path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+    ts = now.timestamp()
+    os.utime(rollout_path, (ts, ts))
+
+    previews = read_local_codex_task_previews_by_session_id(now=now)
+    assert session_id in previews
+    assert previews[session_id].text == "keep live usage synced per session"
+
+
 def test_read_local_codex_task_previews_by_session_id_keeps_latest_task_when_warning_follows(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
