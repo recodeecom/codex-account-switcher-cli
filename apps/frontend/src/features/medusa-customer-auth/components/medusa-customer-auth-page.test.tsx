@@ -51,6 +51,9 @@ describe("MedusaCustomerAuthPage", () => {
 
     const tabs = screen.getByTestId("medusa-auth-tabs");
     expect(tabs).not.toHaveClass("bg-muted");
+    expect(screen.getByRole("tabpanel")).toHaveClass("pt-5");
+    expect(screen.getByRole("tab", { name: "Login" })).toHaveClass("after:bg-muted-foreground/45");
+    expect(screen.getByRole("button", { name: "Sign in" })).toHaveClass("bg-foreground");
 
     await user.click(screen.getByRole("tab", { name: "Register" }));
     expect(screen.getByLabelText("First name")).toBeInTheDocument();

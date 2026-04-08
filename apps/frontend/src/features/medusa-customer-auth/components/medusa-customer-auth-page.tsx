@@ -100,7 +100,7 @@ export function MedusaCustomerAuthPage({
   return (
     <div className="flex min-h-screen items-center justify-center px-6 py-10">
       <div className="w-full max-w-md animate-fade-in-up">
-        <div className="mb-8 flex flex-col items-center gap-3 text-center">
+        <div className="mb-10 flex flex-col items-center gap-4 text-center">
           <div
             data-testid="medusa-auth-logo-shell"
             className="flex items-center justify-center"
@@ -111,13 +111,13 @@ export function MedusaCustomerAuthPage({
             <h1 className="text-xl font-semibold tracking-tight">
               recodee.com
             </h1>
-            <p className="mt-0.5 text-sm text-muted-foreground">
+            <p className="mt-1 text-sm text-muted-foreground">
               Dashboard access via Medusa backend account
             </p>
           </div>
         </div>
 
-        <div data-testid="medusa-auth-surface" className="space-y-5">
+        <div data-testid="medusa-auth-surface" className="space-y-6">
           <Tabs
             value={activeTab}
             onValueChange={(value) => {
@@ -131,15 +131,21 @@ export function MedusaCustomerAuthPage({
               variant="line"
               className="grid w-full grid-cols-2 border-b border-border p-0"
             >
-              <TabsTrigger value="login" className="rounded-none">
+              <TabsTrigger
+                value="login"
+                className="rounded-none px-0 pb-3 text-base text-muted-foreground/85 after:bottom-[-1px] after:h-px after:bg-muted-foreground/45 data-[state=active]:after:bg-muted-foreground/75"
+              >
                 Login
               </TabsTrigger>
-              <TabsTrigger value="register" className="rounded-none">
+              <TabsTrigger
+                value="register"
+                className="rounded-none px-0 pb-3 text-base text-muted-foreground/85 after:bottom-[-1px] after:h-px after:bg-muted-foreground/45 data-[state=active]:after:bg-muted-foreground/75"
+              >
                 Register
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="login" className="mt-0 pt-1">
+            <TabsContent value="login" className="mt-0 pt-5">
               <Form {...loginForm}>
                 <form
                   className="space-y-4"
@@ -197,7 +203,11 @@ export function MedusaCustomerAuthPage({
                     <AlertMessage variant="error">{error}</AlertMessage>
                   ) : null}
 
-                  <Button type="submit" className="w-full" disabled={loading}>
+                  <Button
+                    type="submit"
+                    className="w-full border border-border bg-foreground text-background hover:bg-foreground/90 dark:bg-secondary dark:text-secondary-foreground dark:hover:bg-secondary/90"
+                    disabled={loading}
+                  >
                     {loading ? <Spinner size="sm" className="mr-2" /> : null}
                     Sign in
                   </Button>
@@ -205,7 +215,7 @@ export function MedusaCustomerAuthPage({
               </Form>
             </TabsContent>
 
-            <TabsContent value="register" className="mt-0 pt-1">
+            <TabsContent value="register" className="mt-0 pt-5">
               <Form {...registerForm}>
                 <form
                   className="space-y-4"
@@ -327,7 +337,11 @@ export function MedusaCustomerAuthPage({
                     <AlertMessage variant="error">{error}</AlertMessage>
                   ) : null}
 
-                  <Button type="submit" className="w-full" disabled={loading}>
+                  <Button
+                    type="submit"
+                    className="w-full border border-border bg-foreground text-background hover:bg-foreground/90 dark:bg-secondary dark:text-secondary-foreground dark:hover:bg-secondary/90"
+                    disabled={loading}
+                  >
                     {loading ? <Spinner size="sm" className="mr-2" /> : null}
                     Create account
                   </Button>
