@@ -134,7 +134,10 @@ function getPlanSnapshotDetails(
 }
 
 function isCodexOnlyPlanType(planType: string): boolean {
-  const normalized = planType.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const normalized = planType
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
   return normalized === "self_serve_business_usage_based";
 }
 
@@ -181,7 +184,12 @@ function CpuArchitectureBackdrop({
       fill="none"
       aria-hidden
     >
-      <g stroke="currentColor" strokeWidth="0.7" strokeLinecap="round" strokeLinejoin="round">
+      <g
+        stroke="currentColor"
+        strokeWidth="0.7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
         <path d="M 0 50 H 56" />
         <path d="M 200 50 H 144" />
         <path d="M 88 0 V 28" />
@@ -226,7 +234,7 @@ function CpuArchitectureBackdrop({
         letterSpacing="0.12em"
         fill="#d6dae2"
       >
-        CPU
+        OMX
       </text>
 
       <defs>
@@ -250,23 +258,20 @@ const OMX_CLI_STATE_STYLES: Record<
 > = {
   thinking: {
     label: "Thinking",
-    badgeClassName:
-      "border-indigo-300/60 bg-indigo-500/26 text-indigo-50",
+    badgeClassName: "border-indigo-300/60 bg-indigo-500/26 text-indigo-50",
     glowClassName: "from-indigo-500/12 via-cyan-500/14 to-sky-500/12",
     pulseClassName: "bg-cyan-200 motion-safe:animate-pulse",
   },
   waiting: {
     label: "Waiting",
-    badgeClassName:
-      "border-cyan-300/55 bg-cyan-500/24 text-cyan-50",
+    badgeClassName: "border-cyan-300/55 bg-cyan-500/24 text-cyan-50",
     glowClassName: "from-cyan-500/10 via-sky-500/12 to-cyan-500/10",
     pulseClassName:
       "bg-cyan-200 motion-safe:animate-ping motion-safe:[animation-duration:1.4s]",
   },
   finished: {
     label: "Finished",
-    badgeClassName:
-      "border-emerald-300/55 bg-emerald-500/24 text-emerald-50",
+    badgeClassName: "border-emerald-300/55 bg-emerald-500/24 text-emerald-50",
     glowClassName: "from-emerald-500/12 via-teal-500/12 to-emerald-500/12",
     pulseClassName: "bg-emerald-200",
   },
@@ -288,7 +293,9 @@ function hasRalplanTaskMarker(taskPreview: string | null | undefined): boolean {
   return RALPLAN_TASK_MARKER_PATTERN.test(normalized);
 }
 
-function isUsageLimitTaskPreview(taskPreview: string | null | undefined): boolean {
+function isUsageLimitTaskPreview(
+  taskPreview: string | null | undefined,
+): boolean {
   const normalized = taskPreview?.trim();
   if (!normalized) {
     return false;
@@ -317,7 +324,9 @@ function UsageLimitTaskPreviewText({ text }: { text: string }) {
   );
 }
 
-function resolveOmxPlanningActiveNodeKey(taskPreview: string): OmxPlanningNodeKey {
+function resolveOmxPlanningActiveNodeKey(
+  taskPreview: string,
+): OmxPlanningNodeKey {
   const normalized = taskPreview.trim().toLowerCase();
   if (!normalized) {
     return "planner";
@@ -342,7 +351,9 @@ function resolveOmxPlanningActiveNodeKey(taskPreview: string): OmxPlanningNodeKe
     return "engineer";
   }
   if (
-    /\bwriter\b|\bdocs?\b|\bdocument(?:ation)?\b|\bnotes?\b|\bcopy\b/.test(normalized)
+    /\bwriter\b|\bdocs?\b|\bdocument(?:ation)?\b|\bnotes?\b|\bcopy\b/.test(
+      normalized,
+    )
   ) {
     return "writer";
   }
@@ -511,7 +522,10 @@ function CodexActiveAgentCard({
       data-testid="codex-active-agent-card"
       className="relative mx-auto w-full overflow-hidden rounded-xl border border-cyan-300/30 bg-[#060A13] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_10px_26px_rgba(2,6,23,0.42)]"
     >
-      <div className="pointer-events-none absolute inset-0 opacity-55" aria-hidden>
+      <div
+        className="pointer-events-none absolute inset-0 opacity-55"
+        aria-hidden
+      >
         <CpuArchitectureBackdrop
           className="text-cyan-100/28"
           dataTestId="cpu-architecture-backdrop-codex-active"
@@ -960,9 +974,7 @@ function QuotaBar({
             <div className="flex items-center gap-1.5 text-[11px] font-medium text-cyan-700 dark:text-cyan-300">
               <Activity className="h-3 w-3" />
               <span>
-                {usageLimitHit
-                  ? "Usage limit hit"
-                  : "Telemetry pending"}
+                {usageLimitHit ? "Usage limit hit" : "Telemetry pending"}
               </span>
             </div>
           ) : null
@@ -1214,7 +1226,9 @@ function buildSessionTaskLogLines({
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
-  const scopedLines = debugLines.filter((line) => line.includes(row.sessionKey));
+  const scopedLines = debugLines.filter((line) =>
+    line.includes(row.sessionKey),
+  );
   if (scopedLines.length > 0) {
     lines.push(...scopedLines.slice(0, 16));
     return lines;
@@ -1323,9 +1337,11 @@ export function AccountCard(props: AccountCardProps) {
     "secondary",
   );
   const hasLivePrimaryQuotaTelemetrySource =
-    mergedPrimaryRemainingPercent != null || deferredPrimaryQuotaFallback != null;
+    mergedPrimaryRemainingPercent != null ||
+    deferredPrimaryQuotaFallback != null;
   const hasLiveSecondaryQuotaTelemetrySource =
-    mergedSecondaryRemainingPercent != null || deferredSecondaryQuotaFallback != null;
+    mergedSecondaryRemainingPercent != null ||
+    deferredSecondaryQuotaFallback != null;
   const freshDebugRawSampleCount = getFreshDebugRawSampleCount(account, nowMs);
   const blurred = usePrivacyStore((s) => s.blurred);
   const isActiveSnapshot = account.codexAuth?.isActiveSnapshot ?? false;
@@ -1564,7 +1580,9 @@ export function AccountCard(props: AccountCardProps) {
     ? remainingTokensValue
     : (tokensUsed ?? account.requestUsage?.totalTokens ?? 0);
   const hasFreshQuotaTelemetryHint =
-    freshDebugRawSampleCount > 0 || primaryTelemetryFresh || secondaryTelemetryFresh;
+    freshDebugRawSampleCount > 0 ||
+    primaryTelemetryFresh ||
+    secondaryTelemetryFresh;
   const tokenMetricValue = hasExplicitUnknownTokensRemaining
     ? hasLiveSession && hasFreshQuotaTelemetryHint
       ? UNKNOWN_TOKENS_SYNC_LABEL
@@ -1684,7 +1702,8 @@ export function AccountCard(props: AccountCardProps) {
   const isRalplanTaskContext =
     hasRalplanTaskMarker(currentNonWaitingTaskPreview) ||
     hasRalplanSessionTaskContext ||
-    (!currentNonWaitingTaskPreview && hasRalplanTaskMarker(codexLastTaskPreview));
+    (!currentNonWaitingTaskPreview &&
+      hasRalplanTaskMarker(codexLastTaskPreview));
   const newestPromptForAgentPanel =
     selectedTaskContextPreview ??
     codexCurrentTaskPreview ??
@@ -1702,20 +1721,25 @@ export function AccountCard(props: AccountCardProps) {
   const promptDrivenOmxPlanningActiveNodeKey = resolveOmxPlanningActiveNodeKey(
     newestPromptForAgentPanel,
   );
-  const hideTaskContainerChrome = hideCurrentTaskPreview && Boolean(taskPanelAddon);
+  const hideTaskContainerChrome =
+    hideCurrentTaskPreview && Boolean(taskPanelAddon);
   const sessionTaskRows = useMemo(() => {
-    const rows: SessionTaskRow[] = sessionTaskPreviews.map((preview, index) => ({
-      ...preview,
-      ordinal: index + 1,
-      synthetic: false,
-    }));
+    const rows: SessionTaskRow[] = sessionTaskPreviews.map(
+      (preview, index) => ({
+        ...preview,
+        ordinal: index + 1,
+        synthetic: false,
+      }),
+    );
     const targetCount = Math.max(codexLiveSessionCount, rows.length);
     const fallbackCurrentTaskPreview = codexCurrentTaskPreview?.trim() || null;
     const fallbackLastTaskPreview = codexLastTaskPreview?.trim() || null;
     const fallbackSessionTaskPreview =
-      fallbackCurrentTaskPreview && !isWaitingTaskPreview(fallbackCurrentTaskPreview)
+      fallbackCurrentTaskPreview &&
+      !isWaitingTaskPreview(fallbackCurrentTaskPreview)
         ? fallbackCurrentTaskPreview
-        : fallbackLastTaskPreview && !isWaitingTaskPreview(fallbackLastTaskPreview)
+        : fallbackLastTaskPreview &&
+            !isWaitingTaskPreview(fallbackLastTaskPreview)
           ? fallbackLastTaskPreview
           : null;
     if (rows.length === 0 && targetCount > 0 && fallbackSessionTaskPreview) {
@@ -1766,7 +1790,10 @@ export function AccountCard(props: AccountCardProps) {
       if (resolveSessionTaskState(row.taskPreview) !== "thinking") {
         continue;
       }
-      if (row.taskUpdatedAt == null || !Number.isFinite(Date.parse(row.taskUpdatedAt))) {
+      if (
+        row.taskUpdatedAt == null ||
+        !Number.isFinite(Date.parse(row.taskUpdatedAt))
+      ) {
         continue;
       }
       const taskTimestamp = Date.parse(row.taskUpdatedAt);
@@ -1862,13 +1889,15 @@ export function AccountCard(props: AccountCardProps) {
     blurred && isLikelyEmailValue(lockedAccountIdentity);
   const tokenCardPrimaryLine = tokenMetricValue;
   const tokenCardSecondaryLine = String(codexLiveSessionCount);
-  const tokenMetricLooksNumeric = /^[\d,.]+(?:[kmbt])?$/i.test(tokenMetricValue);
+  const tokenMetricLooksNumeric = /^[\d,.]+(?:[kmbt])?$/i.test(
+    tokenMetricValue,
+  );
   const accessibleTokenMetricValue =
     tokenMetricValue === "--"
       ? "unknown"
       : tokenMetricLooksNumeric && tokenMetricValue !== "0"
-      ? `${tokenMetricValue} tokens`
-      : tokenMetricValue;
+        ? `${tokenMetricValue} tokens`
+        : tokenMetricValue;
   const accessibleCodexSessionValue =
     codexLiveSessionCount <= 1
       ? String(codexLiveSessionCount)
@@ -1902,100 +1931,101 @@ export function AccountCard(props: AccountCardProps) {
             showLimitTint && "border-red-500/40",
           )}
         >
-            <div className="relative">
-              <div className="mb-2 flex items-start justify-between gap-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-200/90">
-                <span className="inline-flex min-w-0 flex-wrap items-center gap-1.5 text-zinc-100">
-                  <img
-                    src="/openai.svg"
-                    alt=""
-                    className="h-3.5 w-3.5 opacity-80 brightness-0 invert"
-                    aria-hidden
-                  />
-                  <span>OpenAI</span>
-                  <span
-                    className="shrink-0 text-[9px] tracking-[0.18em] text-zinc-300/80"
-                    data-testid="token-card-label"
-                  >
-                    {tokenCardLiveLabel}
-                  </span>
-                </span>
-
-                <div
-                  className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 pl-2"
-                  data-testid="token-card-badge-row"
+          <div className="relative">
+            <div className="mb-2 flex items-start justify-between gap-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-200/90">
+              <span className="inline-flex min-w-0 flex-wrap items-center gap-1.5 text-zinc-100">
+                <img
+                  src="/openai.svg"
+                  alt=""
+                  className="h-3.5 w-3.5 opacity-80 brightness-0 invert"
+                  aria-hidden
+                />
+                <span>OpenAI</span>
+                <span
+                  className="shrink-0 text-[9px] tracking-[0.18em] text-zinc-300/80"
+                  data-testid="token-card-label"
                 >
-                  {!hideLiveTaskAndStatusBadges ? (
-                    <Badge variant="outline" className={tokenCardStatusClass}>
-                      <span
-                        className="h-1.5 w-1.5 rounded-full bg-current"
-                        aria-hidden
-                      />
-                      {STATUS_LABELS[status] ?? status}
-                    </Badge>
-                  ) : null}
-                  {isOmxBoosted ? (
-                    <Badge
-                      variant="outline"
-                      className="gap-1.5 border-zinc-500/40 bg-zinc-950/80 text-zinc-100"
-                    >
-                      <span
-                        className="h-1.5 w-1.5 rounded-full bg-current"
-                        aria-hidden
-                      />
-                      OMX
-                    </Badge>
-                  ) : null}
-                  {showUsageLimitHitBadge ? (
-                    <Badge
-                      variant="outline"
-                      className="gap-1.5 border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-300"
-                    >
-                      <span
-                        className="h-1.5 w-1.5 rounded-full bg-current"
-                        aria-hidden
-                      />
-                      Usage limit hit
-                      {usageLimitHit && usageLimitHitCountdownLabel ? (
-                        <span className="font-medium text-red-700 dark:text-red-300">
-                          · leaves in {usageLimitHitCountdownLabel}
-                        </span>
-                      ) : null}
-                    </Badge>
-                  ) : !hideLiveTaskAndStatusBadges && showWorkingIndicator ? (
-                    <WorkingNowPill />
-                  ) : !hideLiveTaskAndStatusBadges && showWaitingForTaskIndicator ? (
-                    <WaitingForTaskPill label={waitingTaskPillLabel} />
-                  ) : null}
-                  {showWeeklyUsageLimitDetailBadge ? (
-                    <Badge
-                      variant="outline"
-                      className="gap-1.5 border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-300"
-                    >
-                      <span
-                        className="h-1.5 w-1.5 rounded-full bg-current"
-                        aria-hidden
-                      />
-                      Weekly usage limit hit
-                    </Badge>
-                  ) : null}
-                  {hasExpiredRefreshToken ? (
-                    <Badge
-                      variant="outline"
-                      className="gap-1.5 border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300"
-                      title={
-                        account.deactivationReason ??
-                        "Re-login is required to refresh the account token."
-                      }
-                    >
-                      <span
-                        className="h-1.5 w-1.5 rounded-full bg-current"
-                        aria-hidden
-                      />
-                      Expired refresh token
-                    </Badge>
-                  ) : null}
-                </div>
+                  {tokenCardLiveLabel}
+                </span>
+              </span>
+
+              <div
+                className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 pl-2"
+                data-testid="token-card-badge-row"
+              >
+                {!hideLiveTaskAndStatusBadges ? (
+                  <Badge variant="outline" className={tokenCardStatusClass}>
+                    <span
+                      className="h-1.5 w-1.5 rounded-full bg-current"
+                      aria-hidden
+                    />
+                    {STATUS_LABELS[status] ?? status}
+                  </Badge>
+                ) : null}
+                {isOmxBoosted ? (
+                  <Badge
+                    variant="outline"
+                    className="gap-1.5 border-zinc-500/40 bg-zinc-950/80 text-zinc-100"
+                  >
+                    <span
+                      className="h-1.5 w-1.5 rounded-full bg-current"
+                      aria-hidden
+                    />
+                    OMX
+                  </Badge>
+                ) : null}
+                {showUsageLimitHitBadge ? (
+                  <Badge
+                    variant="outline"
+                    className="gap-1.5 border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-300"
+                  >
+                    <span
+                      className="h-1.5 w-1.5 rounded-full bg-current"
+                      aria-hidden
+                    />
+                    Usage limit hit
+                    {usageLimitHit && usageLimitHitCountdownLabel ? (
+                      <span className="font-medium text-red-700 dark:text-red-300">
+                        · leaves in {usageLimitHitCountdownLabel}
+                      </span>
+                    ) : null}
+                  </Badge>
+                ) : !hideLiveTaskAndStatusBadges && showWorkingIndicator ? (
+                  <WorkingNowPill />
+                ) : !hideLiveTaskAndStatusBadges &&
+                  showWaitingForTaskIndicator ? (
+                  <WaitingForTaskPill label={waitingTaskPillLabel} />
+                ) : null}
+                {showWeeklyUsageLimitDetailBadge ? (
+                  <Badge
+                    variant="outline"
+                    className="gap-1.5 border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-300"
+                  >
+                    <span
+                      className="h-1.5 w-1.5 rounded-full bg-current"
+                      aria-hidden
+                    />
+                    Weekly usage limit hit
+                  </Badge>
+                ) : null}
+                {hasExpiredRefreshToken ? (
+                  <Badge
+                    variant="outline"
+                    className="gap-1.5 border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                    title={
+                      account.deactivationReason ??
+                      "Re-login is required to refresh the account token."
+                    }
+                  >
+                    <span
+                      className="h-1.5 w-1.5 rounded-full bg-current"
+                      aria-hidden
+                    />
+                    Expired refresh token
+                  </Badge>
+                ) : null}
               </div>
+            </div>
             <div className="mt-2 flex items-start gap-2.5">
               <div className="mt-0.5 flex shrink-0 items-center gap-2 text-zinc-200/85">
                 <div className="h-5 w-7 rounded-[4px] border border-amber-200/35 bg-[linear-gradient(145deg,#f2ca7d_0%,#d79a24_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.35)]" />
@@ -2005,7 +2035,9 @@ export function AccountCard(props: AccountCardProps) {
                 <p
                   className="truncate text-[11px] font-semibold uppercase tracking-[0.13em] text-zinc-300"
                   title={
-                    showAccountId ? `Account ID ${account.accountId}` : undefined
+                    showAccountId
+                      ? `Account ID ${account.accountId}`
+                      : undefined
                   }
                 >
                   {showCodexOnlyAccountSubtitle ? (
@@ -2013,7 +2045,9 @@ export function AccountCard(props: AccountCardProps) {
                       <>
                         CODEX ONLY ACCOUNT ·{" "}
                         {codexOnlyEmailIsSensitive && blurred ? (
-                          <span className="privacy-blur">{codexOnlyEmailLabel}</span>
+                          <span className="privacy-blur">
+                            {codexOnlyEmailLabel}
+                          </span>
                         ) : (
                           codexOnlyEmailLabel
                         )}
@@ -2133,264 +2167,265 @@ export function AccountCard(props: AccountCardProps) {
                     </div>
                   ) : null}
 
-                {showLastTaskPreview ? (
-                  <div className="rounded-lg border border-white/15 bg-transparent px-2 py-1">
-                    <div>
-                      <p
-                        className="break-words whitespace-pre-wrap text-xs leading-relaxed text-zinc-300/90"
-                        title={codexLastTaskPreview ?? undefined}
-                      >
-                        <span className="font-medium text-zinc-200">
-                          Last codex response:
-                        </span>
-                        <span className="ml-1 inline-flex items-center gap-1.5">
-                          {hasNextTaskHint(codexLastTaskPreview) ? (
-                            <NextTaskBadge />
-                          ) : null}
-                          <span>{displayLastTaskPreviewText}</span>
-                        </span>
-                      </p>
-                      {lastTaskPreviewExcerpt?.truncated ? (
+                  {showLastTaskPreview ? (
+                    <div className="rounded-lg border border-white/15 bg-transparent px-2 py-1">
+                      <div>
+                        <p
+                          className="break-words whitespace-pre-wrap text-xs leading-relaxed text-zinc-300/90"
+                          title={codexLastTaskPreview ?? undefined}
+                        >
+                          <span className="font-medium text-zinc-200">
+                            Last codex response:
+                          </span>
+                          <span className="ml-1 inline-flex items-center gap-1.5">
+                            {hasNextTaskHint(codexLastTaskPreview) ? (
+                              <NextTaskBadge />
+                            ) : null}
+                            <span>{displayLastTaskPreviewText}</span>
+                          </span>
+                        </p>
+                        {lastTaskPreviewExcerpt?.truncated ? (
+                          <button
+                            type="button"
+                            className="mt-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-cyan-200 transition-colors hover:text-cyan-100"
+                            aria-expanded={lastTaskPreviewExpanded}
+                            onClick={() =>
+                              toggleTaskPreviewExpanded(
+                                LAST_TASK_PREVIEW_EXPANSION_KEY,
+                              )
+                            }
+                          >
+                            {lastTaskPreviewExpanded
+                              ? "Show Less"
+                              : "View Full"}
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {hasSessionTaskRows ? (
+                    <div className="mt-1.5 pt-1">
+                      <div className="mb-1 flex flex-wrap items-center gap-1.5">
                         <button
                           type="button"
-                          className="mt-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-cyan-200 transition-colors hover:text-cyan-100"
-                          aria-expanded={lastTaskPreviewExpanded}
+                          className="inline-flex min-w-[13rem] flex-1 items-center justify-between gap-2 rounded-lg border border-white/25 bg-transparent px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-300 transition-colors hover:border-cyan-300/45"
+                          aria-expanded={!sessionTasksCollapsed}
                           onClick={() =>
-                            toggleTaskPreviewExpanded(
-                              LAST_TASK_PREVIEW_EXPANSION_KEY,
-                            )
+                            setSessionTasksCollapsed((current) => !current)
                           }
                         >
-                          {lastTaskPreviewExpanded ? "Show Less" : "View Full"}
-                        </button>
-                      ) : null}
-                    </div>
-                  </div>
-                ) : null}
-
-                {hasSessionTaskRows ? (
-                  <div className="mt-1.5 pt-1">
-                    <div className="mb-1 flex flex-wrap items-center gap-1.5">
-                      <button
-                        type="button"
-                        className="inline-flex min-w-[13rem] flex-1 items-center justify-between gap-2 rounded-lg border border-white/25 bg-transparent px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-300 transition-colors hover:border-cyan-300/45"
-                        aria-expanded={!sessionTasksCollapsed}
-                        onClick={() =>
-                          setSessionTasksCollapsed((current) => !current)
-                        }
-                      >
-                        <span>CLI session tasks</span>
-                        <span className="inline-flex items-center gap-1 text-zinc-300">
-                          <span className="font-mono text-[10px]">
-                            {sessionTaskRows.length}
-                          </span>
-                          <ChevronDown
-                            className={cn(
-                              "h-3.5 w-3.5 transition-transform duration-200",
-                              sessionTasksCollapsed && "-rotate-90",
-                            )}
-                          />
-                        </span>
-                      </button>
-                      <span className="inline-flex h-5 items-center rounded-md border border-emerald-400/35 bg-emerald-500/10 px-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-emerald-100">
-                        {sessionTaskSummary.assignedCount} assigned
-                      </span>
-                      <span className="inline-flex h-5 items-center rounded-md border border-cyan-400/35 bg-cyan-500/10 px-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-cyan-100">
-                        {sessionTaskSummary.waitingCount} waiting
-                      </span>
-                      {sessionTaskSummary.finishedCount > 0 ? (
-                        <span className="inline-flex h-5 items-center rounded-md border border-emerald-400/35 bg-emerald-500/10 px-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-emerald-100">
-                          {sessionTaskSummary.finishedCount} finished
-                        </span>
-                      ) : null}
-                    </div>
-                    {!sessionTasksCollapsed ? (
-                      <ul className="space-y-1.5">
-                        {sessionTaskRows.map((preview, index) => {
-                          const sessionTaskState = sessionTaskStates[index] ?? "waiting";
-                          const sessionTaskRowKey = `${preview.sessionKey}-${preview.ordinal}`;
-                          const sessionTaskPreviewExcerpt = getTaskPreviewExcerpt(
-                            preview.taskPreview,
-                          );
-                          const sessionTaskPreviewExpanded = isTaskPreviewExpanded(
-                            sessionTaskRowKey,
-                          );
-                          const displaySessionTaskPreview =
-                            sessionTaskPreviewExcerpt.truncated &&
-                            !sessionTaskPreviewExpanded
-                              ? sessionTaskPreviewExcerpt.text
-                              : preview.taskPreview;
-                          const usageLimitSessionPreview = isUsageLimitTaskPreview(
-                            preview.taskPreview,
-                          );
-                          return (
-                            <li
-                              key={sessionTaskRowKey}
+                          <span>CLI session tasks</span>
+                          <span className="inline-flex items-center gap-1 text-zinc-300">
+                            <span className="font-mono text-[10px]">
+                              {sessionTaskRows.length}
+                            </span>
+                            <ChevronDown
                               className={cn(
-                                "relative overflow-hidden space-y-1 rounded-xl bg-white/[0.02] pl-3 pr-2 py-1.5 transition-colors duration-200",
-                                sessionTaskState === "waiting" &&
-                                  "hover:bg-cyan-500/[0.05]",
-                                sessionTaskState === "thinking" &&
-                                  "bg-indigo-500/[0.08] hover:bg-indigo-500/[0.11]",
-                                sessionTaskState === "finished" &&
-                                  "bg-emerald-500/[0.06] hover:bg-emerald-500/[0.09]",
+                                "h-3.5 w-3.5 transition-transform duration-200",
+                                sessionTasksCollapsed && "-rotate-90",
                               )}
-                            >
-                              <span
+                            />
+                          </span>
+                        </button>
+                        <span className="inline-flex h-5 items-center rounded-md border border-emerald-400/35 bg-emerald-500/10 px-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-emerald-100">
+                          {sessionTaskSummary.assignedCount} assigned
+                        </span>
+                        <span className="inline-flex h-5 items-center rounded-md border border-cyan-400/35 bg-cyan-500/10 px-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-cyan-100">
+                          {sessionTaskSummary.waitingCount} waiting
+                        </span>
+                        {sessionTaskSummary.finishedCount > 0 ? (
+                          <span className="inline-flex h-5 items-center rounded-md border border-emerald-400/35 bg-emerald-500/10 px-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-emerald-100">
+                            {sessionTaskSummary.finishedCount} finished
+                          </span>
+                        ) : null}
+                      </div>
+                      {!sessionTasksCollapsed ? (
+                        <ul className="space-y-1.5">
+                          {sessionTaskRows.map((preview, index) => {
+                            const sessionTaskState =
+                              sessionTaskStates[index] ?? "waiting";
+                            const sessionTaskRowKey = `${preview.sessionKey}-${preview.ordinal}`;
+                            const sessionTaskPreviewExcerpt =
+                              getTaskPreviewExcerpt(preview.taskPreview);
+                            const sessionTaskPreviewExpanded =
+                              isTaskPreviewExpanded(sessionTaskRowKey);
+                            const displaySessionTaskPreview =
+                              sessionTaskPreviewExcerpt.truncated &&
+                              !sessionTaskPreviewExpanded
+                                ? sessionTaskPreviewExcerpt.text
+                                : preview.taskPreview;
+                            const usageLimitSessionPreview =
+                              isUsageLimitTaskPreview(preview.taskPreview);
+                            return (
+                              <li
+                                key={sessionTaskRowKey}
                                 className={cn(
-                                  "pointer-events-none absolute inset-y-0 left-0 w-1.5 rounded-r-full bg-gradient-to-b opacity-95",
-                                  resolveSessionTaskAccentClass(index),
+                                  "relative overflow-hidden space-y-1 rounded-xl bg-white/[0.02] pl-3 pr-2 py-1.5 transition-colors duration-200",
+                                  sessionTaskState === "waiting" &&
+                                    "hover:bg-cyan-500/[0.05]",
+                                  sessionTaskState === "thinking" &&
+                                    "bg-indigo-500/[0.08] hover:bg-indigo-500/[0.11]",
+                                  sessionTaskState === "finished" &&
+                                    "bg-emerald-500/[0.06] hover:bg-emerald-500/[0.09]",
                                 )}
-                                aria-hidden
-                              />
-                              <div className="flex items-start justify-between gap-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-400">
-                                <span>Session {preview.ordinal}</span>
-                                <div className="flex min-w-0 flex-col items-end gap-1">
-                                  {!preview.synthetic ? (
-                                    <span
-                                      className="max-w-[11rem] truncate font-mono text-zinc-500"
-                                      title={preview.sessionKey}
-                                    >
-                                      {formatSessionKeyLabel(preview.sessionKey)}
-                                    </span>
-                                  ) : null}
-                                  <SessionTaskStatePill
-                                    taskPreview={preview.taskPreview}
-                                    stateOverride={sessionTaskState}
-                                    className="h-5 px-2 text-[9px]"
-                                  />
-                                </div>
-                              </div>
-                              <div title={preview.taskPreview}>
-                                <div
-                                  className="rounded-md px-1.5 py-0.5"
-                                >
-                                  {sessionTaskState === "thinking" ? (
-                                    <div className="mb-1 inline-flex h-4 items-center gap-1 rounded-full border border-indigo-200/35 bg-transparent px-1.5 text-[8px] font-semibold uppercase tracking-[0.1em] text-indigo-100">
-                                      Prompt
-                                    </div>
-                                  ) : null}
-                                  <span
-                                    className={cn(
-                                      "inline-flex items-center gap-1.5 break-words whitespace-pre-wrap text-xs leading-relaxed text-zinc-100/95",
-                                    )}
-                                  >
-                                    {hasNextTaskHint(preview.taskPreview) ? (
-                                      <NextTaskBadge />
+                              >
+                                <span
+                                  className={cn(
+                                    "pointer-events-none absolute inset-y-0 left-0 w-1.5 rounded-r-full bg-gradient-to-b opacity-95",
+                                    resolveSessionTaskAccentClass(index),
+                                  )}
+                                  aria-hidden
+                                />
+                                <div className="flex items-start justify-between gap-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-400">
+                                  <span>Session {preview.ordinal}</span>
+                                  <div className="flex min-w-0 flex-col items-end gap-1">
+                                    {!preview.synthetic ? (
+                                      <span
+                                        className="max-w-[11rem] truncate font-mono text-zinc-500"
+                                        title={preview.sessionKey}
+                                      >
+                                        {formatSessionKeyLabel(
+                                          preview.sessionKey,
+                                        )}
+                                      </span>
                                     ) : null}
-                                    {usageLimitSessionPreview ? (
-                                      <UsageLimitTaskPreviewText
-                                        text={displaySessionTaskPreview}
-                                      />
-                                    ) : (
-                                      <span>{displaySessionTaskPreview}</span>
-                                    )}
-                                  </span>
+                                    <SessionTaskStatePill
+                                      taskPreview={preview.taskPreview}
+                                      stateOverride={sessionTaskState}
+                                      className="h-5 px-2 text-[9px]"
+                                    />
+                                  </div>
                                 </div>
-                                {sessionTaskPreviewExcerpt.truncated ? (
-                                  <button
-                                    type="button"
-                                    className="mt-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-cyan-200 transition-colors hover:text-cyan-100"
-                                    aria-expanded={sessionTaskPreviewExpanded}
-                                    onClick={() =>
-                                      toggleTaskPreviewExpanded(
-                                        sessionTaskRowKey,
-                                      )
-                                    }
-                                  >
-                                    {sessionTaskPreviewExpanded
-                                      ? "Show Less"
-                                      : "View Full"}
-                                  </button>
-                                ) : null}
-                                {sessionTaskState === "waiting" &&
-                                resolveWaitingTaskHelperText(
-                                  preview.taskPreview,
-                                ) ? (
-                                  <p className="mt-1 text-[10px] leading-relaxed text-cyan-200/85">
-                                    {resolveWaitingTaskHelperText(
-                                      preview.taskPreview,
-                                    )}
-                                  </p>
-                                ) : null}
-                                <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2">
-                                  <button
-                                    type="button"
-                                    className="inline-flex h-5 items-center gap-1 rounded-md border border-cyan-400/45 bg-transparent px-2 text-[9px] font-semibold uppercase tracking-[0.12em] text-cyan-50 transition-colors hover:border-cyan-300/60 hover:bg-cyan-500/12"
-                                    aria-expanded={
-                                      expandedSessionLogRowKey ===
-                                      sessionTaskRowKey
-                                    }
-                                    onClick={() => {
-                                      if (onAction && !preview.synthetic) {
-                                        onAction(account, "sessions", {
-                                          focusSessionKey: preview.sessionKey,
-                                          source: "watch-logs",
-                                        });
-                                        return;
-                                      }
-                                      setExpandedSessionLogRowKey((current) =>
-                                        current === sessionTaskRowKey
-                                          ? null
-                                          : sessionTaskRowKey,
-                                      );
-                                    }}
-                                  >
-                                    <Eye className="h-3 w-3" />
-                                    Watch logs
-                                  </button>
-                                  {!preview.synthetic ? (
+                                <div title={preview.taskPreview}>
+                                  <div className="rounded-md px-1.5 py-0.5">
+                                    {sessionTaskState === "thinking" ? (
+                                      <div className="mb-1 inline-flex h-4 items-center gap-1 rounded-full border border-indigo-200/35 bg-transparent px-1.5 text-[8px] font-semibold uppercase tracking-[0.1em] text-indigo-100">
+                                        Prompt
+                                      </div>
+                                    ) : null}
+                                    <span
+                                      className={cn(
+                                        "inline-flex items-center gap-1.5 break-words whitespace-pre-wrap text-xs leading-relaxed text-zinc-100/95",
+                                      )}
+                                    >
+                                      {hasNextTaskHint(preview.taskPreview) ? (
+                                        <NextTaskBadge />
+                                      ) : null}
+                                      {usageLimitSessionPreview ? (
+                                        <UsageLimitTaskPreviewText
+                                          text={displaySessionTaskPreview}
+                                        />
+                                      ) : (
+                                        <span>{displaySessionTaskPreview}</span>
+                                      )}
+                                    </span>
+                                  </div>
+                                  {sessionTaskPreviewExcerpt.truncated ? (
                                     <button
                                       type="button"
-                                      className="inline-flex h-5 items-center rounded-md border border-white/25 bg-transparent px-2 text-[9px] font-semibold uppercase tracking-[0.12em] text-zinc-200 transition-colors hover:border-cyan-300/40 hover:text-zinc-50"
+                                      className="mt-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-cyan-200 transition-colors hover:text-cyan-100"
+                                      aria-expanded={sessionTaskPreviewExpanded}
                                       onClick={() =>
-                                        onAction?.(account, "sessions", {
-                                          focusSessionKey: preview.sessionKey,
-                                          source: "session-panel",
-                                        })
+                                        toggleTaskPreviewExpanded(
+                                          sessionTaskRowKey,
+                                        )
                                       }
                                     >
-                                      Open session view
+                                      {sessionTaskPreviewExpanded
+                                        ? "Show Less"
+                                        : "View Full"}
                                     </button>
                                   ) : null}
-                                </div>
-                                {expandedSessionLogRowKey ===
-                                sessionTaskRowKey ? (
-                                  <div className="mt-1.5 rounded-lg border border-cyan-500/30 bg-[#020812]/92 p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
-                                    <ol className="max-h-40 overflow-y-auto font-mono text-[10px] leading-5 text-cyan-100">
-                                      {buildSessionTaskLogLines({
-                                        accountId: account.accountId,
-                                        row: preview,
-                                        state: sessionTaskState,
-                                        quotaDebugLogText,
-                                      }).map((line, lineIndex) => (
-                                        <li
-                                          key={`${sessionTaskRowKey}-log-${lineIndex}`}
-                                          className="grid grid-cols-[2rem_minmax(0,1fr)] gap-2 rounded-sm px-1.5 even:bg-cyan-500/[0.05]"
-                                        >
-                                          <span className="select-none text-right text-cyan-400/55">
-                                            {String(lineIndex + 1).padStart(
-                                              2,
-                                              "0",
-                                            )}
-                                          </span>
-                                          <span className="break-all">
-                                            {line}
-                                          </span>
-                                        </li>
-                                      ))}
-                                    </ol>
+                                  {sessionTaskState === "waiting" &&
+                                  resolveWaitingTaskHelperText(
+                                    preview.taskPreview,
+                                  ) ? (
+                                    <p className="mt-1 text-[10px] leading-relaxed text-cyan-200/85">
+                                      {resolveWaitingTaskHelperText(
+                                        preview.taskPreview,
+                                      )}
+                                    </p>
+                                  ) : null}
+                                  <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2">
+                                    <button
+                                      type="button"
+                                      className="inline-flex h-5 items-center gap-1 rounded-md border border-cyan-400/45 bg-transparent px-2 text-[9px] font-semibold uppercase tracking-[0.12em] text-cyan-50 transition-colors hover:border-cyan-300/60 hover:bg-cyan-500/12"
+                                      aria-expanded={
+                                        expandedSessionLogRowKey ===
+                                        sessionTaskRowKey
+                                      }
+                                      onClick={() => {
+                                        if (onAction && !preview.synthetic) {
+                                          onAction(account, "sessions", {
+                                            focusSessionKey: preview.sessionKey,
+                                            source: "watch-logs",
+                                          });
+                                          return;
+                                        }
+                                        setExpandedSessionLogRowKey(
+                                          (current) =>
+                                            current === sessionTaskRowKey
+                                              ? null
+                                              : sessionTaskRowKey,
+                                        );
+                                      }}
+                                    >
+                                      <Eye className="h-3 w-3" />
+                                      Watch logs
+                                    </button>
+                                    {!preview.synthetic ? (
+                                      <button
+                                        type="button"
+                                        className="inline-flex h-5 items-center rounded-md border border-white/25 bg-transparent px-2 text-[9px] font-semibold uppercase tracking-[0.12em] text-zinc-200 transition-colors hover:border-cyan-300/40 hover:text-zinc-50"
+                                        onClick={() =>
+                                          onAction?.(account, "sessions", {
+                                            focusSessionKey: preview.sessionKey,
+                                            source: "session-panel",
+                                          })
+                                        }
+                                      >
+                                        Open session view
+                                      </button>
+                                    ) : null}
                                   </div>
-                                ) : null}
-                              </div>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
+                                  {expandedSessionLogRowKey ===
+                                  sessionTaskRowKey ? (
+                                    <div className="mt-1.5 rounded-lg border border-cyan-500/30 bg-[#020812]/92 p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+                                      <ol className="max-h-40 overflow-y-auto font-mono text-[10px] leading-5 text-cyan-100">
+                                        {buildSessionTaskLogLines({
+                                          accountId: account.accountId,
+                                          row: preview,
+                                          state: sessionTaskState,
+                                          quotaDebugLogText,
+                                        }).map((line, lineIndex) => (
+                                          <li
+                                            key={`${sessionTaskRowKey}-log-${lineIndex}`}
+                                            className="grid grid-cols-[2rem_minmax(0,1fr)] gap-2 rounded-sm px-1.5 even:bg-cyan-500/[0.05]"
+                                          >
+                                            <span className="select-none text-right text-cyan-400/55">
+                                              {String(lineIndex + 1).padStart(
+                                                2,
+                                                "0",
+                                              )}
+                                            </span>
+                                            <span className="break-all">
+                                              {line}
+                                            </span>
+                                          </li>
+                                        ))}
+                                      </ol>
+                                    </div>
+                                  ) : null}
+                                </div>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
               </div>
             ) : null}
           </div>
@@ -2452,102 +2487,104 @@ export function AccountCard(props: AccountCardProps) {
               {resolvedPrimaryActionLabel}
             </Button>
             <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-            {hasSnapshotMismatch ? (
-              <>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 gap-1.5 rounded-lg text-xs text-muted-foreground hover:text-foreground"
-                  disabled={disableSecondaryActions}
-                  onClick={() => onAction?.(account, "repairSnapshotReadd")}
-                >
-                  Re-add snapshot
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 gap-1.5 rounded-lg text-xs text-muted-foreground hover:text-foreground"
-                  disabled={disableSecondaryActions}
-                  onClick={() => onAction?.(account, "repairSnapshotRename")}
-                >
-                  Rename snapshot
-                </Button>
-              </>
-            ) : null}
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              className="h-7 gap-1.5 rounded-lg text-xs text-cyan-700 hover:bg-cyan-500/10 hover:text-cyan-800 dark:text-cyan-300 dark:hover:text-cyan-200"
-              disabled={disableSecondaryActions || !canUseLocally || useLocalBusy}
-              title={useLocalDisabledReason ?? undefined}
-              onClick={() => onAction?.(account, "terminal")}
-            >
-              <SquareTerminal className="h-3 w-3" />
-              Terminal
-            </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 gap-1.5 rounded-lg text-xs text-muted-foreground hover:text-foreground"
-                  disabled={disableSecondaryActions}
-                  onClick={() => onAction?.(account, "details")}
-                >
-                  <ExternalLink className="h-3 w-3" />
-                  Details
-                </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-                  className="h-7 gap-1.5 rounded-lg text-xs text-cyan-700 hover:bg-cyan-500/10 hover:text-cyan-800 disabled:pointer-events-none disabled:text-muted-foreground dark:text-cyan-300 dark:hover:text-cyan-200"
-                  disabled={disableSecondaryActions || !hasSessionInventory}
-                  title={!hasSessionInventory ? "No tracked sessions" : undefined}
-                  onClick={() => onAction?.(account, "sessions")}
-                >
-                  <ExternalLink className="h-3 w-3" />
-                  Sessions
-            </Button>
-            <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 gap-1.5 rounded-lg text-xs text-red-600 hover:bg-red-500/10 hover:text-red-700 disabled:pointer-events-none disabled:text-muted-foreground dark:text-red-400 dark:hover:text-red-300"
-                  disabled={deleteBusy || disableSecondaryActions}
-                  onClick={() => onAction?.(account, "delete")}
-                >
-              <Trash2 className="h-3 w-3" />
-              Delete
-            </Button>
-            {status === "paused" && (
+              {hasSnapshotMismatch ? (
+                <>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 gap-1.5 rounded-lg text-xs text-muted-foreground hover:text-foreground"
+                    disabled={disableSecondaryActions}
+                    onClick={() => onAction?.(account, "repairSnapshotReadd")}
+                  >
+                    Re-add snapshot
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 gap-1.5 rounded-lg text-xs text-muted-foreground hover:text-foreground"
+                    disabled={disableSecondaryActions}
+                    onClick={() => onAction?.(account, "repairSnapshotRename")}
+                  >
+                    Rename snapshot
+                  </Button>
+                </>
+              ) : null}
               <Button
                 type="button"
                 size="sm"
                 variant="ghost"
-                className="h-7 gap-1.5 rounded-lg text-xs text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300"
-                disabled={disableSecondaryActions}
-                onClick={() => onAction?.(account, "resume")}
+                className="h-7 gap-1.5 rounded-lg text-xs text-cyan-700 hover:bg-cyan-500/10 hover:text-cyan-800 dark:text-cyan-300 dark:hover:text-cyan-200"
+                disabled={
+                  disableSecondaryActions || !canUseLocally || useLocalBusy
+                }
+                title={useLocalDisabledReason ?? undefined}
+                onClick={() => onAction?.(account, "terminal")}
               >
-                <Play className="h-3 w-3" />
-                Resume
+                <SquareTerminal className="h-3 w-3" />
+                Terminal
               </Button>
-            )}
-            {(status === "deactivated" || hasExpiredRefreshToken) && (
               <Button
                 type="button"
                 size="sm"
                 variant="ghost"
-                className="h-7 gap-1.5 rounded-lg text-xs text-amber-600 hover:bg-amber-500/10 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300"
+                className="h-7 gap-1.5 rounded-lg text-xs text-muted-foreground hover:text-foreground"
                 disabled={disableSecondaryActions}
-                onClick={() => onAction?.(account, "reauth")}
+                onClick={() => onAction?.(account, "details")}
               >
-                <RotateCcw className="h-3 w-3" />
-                Re-auth
+                <ExternalLink className="h-3 w-3" />
+                Details
               </Button>
-            )}
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-7 gap-1.5 rounded-lg text-xs text-cyan-700 hover:bg-cyan-500/10 hover:text-cyan-800 disabled:pointer-events-none disabled:text-muted-foreground dark:text-cyan-300 dark:hover:text-cyan-200"
+                disabled={disableSecondaryActions || !hasSessionInventory}
+                title={!hasSessionInventory ? "No tracked sessions" : undefined}
+                onClick={() => onAction?.(account, "sessions")}
+              >
+                <ExternalLink className="h-3 w-3" />
+                Sessions
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-7 gap-1.5 rounded-lg text-xs text-red-600 hover:bg-red-500/10 hover:text-red-700 disabled:pointer-events-none disabled:text-muted-foreground dark:text-red-400 dark:hover:text-red-300"
+                disabled={deleteBusy || disableSecondaryActions}
+                onClick={() => onAction?.(account, "delete")}
+              >
+                <Trash2 className="h-3 w-3" />
+                Delete
+              </Button>
+              {status === "paused" && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 gap-1.5 rounded-lg text-xs text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300"
+                  disabled={disableSecondaryActions}
+                  onClick={() => onAction?.(account, "resume")}
+                >
+                  <Play className="h-3 w-3" />
+                  Resume
+                </Button>
+              )}
+              {(status === "deactivated" || hasExpiredRefreshToken) && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 gap-1.5 rounded-lg text-xs text-amber-600 hover:bg-amber-500/10 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300"
+                  disabled={disableSecondaryActions}
+                  onClick={() => onAction?.(account, "reauth")}
+                >
+                  <RotateCcw className="h-3 w-3" />
+                  Re-auth
+                </Button>
+              )}
             </div>
           </div>
 
