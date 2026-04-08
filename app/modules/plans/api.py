@@ -9,6 +9,8 @@ from app.modules.plans.schemas import (
     OpenSpecPlansResponse,
     OpenSpecPlanRoleDetail,
     OpenSpecPlanSummary,
+    PlanCheckpoint,
+    PlanOverallProgress,
     PlanRoleProgress,
 )
 from app.modules.plans.service import OpenSpecPlansError, OpenSpecPlansService
@@ -51,6 +53,22 @@ async def list_open_spec_plans(
                     )
                     for role in entry.roles
                 ],
+                overall_progress=PlanOverallProgress(
+                    total_checkpoints=entry.overall_progress.total_checkpoints,
+                    done_checkpoints=entry.overall_progress.done_checkpoints,
+                    percent_complete=entry.overall_progress.percent_complete,
+                ),
+                current_checkpoint=(
+                    PlanCheckpoint(
+                        timestamp=entry.current_checkpoint.timestamp,
+                        role=entry.current_checkpoint.role,
+                        checkpoint_id=entry.current_checkpoint.checkpoint_id,
+                        state=entry.current_checkpoint.state,
+                        message=entry.current_checkpoint.message,
+                    )
+                    if entry.current_checkpoint is not None
+                    else None
+                ),
             )
             for entry in entries
         ]
@@ -90,4 +108,20 @@ async def get_open_spec_plan(
             )
             for role in detail.roles
         ],
+        overall_progress=PlanOverallProgress(
+            total_checkpoints=detail.overall_progress.total_checkpoints,
+            done_checkpoints=detail.overall_progress.done_checkpoints,
+            percent_complete=detail.overall_progress.percent_complete,
+        ),
+        current_checkpoint=(
+            PlanCheckpoint(
+                timestamp=detail.current_checkpoint.timestamp,
+                role=detail.current_checkpoint.role,
+                checkpoint_id=detail.current_checkpoint.checkpoint_id,
+                state=detail.current_checkpoint.state,
+                message=detail.current_checkpoint.message,
+            )
+            if detail.current_checkpoint is not None
+            else None
+        ),
     )

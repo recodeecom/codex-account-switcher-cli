@@ -6,12 +6,28 @@ export const PlanRoleProgressSchema = z.object({
   doneCheckpoints: z.number().int().min(0),
 });
 
+export const PlanOverallProgressSchema = z.object({
+  totalCheckpoints: z.number().int().min(0),
+  doneCheckpoints: z.number().int().min(0),
+  percentComplete: z.number().int().min(0).max(100),
+});
+
+export const PlanCheckpointSchema = z.object({
+  timestamp: z.string().min(1),
+  role: z.string().min(1),
+  checkpointId: z.string().min(1),
+  state: z.string().min(1),
+  message: z.string(),
+});
+
 export const OpenSpecPlanSummarySchema = z.object({
   slug: z.string().min(1),
   title: z.string().min(1),
   status: z.string().min(1),
   updatedAt: z.string().datetime({ offset: true }),
   roles: z.array(PlanRoleProgressSchema).default([]),
+  overallProgress: PlanOverallProgressSchema,
+  currentCheckpoint: PlanCheckpointSchema.nullable(),
 });
 
 export const OpenSpecPlansResponseSchema = z.object({
@@ -34,6 +50,8 @@ export const OpenSpecPlanDetailSchema = z.object({
   summaryMarkdown: z.string(),
   checkpointsMarkdown: z.string(),
   roles: z.array(OpenSpecPlanRoleDetailSchema).default([]),
+  overallProgress: PlanOverallProgressSchema,
+  currentCheckpoint: PlanCheckpointSchema.nullable(),
 });
 
 export type OpenSpecPlanSummary = z.infer<typeof OpenSpecPlanSummarySchema>;

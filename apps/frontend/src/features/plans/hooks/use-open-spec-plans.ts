@@ -1,6 +1,13 @@
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { getOpenSpecPlan, listOpenSpecPlans } from "@/features/plans/api";
+
+function isPlanFinished(roles: { doneCheckpoints: number; totalCheckpoints: number }[]): boolean {
+  const done = roles.reduce((acc, role) => acc + role.doneCheckpoints, 0);
+  const total = roles.reduce((acc, role) => acc + role.totalCheckpoints, 0);
+  return total > 0 && done >= total;
+}
 
 export function useOpenSpecPlans(selectedSlug: string | null) {
   const plansQuery = useQuery({
@@ -11,10 +18,28 @@ export function useOpenSpecPlans(selectedSlug: string | null) {
     refetchOnWindowFocus: true,
   });
 
+  const effectiveSelectedSlug = useMemo(() => {
+    const entries = plansQuery.data?.entries ?? [];
+    const firstInteractiveEntry = entries.find((entry) => !isPlanFinished(entry.roles)) ?? null;
+
+    if (entries.length === 0) {
+      return null;
+    }
+
+    if (
+      selectedSlug &&
+      entries.some((entry) => entry.slug === selectedSlug && !isPlanFinished(entry.roles))
+    ) {
+      return selectedSlug;
+    }
+
+    return firstInteractiveEntry?.slug ?? entries[0].slug;
+  }, [plansQuery.data?.entries, selectedSlug]);
+
   const planDetailQuery = useQuery({
-    queryKey: ["projects", "plans", "detail", selectedSlug],
-    queryFn: () => getOpenSpecPlan(selectedSlug ?? ""),
-    enabled: Boolean(selectedSlug),
+    queryKey: ["projects", "plans", "detail", effectiveSelectedSlug],
+    queryFn: () => getOpenSpecPlan(effectiveSelectedSlug ?? ""),
+    enabled: Boolean(effectiveSelectedSlug),
     refetchInterval: 30_000,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
@@ -23,5 +48,6 @@ export function useOpenSpecPlans(selectedSlug: string | null) {
   return {
     plansQuery,
     planDetailQuery,
+    effectiveSelectedSlug,
   };
 }

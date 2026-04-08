@@ -8,7 +8,11 @@ from pathlib import Path
 CHECKPOINT_RE = re.compile(r"^- \[( |x)\] \[([A-Za-z0-9._-]+)\] ([A-Z_]+) - (.*)$")
 STATUS_RE = re.compile(r"^\s*-\s*\*\*Status:\*\*\s*(.+?)\s*$", flags=re.IGNORECASE | re.MULTILINE)
 TITLE_RE = re.compile(r"^#\s+Plan Summary:\s*(.+?)\s*$", flags=re.IGNORECASE | re.MULTILINE)
-ROLE_ORDER = ("planner", "architect", "critic", "executor", "writer", "verifier")
+CHECKPOINT_LOG_RE = re.compile(
+    r"^- (?P<timestamp>[^|]+?) \| role=(?P<role>[A-Za-z0-9._-]+) \| id=(?P<checkpoint_id>[A-Za-z0-9._-]+) \| state=(?P<state>[A-Z_]+) \| (?P<message>.*)$"
+)
+ROLE_ORDER = ("planner", "architect", "critic", "executor", "writer", "verifier", "designer")
+DONE_CHECKPOINT_STATES = {"DONE", "COMPLETED"}
 
 
 class OpenSpecPlansError(RuntimeError):
@@ -23,12 +27,30 @@ class PlanRoleProgressData:
 
 
 @dataclass(frozen=True, slots=True)
+class PlanOverallProgressData:
+    total_checkpoints: int
+    done_checkpoints: int
+    percent_complete: int
+
+
+@dataclass(frozen=True, slots=True)
+class PlanCheckpointData:
+    timestamp: str
+    role: str
+    checkpoint_id: str
+    state: str
+    message: str
+
+
+@dataclass(frozen=True, slots=True)
 class PlanSummaryData:
     slug: str
     title: str
     status: str
     updated_at: datetime
     roles: list[PlanRoleProgressData]
+    overall_progress: PlanOverallProgressData
+    current_checkpoint: PlanCheckpointData | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +71,8 @@ class PlanDetailData:
     summary_markdown: str
     checkpoints_markdown: str
     roles: list[PlanRoleDetailData]
+    overall_progress: PlanOverallProgressData
+    current_checkpoint: PlanCheckpointData | None
 
 
 class OpenSpecPlansService:
@@ -97,11 +121,8 @@ class OpenSpecPlansService:
         for role in ROLE_ORDER:
             role_dir = plan_dir / role
             tasks_path = role_dir / "tasks.md"
-            if not tasks_path.exists():
-                continue
-
-            tasks_markdown = self._read_markdown(tasks_path)
-            total, done = _checkpoint_counts(tasks_markdown)
+            tasks_markdown = self._read_markdown(tasks_path) if tasks_path.exists() else ""
+            total, done = _checkpoint_counts(tasks_markdown) if tasks_markdown else (0, 0)
             role_checkpoints_path = role_dir / "checkpoints.md"
             role_checkpoints = (
                 self._read_markdown(role_checkpoints_path)
@@ -126,6 +147,17 @@ class OpenSpecPlansService:
             summary_markdown=summary_markdown,
             checkpoints_markdown=checkpoints_markdown,
             roles=roles,
+            overall_progress=_overall_progress(
+                [
+                    PlanRoleProgressData(
+                        role=role.role,
+                        total_checkpoints=role.total_checkpoints,
+                        done_checkpoints=role.done_checkpoints,
+                    )
+                    for role in roles
+                ]
+            ),
+            current_checkpoint=_resolve_current_checkpoint(checkpoints_markdown),
         )
 
     def _read_plan_summary(self, plan_dir: Path, summary_path: Path) -> PlanSummaryData:
@@ -134,10 +166,8 @@ class OpenSpecPlansService:
 
         for role in ROLE_ORDER:
             tasks_path = plan_dir / role / "tasks.md"
-            if not tasks_path.exists():
-                continue
-            tasks_markdown = self._read_markdown(tasks_path)
-            total, done = _checkpoint_counts(tasks_markdown)
+            tasks_markdown = self._read_markdown(tasks_path) if tasks_path.exists() else ""
+            total, done = _checkpoint_counts(tasks_markdown) if tasks_markdown else (0, 0)
             roles.append(
                 PlanRoleProgressData(
                     role=role,
@@ -146,12 +176,17 @@ class OpenSpecPlansService:
                 )
             )
 
+        checkpoints_path = plan_dir / "checkpoints.md"
+        checkpoints_markdown = self._read_markdown(checkpoints_path) if checkpoints_path.exists() else ""
+
         return PlanSummaryData(
             slug=plan_dir.name,
             title=_extract_title(summary_markdown, plan_dir.name),
             status=_extract_status(summary_markdown),
             updated_at=self._last_updated(plan_dir),
             roles=roles,
+            overall_progress=_overall_progress(roles),
+            current_checkpoint=_resolve_current_checkpoint(checkpoints_markdown),
         )
 
     @staticmethod
@@ -195,3 +230,40 @@ def _checkpoint_counts(tasks_markdown: str) -> tuple[int, int]:
         if checkpoint.group(1) == "x":
             done += 1
     return total, done
+
+
+def _overall_progress(roles: list[PlanRoleProgressData]) -> PlanOverallProgressData:
+    total_checkpoints = sum(role.total_checkpoints for role in roles)
+    done_checkpoints = sum(role.done_checkpoints for role in roles)
+    percent_complete = int(round((done_checkpoints / total_checkpoints) * 100)) if total_checkpoints else 0
+    return PlanOverallProgressData(
+        total_checkpoints=total_checkpoints,
+        done_checkpoints=done_checkpoints,
+        percent_complete=percent_complete,
+    )
+
+
+def _resolve_current_checkpoint(checkpoints_markdown: str) -> PlanCheckpointData | None:
+    checkpoints: list[PlanCheckpointData] = []
+    for line in checkpoints_markdown.splitlines():
+        match = CHECKPOINT_LOG_RE.match(line)
+        if match is None:
+            continue
+        checkpoints.append(
+            PlanCheckpointData(
+                timestamp=match.group("timestamp").strip(),
+                role=match.group("role").strip().lower(),
+                checkpoint_id=match.group("checkpoint_id").strip(),
+                state=match.group("state").strip().upper(),
+                message=match.group("message").strip(),
+            )
+        )
+
+    if not checkpoints:
+        return None
+
+    in_progress = [entry for entry in checkpoints if entry.state not in DONE_CHECKPOINT_STATES]
+    if in_progress:
+        return in_progress[-1]
+
+    return checkpoints[-1]

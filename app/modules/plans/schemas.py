@@ -11,12 +11,28 @@ class PlanRoleProgress(DashboardModel):
     done_checkpoints: int
 
 
+class PlanOverallProgress(DashboardModel):
+    total_checkpoints: int
+    done_checkpoints: int
+    percent_complete: int
+
+
+class PlanCheckpoint(DashboardModel):
+    timestamp: str
+    role: str
+    checkpoint_id: str
+    state: str
+    message: str
+
+
 class OpenSpecPlanSummary(DashboardModel):
     slug: str
     title: str
     status: str
     updated_at: datetime
     roles: list[PlanRoleProgress]
+    overall_progress: PlanOverallProgress
+    current_checkpoint: PlanCheckpoint | None
 
 
 class OpenSpecPlansResponse(DashboardModel):
@@ -39,3 +55,5 @@ class OpenSpecPlanDetail(DashboardModel):
     summary_markdown: str
     checkpoints_markdown: str
     roles: list[OpenSpecPlanRoleDetail]
+    overall_progress: PlanOverallProgress
+    current_checkpoint: PlanCheckpoint | None
