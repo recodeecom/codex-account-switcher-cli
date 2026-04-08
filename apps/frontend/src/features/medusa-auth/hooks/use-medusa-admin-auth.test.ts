@@ -13,6 +13,8 @@ vi.mock("@/features/medusa-auth/api", () => ({
   getMedusaAdminSecondFactorStatus: vi.fn(),
 }));
 
+const LAST_AUTHENTICATED_EMAIL_STORAGE_KEY = "medusa-admin:last-authenticated-email";
+
 function resetStore() {
   useMedusaAdminAuthStore.setState({
     token: null,
@@ -32,6 +34,7 @@ function resetStore() {
 describe("useMedusaAdminAuthStore", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.localStorage.clear();
     resetStore();
   });
 
@@ -55,9 +58,24 @@ describe("useMedusaAdminAuthStore", () => {
     expect(next.token).toBe("jwt-token");
     expect(next.user).toMatchObject({ email: "admin@recodee.com" });
     expect(next.lastAuthenticatedEmail).toBe("nagy.viktordp@gmail.com");
+    expect(window.localStorage.getItem(LAST_AUTHENTICATED_EMAIL_STORAGE_KEY)).toBe("nagy.viktordp@gmail.com");
     expect(next.error).toBeNull();
     expect(next.loading).toBe(false);
     expect("lastLoginCredentials" in next).toBe(false);
+  });
+
+  it("hydrates the remembered Medusa login email from local storage", async () => {
+    vi.resetModules();
+    window.localStorage.setItem(
+      LAST_AUTHENTICATED_EMAIL_STORAGE_KEY,
+      "nagy.viktordp@gmail.com",
+    );
+
+    const module = await import("@/features/medusa-auth/hooks/use-medusa-admin-auth");
+
+    expect(module.useMedusaAdminAuthStore.getState().lastAuthenticatedEmail).toBe(
+      "nagy.viktordp@gmail.com",
+    );
   });
 
   it("preserves the remembered login email across logout", () => {

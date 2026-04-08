@@ -1462,6 +1462,28 @@ def test_read_live_codex_process_session_counts_by_snapshot_uses_uid_home_when_h
     assert counts == {"work": 1}
 
 
+def test_read_live_codex_process_session_attribution_marks_omx_managed_sessions_by_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    default_current = tmp_path / "default" / "current"
+    default_current.parent.mkdir(parents=True, exist_ok=True)
+    default_current.write_text("work", encoding="utf-8")
+    monkeypatch.setenv("CODEX_AUTH_CURRENT_PATH", str(default_current))
+
+    proc_root = tmp_path / "proc"
+    pid_dir = proc_root / "123"
+    pid_dir.mkdir(parents=True, exist_ok=True)
+    (pid_dir / "cmdline").write_bytes(b"/usr/bin/codex\x00model_instructions_file=agents\x00")
+    (pid_dir / "environ").write_bytes(b"")
+    monkeypatch.setenv("CODEX_LB_PROC_ROOT", str(proc_root))
+
+    attribution = read_live_codex_process_session_attribution()
+
+    assert attribution.counts_by_snapshot == {"work": 1}
+    assert attribution.omx_session_pids_by_snapshot == {"work": [123]}
+
+
 def test_read_live_codex_process_session_counts_by_snapshot_uses_configured_proc_root(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

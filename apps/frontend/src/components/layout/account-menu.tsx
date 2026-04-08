@@ -17,7 +17,7 @@ import {
   UserRound,
   Users,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { NAV_ITEMS } from "@/components/layout/nav-items";
@@ -33,7 +33,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { AccountSummary } from "@/features/accounts/schemas";
 import { getDashboardOverview } from "@/features/dashboard/api";
-import { MedusaAdminLoginDialog } from "@/features/medusa-auth/components/medusa-admin-login-dialog";
 import { useMedusaAdminAuthStore } from "@/features/medusa-auth/hooks/use-medusa-admin-auth";
 import { usePrivacyStore } from "@/hooks/use-privacy";
 import { useThemeStore } from "@/hooks/use-theme";
@@ -91,7 +90,6 @@ export function AccountMenu({
   showLogout = true,
   className,
 }: AccountMenuProps) {
-  const [medusaDialogOpen, setMedusaDialogOpen] = useState(false);
   const theme = useThemeStore((state) => state.theme);
   const setTheme = useThemeStore((state) => state.setTheme);
   const navigate = useNavigate();
@@ -101,7 +99,6 @@ export function AccountMenu({
   const medusaLastAuthenticatedEmail = useMedusaAdminAuthStore(
     (state) => state.lastAuthenticatedEmail,
   );
-  const medusaLoading = useMedusaAdminAuthStore((state) => state.loading);
   const medusaLogout = useMedusaAdminAuthStore((state) => state.logout);
 
   const overviewQuery = useQuery({
@@ -117,7 +114,11 @@ export function AccountMenu({
     [overviewQuery.data?.accounts],
   );
   const medusaAdminEmail = medusaUser?.email ?? null;
-  const triggerEmail = loggedInEmail ?? medusaAdminEmail ?? medusaLastAuthenticatedEmail;
+  const dashboardLoginEmail =
+    medusaLastAuthenticatedEmail ?? medusaAdminEmail ?? loggedInEmail;
+  const showCodexAccountDetails =
+    Boolean(loggedInEmail) && loggedInEmail !== dashboardLoginEmail;
+  const triggerEmail = dashboardLoginEmail;
   const triggerLetter = (triggerEmail?.trim()?.[0] ?? "C").toUpperCase();
 
   return (
@@ -167,27 +168,18 @@ export function AccountMenu({
         <DropdownMenuSeparator />
 
         {medusaAdminEmail ? (
-          <DropdownMenuItem
-            onSelect={() => {
-              medusaLogout();
-            }}
-          >
-            <KeyRound className="h-4 w-4" aria-hidden="true" />
-            Sign out Medusa admin
-          </DropdownMenuItem>
-        ) : (
-          <DropdownMenuItem
-            disabled={medusaLoading}
-            onSelect={() => {
-              setMedusaDialogOpen(true);
-            }}
-          >
-            <KeyRound className="h-4 w-4" aria-hidden="true" />
-            Sign in Medusa admin
-          </DropdownMenuItem>
-        )}
-
-        <DropdownMenuSeparator />
+          <>
+            <DropdownMenuItem
+              onSelect={() => {
+                medusaLogout();
+              }}
+            >
+              <KeyRound className="h-4 w-4" aria-hidden="true" />
+              Sign out Medusa admin
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        ) : null}
 
         {NAV_ITEMS.map((item) => {
           const Icon = NAV_ICONS[item.to] ?? Home;
@@ -238,43 +230,64 @@ export function AccountMenu({
               "truncate text-xs text-foreground/90",
               blurred ? "privacy-blur" : "",
             )}
-            title={loggedInEmail ?? "No Codex account detected yet"}
+            title={dashboardLoginEmail ?? "No dashboard login recorded yet"}
           >
-            {loggedInEmail ?? "No Codex account detected yet"}
+            {dashboardLoginEmail ?? "No dashboard login recorded yet"}
           </p>
 
-          <p className="mt-2 text-[10px] uppercase tracking-wider text-muted-foreground">
-            Medusa admin
-          </p>
-          <p
-            className={cn(
-              "truncate text-xs text-foreground/90",
-              blurred ? "privacy-blur" : "",
-            )}
-            title={medusaAdminEmail ?? "Not signed in"}
-          >
-            {medusaAdminEmail ?? "Not signed in"}
-          </p>
+          {showCodexAccountDetails ? (
+            <>
+              <p className="mt-2 text-[10px] uppercase tracking-wider text-muted-foreground">
+                Current Codex account
+              </p>
+              <p
+                className={cn(
+                  "truncate text-xs text-foreground/90",
+                  blurred ? "privacy-blur" : "",
+                )}
+                title={loggedInEmail ?? undefined}
+              >
+                {loggedInEmail}
+              </p>
+            </>
+          ) : null}
 
-          <p className="mt-2 text-[10px] uppercase tracking-wider text-muted-foreground">
-            Last Medusa admin login
-          </p>
-          <p
-            className={cn(
-              "truncate text-xs text-foreground/90",
-              blurred ? "privacy-blur" : "",
-            )}
-            title={medusaLastAuthenticatedEmail ?? "No Medusa admin login recorded yet"}
-          >
-            {medusaLastAuthenticatedEmail ?? "No Medusa admin login recorded yet"}
-          </p>
+          {medusaAdminEmail ? (
+            <>
+              <p className="mt-2 text-[10px] uppercase tracking-wider text-muted-foreground">
+                Medusa admin
+              </p>
+              <p
+                className={cn(
+                  "truncate text-xs text-foreground/90",
+                  blurred ? "privacy-blur" : "",
+                )}
+                title={medusaAdminEmail}
+              >
+                {medusaAdminEmail}
+              </p>
+            </>
+          ) : null}
+
+          {medusaLastAuthenticatedEmail ? (
+            <>
+              <p className="mt-2 text-[10px] uppercase tracking-wider text-muted-foreground">
+                Last Medusa admin login
+              </p>
+              <p
+                className={cn(
+                  "truncate text-xs text-foreground/90",
+                  blurred ? "privacy-blur" : "",
+                )}
+                title={medusaLastAuthenticatedEmail}
+              >
+                {medusaLastAuthenticatedEmail}
+              </p>
+            </>
+          ) : null}
         </div>
       </DropdownMenuContent>
 
-      <MedusaAdminLoginDialog
-        open={medusaDialogOpen}
-        onOpenChange={setMedusaDialogOpen}
-      />
     </DropdownMenu>
   );
 }

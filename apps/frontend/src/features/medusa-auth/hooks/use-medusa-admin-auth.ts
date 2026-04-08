@@ -31,6 +31,30 @@ function getErrorMessage(error: unknown): string {
   return "Failed to authenticate with Medusa admin.";
 }
 
+const LAST_AUTHENTICATED_EMAIL_STORAGE_KEY = "medusa-admin:last-authenticated-email";
+
+function readLastAuthenticatedEmail(): string | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const value = window.localStorage.getItem(LAST_AUTHENTICATED_EMAIL_STORAGE_KEY);
+  return value?.trim() ? value : null;
+}
+
+function persistLastAuthenticatedEmail(email: string | null): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  if (email) {
+    window.localStorage.setItem(LAST_AUTHENTICATED_EMAIL_STORAGE_KEY, email);
+    return;
+  }
+
+  window.localStorage.removeItem(LAST_AUTHENTICATED_EMAIL_STORAGE_KEY);
+}
+
 type MedusaAdminAuthState = {
   token: string | null;
   user: MedusaAdminUser | null;
@@ -65,7 +89,7 @@ const clearedSecondFactorState = {
 export const useMedusaAdminAuthStore = create<MedusaAdminAuthState>((set, get) => ({
   token: null,
   user: null,
-  lastAuthenticatedEmail: null,
+  lastAuthenticatedEmail: readLastAuthenticatedEmail(),
   pendingToken: null,
   pendingUser: null,
   secondFactorStatus: null,
@@ -80,12 +104,14 @@ export const useMedusaAdminAuthStore = create<MedusaAdminAuthState>((set, get) =
       const token = await loginMedusaAdmin({ email, password });
       const user = await getMedusaAdminUser(token);
       const secondFactorStatus = await getMedusaAdminSecondFactorStatus(user.email);
+      const normalizedEmail = email.trim().toLowerCase();
+      persistLastAuthenticatedEmail(normalizedEmail);
 
       if (secondFactorStatus.totpEnabled) {
         set({
           token: null,
           user: null,
-          lastAuthenticatedEmail: email.trim().toLowerCase(),
+          lastAuthenticatedEmail: normalizedEmail,
           pendingToken: token,
           pendingUser: user,
           secondFactorStatus,
@@ -100,7 +126,7 @@ export const useMedusaAdminAuthStore = create<MedusaAdminAuthState>((set, get) =
       set({
         token,
         user,
-        lastAuthenticatedEmail: email.trim().toLowerCase(),
+        lastAuthenticatedEmail: normalizedEmail,
         pendingToken: null,
         pendingUser: null,
         secondFactorStatus,
@@ -147,10 +173,12 @@ export const useMedusaAdminAuthStore = create<MedusaAdminAuthState>((set, get) =
         email: pendingUser.email,
         code: code.trim(),
       });
+      const lastAuthenticatedEmail = get().lastAuthenticatedEmail ?? pendingUser.email;
+      persistLastAuthenticatedEmail(lastAuthenticatedEmail);
       set({
         token: pendingToken,
         user: pendingUser,
-        lastAuthenticatedEmail: get().lastAuthenticatedEmail ?? pendingUser.email,
+        lastAuthenticatedEmail,
         pendingToken: null,
         pendingUser: null,
         secondFactorStatus:

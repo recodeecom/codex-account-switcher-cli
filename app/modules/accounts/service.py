@@ -34,7 +34,10 @@ from app.modules.accounts.codex_auth_switcher import (
     switch_snapshot,
 )
 from app.modules.accounts.auth_manager import AuthManager
-from app.modules.accounts.codex_live_usage import terminate_live_codex_processes_for_snapshot
+from app.modules.accounts.codex_live_usage import (
+    read_live_codex_process_session_attribution,
+    terminate_live_codex_processes_for_snapshot,
+)
 from app.modules.accounts.live_usage_overrides import (
     apply_local_live_usage_overrides,
     remember_terminated_cli_session_snapshots,
@@ -193,6 +196,12 @@ class AccountsService:
             )
             for account in accounts
         }
+        live_process_attribution = read_live_codex_process_session_attribution()
+        omx_snapshot_names = {
+            snapshot_name
+            for snapshot_name, session_pids in live_process_attribution.omx_session_pids_by_snapshot.items()
+            if session_pids
+        }
         live_quota_debug_by_account: dict[str, AccountLiveQuotaDebug] = {}
         persist_candidates = apply_local_live_usage_overrides(
             accounts=accounts,
@@ -207,6 +216,15 @@ class AccountsService:
             await persist_live_usage_overrides(
                 usage_repo=self._usage_repo,
                 candidates=persist_candidates,
+            )
+        for account in accounts:
+            codex_auth_status = codex_auth_by_account.get(account.id)
+            if codex_auth_status is None:
+                continue
+            snapshot_names = snapshot_names_by_account.get(account.id, [])
+            codex_auth_status.is_omx_boosted = bool(
+                codex_auth_status.has_live_session
+                and any(snapshot_name in omx_snapshot_names for snapshot_name in snapshot_names)
             )
         overlay_live_codex_task_previews(
             accounts=accounts,

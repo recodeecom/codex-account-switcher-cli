@@ -1094,7 +1094,8 @@ export function AccountCard(props: AccountCardProps) {
   const useLocalButtonDisabled =
     !canUseLocally || useLocalBusy || useLocalBlockedByWeeklyQuota;
   const useLocalButtonShowsSuccess = isActiveSnapshot || useLocalBusy;
-  const resolvedPrimaryActionLabel = isActiveSnapshot
+  const shouldShowCurrentUseLabel = isActiveSnapshot || isWorkingNow;
+  const resolvedPrimaryActionLabel = shouldShowCurrentUseLabel
     ? "Currently used"
     : primaryActionLabel;
   const useLocalButtonDisabledReason = useLocalBlockedByWeeklyQuota
@@ -1433,6 +1434,7 @@ export function AccountCard(props: AccountCardProps) {
       ? String(codexLiveSessionCount)
       : `${codexLiveSessionCount} sessions`;
   const idSuffix = showAccountId ? ` | ID ${compactId}` : "";
+  const isOmxBoosted = Boolean(account.codexAuth?.isOmxBoosted);
   const tokenCardStatusClass = cn(
     "h-7 gap-1.5 rounded-full border px-3 text-[11px] font-semibold tracking-[0.02em] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]",
     status === "active" &&
@@ -1459,90 +1461,102 @@ export function AccountCard(props: AccountCardProps) {
           )}
         >
           <div className="relative">
-            <div className="mb-2 flex flex-wrap items-center justify-end gap-1.5">
-              <Badge variant="outline" className={tokenCardStatusClass}>
-                <span
-                  className="h-1.5 w-1.5 rounded-full bg-current"
-                  aria-hidden
-                />
-                {STATUS_LABELS[status] ?? status}
-              </Badge>
-              {deactivatedLastSeenDisplay ? (
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    "gap-1",
-                    deactivatedLastSeenDisplay.upToDate
-                      ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300"
-                      : "border-zinc-500/25 bg-zinc-500/10 text-zinc-600 dark:text-zinc-300",
-                  )}
-                  title={deactivatedLastSeenDisplay.label ?? undefined}
-                >
-                  <Clock className="h-3 w-3" />
-                  {deactivatedLastSeenDisplay.label}
-                </Badge>
-              ) : null}
-              {showUsageLimitHitBadge ? (
-                <Badge
-                  variant="outline"
-                  className="gap-1.5 border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-300"
-                >
+            <div className="mb-2 flex items-start justify-between gap-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-200/90">
+              <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                <span className="inline-flex items-center gap-1.5 text-zinc-100">
+                  <img
+                    src="/openai.svg"
+                    alt=""
+                    className="h-3.5 w-3.5 opacity-80 brightness-0 invert"
+                    aria-hidden
+                  />
+                  OpenAI
+                </span>
+                <Badge variant="outline" className={tokenCardStatusClass}>
                   <span
                     className="h-1.5 w-1.5 rounded-full bg-current"
                     aria-hidden
                   />
-                  Usage limit hit
-                  {usageLimitHit && usageLimitHitCountdownLabel ? (
-                    <span className="font-medium text-red-700 dark:text-red-300">
-                      · leaves in {usageLimitHitCountdownLabel}
-                    </span>
-                  ) : null}
+                  {STATUS_LABELS[status] ?? status}
                 </Badge>
-              ) : showWorkingIndicator ? (
-                <WorkingNowPill />
-              ) : showWaitingForTaskIndicator ? (
-                <WaitingForTaskPill label={waitingTaskPillLabel} />
-              ) : null}
-              {showWeeklyUsageLimitDetailBadge ? (
-                <Badge
-                  variant="outline"
-                  className="gap-1.5 border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-300"
-                >
-                  <span
-                    className="h-1.5 w-1.5 rounded-full bg-current"
-                    aria-hidden
-                  />
-                  Weekly usage limit hit
-                </Badge>
-              ) : null}
-              {hasExpiredRefreshToken ? (
-                <Badge
-                  variant="outline"
-                  className="gap-1.5 border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300"
-                  title={
-                    account.deactivationReason ??
-                    "Re-login is required to refresh the account token."
-                  }
-                >
-                  <span
-                    className="h-1.5 w-1.5 rounded-full bg-current"
-                    aria-hidden
-                  />
-                  Expired refresh token
-                </Badge>
-              ) : null}
-            </div>
-            <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-200/90">
-              <span className="inline-flex items-center gap-1.5 text-zinc-100">
-                <img
-                  src="/openai.svg"
-                  alt=""
-                  className="h-3.5 w-3.5 opacity-80 brightness-0 invert"
-                  aria-hidden
-                />
-                OpenAI
-              </span>
-              <span>{hasLiveSession ? "Live token card" : "Token card"}</span>
+                {isOmxBoosted ? (
+                  <Badge
+                    variant="outline"
+                    className="gap-1.5 border-cyan-500/30 bg-cyan-500/10 text-cyan-200"
+                  >
+                    <span
+                      className="h-1.5 w-1.5 rounded-full bg-current"
+                      aria-hidden
+                    />
+                    OMX boosted
+                  </Badge>
+                ) : null}
+                {deactivatedLastSeenDisplay ? (
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      "gap-1",
+                      deactivatedLastSeenDisplay.upToDate
+                        ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300"
+                        : "border-zinc-500/25 bg-zinc-500/10 text-zinc-600 dark:text-zinc-300",
+                    )}
+                    title={deactivatedLastSeenDisplay.label ?? undefined}
+                  >
+                    <Clock className="h-3 w-3" />
+                    {deactivatedLastSeenDisplay.label}
+                  </Badge>
+                ) : null}
+                {showUsageLimitHitBadge ? (
+                  <Badge
+                    variant="outline"
+                    className="gap-1.5 border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-300"
+                  >
+                    <span
+                      className="h-1.5 w-1.5 rounded-full bg-current"
+                      aria-hidden
+                    />
+                    Usage limit hit
+                    {usageLimitHit && usageLimitHitCountdownLabel ? (
+                      <span className="font-medium text-red-700 dark:text-red-300">
+                        · leaves in {usageLimitHitCountdownLabel}
+                      </span>
+                    ) : null}
+                  </Badge>
+                ) : showWorkingIndicator ? (
+                  <WorkingNowPill />
+                ) : showWaitingForTaskIndicator ? (
+                  <WaitingForTaskPill label={waitingTaskPillLabel} />
+                ) : null}
+                {showWeeklyUsageLimitDetailBadge ? (
+                  <Badge
+                    variant="outline"
+                    className="gap-1.5 border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-300"
+                  >
+                    <span
+                      className="h-1.5 w-1.5 rounded-full bg-current"
+                      aria-hidden
+                    />
+                    Weekly usage limit hit
+                  </Badge>
+                ) : null}
+                {hasExpiredRefreshToken ? (
+                  <Badge
+                    variant="outline"
+                    className="gap-1.5 border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                    title={
+                      account.deactivationReason ??
+                      "Re-login is required to refresh the account token."
+                    }
+                  >
+                    <span
+                      className="h-1.5 w-1.5 rounded-full bg-current"
+                      aria-hidden
+                    />
+                    Expired refresh token
+                  </Badge>
+                ) : null}
+              </div>
+              <span className="shrink-0 pt-1">{hasLiveSession ? "Live token card" : "Token card"}</span>
             </div>
             <p
               className="mt-1 truncate text-[11px] font-semibold uppercase tracking-[0.13em] text-zinc-300"

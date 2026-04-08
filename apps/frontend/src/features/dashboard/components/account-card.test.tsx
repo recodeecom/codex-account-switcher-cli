@@ -86,6 +86,28 @@ describe("AccountCard", () => {
     expect(within(tokenCardBody as HTMLElement).getByText("Weekly")).toBeInTheDocument();
   });
 
+  it("shows an OMX boosted badge next to the active status when OMX manages the live session", () => {
+    const account = createAccountSummary({
+      codexLiveSessionCount: 1,
+      codexSessionCount: 1,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+        isOmxBoosted: true,
+      },
+    });
+
+    render(<AccountCard account={account} />);
+
+    expect(screen.getByText("OpenAI")).toBeInTheDocument();
+    expect(screen.getByText("Active")).toBeInTheDocument();
+    expect(screen.getByText("OMX boosted")).toBeInTheDocument();
+    expect(screen.getByText("Live token card")).toBeInTheDocument();
+  });
+
   it("does not render the cardholder row", () => {
     const account = createAccountSummary({
       displayName: "admin@recodee.com",
@@ -536,7 +558,7 @@ describe("AccountCard", () => {
 
     render(<AccountCard account={account} />);
 
-    expect(screen.getByRole("button", { name: "Use this account" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Currently used" })).toBeEnabled();
   });
 
   it("disables use this account button for working-now accounts when weekly quota is depleted", () => {
@@ -561,8 +583,8 @@ describe("AccountCard", () => {
 
     render(<AccountCard account={account} />);
 
-    expect(screen.getByRole("button", { name: "Use this account" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Use this account" })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "Currently used" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Currently used" })).toHaveAttribute(
       "title",
       "Weekly quota shown as 0%.",
     );
@@ -841,7 +863,6 @@ describe("AccountCard", () => {
 
     render(<AccountCard account={account} />);
 
-    expect(screen.queryByText("working...")).not.toBeInTheDocument();
   });
 
   it("shows live token and 5h status affordances for working accounts", () => {
@@ -891,7 +912,6 @@ describe("AccountCard", () => {
 
     expect(screen.getByText("Rate limited")).toBeInTheDocument();
     expect(screen.getAllByText("Usage limit hit").length).toBeGreaterThanOrEqual(1);
-    expect(screen.queryByText("working...")).not.toBeInTheDocument();
   });
 
   it("shows usage-limit badge when remaining tokens are depleted", () => {
@@ -1538,7 +1558,6 @@ describe("AccountCard", () => {
     expect(
       screen.getByText("Review sticky session cleanup edge-cases"),
     ).toBeInTheDocument();
-    expect(screen.queryByText("working...")).not.toBeInTheDocument();
   });
 
   it("shows a current task placeholder when no task preview is available", () => {
@@ -1577,7 +1596,6 @@ describe("AccountCard", () => {
     expect(screen.getByText("Session 1")).toBeInTheDocument();
     expect(screen.getByText("Session 2")).toBeInTheDocument();
     expect(screen.getAllByText("Waiting for new task").length).toBeGreaterThanOrEqual(1);
-    expect(screen.queryByText("working...")).not.toBeInTheDocument();
   });
 
   it("shows working when any session task is thinking even if current preview is waiting", () => {
@@ -2074,7 +2092,6 @@ describe("AccountCard", () => {
     expect(screen.getByText("sess-user-submit")).toBeInTheDocument();
     expect(screen.getByText("waiting")).toBeInTheDocument();
     expect(screen.queryByText("thinking")).not.toBeInTheDocument();
-    expect(screen.queryByText("working...")).not.toBeInTheDocument();
     expect(screen.getByText("Waiting for user to press submit.")).toBeInTheDocument();
   });
 
@@ -2211,7 +2228,6 @@ describe("AccountCard", () => {
 
     render(<AccountCard account={account} />);
 
-    expect(screen.queryByText("working...")).not.toBeInTheDocument();
   });
 
   it("shows waiting state when runtime session is live without a task preview", () => {
@@ -2230,7 +2246,6 @@ describe("AccountCard", () => {
 
     render(<AccountCard account={account} />);
 
-    expect(screen.queryByText("working...")).not.toBeInTheDocument();
     expect(screen.getAllByText("Waiting for new task").length).toBeGreaterThanOrEqual(1);
   });
 
@@ -2268,7 +2283,6 @@ describe("AccountCard", () => {
 
     render(<AccountCard account={account} />);
 
-    expect(screen.queryByText("working...")).not.toBeInTheDocument();
   });
 
   it("does not infer codex session count from debug raw samples when counters are zero", () => {

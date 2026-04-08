@@ -124,6 +124,7 @@ class LocalCodexProcessSessionAttribution:
     counts_by_snapshot: dict[str, int]
     unattributed_session_pids: list[int]
     mapped_session_pids_by_snapshot: dict[str, list[int]] = field(default_factory=dict)
+    omx_session_pids_by_snapshot: dict[str, list[int]] = field(default_factory=dict)
     task_preview_by_pid: dict[int, str] = field(default_factory=dict)
     task_previews_by_pid: dict[int, list[str]] = field(default_factory=dict)
 
@@ -477,6 +478,7 @@ def read_live_codex_process_session_attribution() -> LocalCodexProcessSessionAtt
             counts_by_snapshot={},
             unattributed_session_pids=[],
             mapped_session_pids_by_snapshot={},
+            omx_session_pids_by_snapshot={},
             task_preview_by_pid={},
             task_previews_by_pid={},
         )
@@ -499,6 +501,7 @@ def read_live_codex_process_session_attribution() -> LocalCodexProcessSessionAtt
     counts: dict[str, int] = {}
     unattributed_session_pids: list[int] = []
     mapped_session_pids_by_snapshot: dict[str, list[int]] = {}
+    omx_session_pids_by_snapshot: dict[str, list[int]] = {}
     task_preview_by_pid: dict[int, str] = {}
     task_previews_by_pid: dict[int, list[str]] = {}
     for pid, env in processes:
@@ -520,14 +523,19 @@ def read_live_codex_process_session_attribution() -> LocalCodexProcessSessionAtt
             continue
         counts[snapshot_name] = counts.get(snapshot_name, 0) + 1
         mapped_session_pids_by_snapshot.setdefault(snapshot_name, []).append(pid)
+        if _is_omx_managed_codex_command(_read_process_cmdline(pid)):
+            omx_session_pids_by_snapshot.setdefault(snapshot_name, []).append(pid)
 
     for session_pids in mapped_session_pids_by_snapshot.values():
+        session_pids.sort()
+    for session_pids in omx_session_pids_by_snapshot.values():
         session_pids.sort()
 
     return LocalCodexProcessSessionAttribution(
         counts_by_snapshot=counts,
         unattributed_session_pids=sorted(unattributed_session_pids),
         mapped_session_pids_by_snapshot=mapped_session_pids_by_snapshot,
+        omx_session_pids_by_snapshot=omx_session_pids_by_snapshot,
         task_preview_by_pid=task_preview_by_pid,
         task_previews_by_pid=task_previews_by_pid,
     )
@@ -2291,7 +2299,7 @@ def _is_codex_session_command(command: list[str], *, pid: int | None = None) -> 
         return False
 
     # OMX-managed sessions always include model_instructions_file marker.
-    if any("model_instructions_file=" in part for part in command):
+    if _is_omx_managed_codex_command(command):
         return True
 
     # Keep known service processes (for example VSCode extension app-server)
@@ -2323,6 +2331,10 @@ def _is_non_session_codex_command(command: list[str]) -> bool:
             continue
         return normalized in {"app-server"}
     return False
+
+
+def _is_omx_managed_codex_command(command: list[str]) -> bool:
+    return any("model_instructions_file=" in part for part in command)
 
 
 def _is_non_default_auth_scope_process(

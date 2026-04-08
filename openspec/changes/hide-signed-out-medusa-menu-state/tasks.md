@@ -1,0 +1,3 @@
+- [x] Update the account dropdown to hide signed-out Medusa admin actions and footer rows.
+- [x] Refresh account-menu regression coverage for signed-out and signed-in Medusa states.
+- [x] Validate with targeted frontend tests and spec validation.
