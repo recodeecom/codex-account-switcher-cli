@@ -541,6 +541,10 @@ function resolveCardTokensRemaining(
     return secondaryRemaining;
   }
 
+  if (primaryRemaining != null && secondaryRemaining != null) {
+    return Math.min(primaryRemaining, secondaryRemaining);
+  }
+
   if (primaryRemaining != null) {
     return primaryRemaining;
   }
@@ -759,7 +763,7 @@ export function AccountCards({
   return (
     <div className="space-y-5">
       {groupedAccounts.working.length > 0 ? (
-        <section className="space-y-4 rounded-xl border border-white/10 bg-[#0d1522] p-4 md:p-5">
+        <section className="space-y-4 rounded-xl border border-white/10 bg-[#060A13] p-4 md:p-5">
           <div className="flex flex-col gap-4 border-b border-white/8 pb-4 xl:flex-row xl:items-start xl:justify-between">
             <div className="min-w-0 space-y-1">
               <h3 className="text-base font-semibold tracking-tight text-zinc-100">
@@ -771,7 +775,7 @@ export function AccountCards({
               </p>
             </div>
             <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 xl:w-auto xl:min-w-[34rem] xl:grid-cols-3">
-              <span className="flex min-h-16 flex-col justify-between rounded-lg border border-white/10 bg-white/[0.03] px-3.5 py-3">
+              <span className="flex min-h-16 flex-col justify-between rounded-lg border border-white/10 bg-[#060A13] px-3.5 py-3">
                 <span className="text-[11px] font-medium text-zinc-400">
                   Active accounts
                 </span>
@@ -780,7 +784,7 @@ export function AccountCards({
                 </span>
               </span>
               {workingSummary.liveSessions > 0 ? (
-                <span className="flex min-h-16 flex-col justify-between rounded-lg border border-white/10 bg-white/[0.03] px-3.5 py-3">
+                <span className="flex min-h-16 flex-col justify-between rounded-lg border border-white/10 bg-[#060A13] px-3.5 py-3">
                   <span className="text-[11px] font-medium text-zinc-400">
                     CLI sessions
                   </span>
@@ -790,7 +794,7 @@ export function AccountCards({
                 </span>
               ) : null}
               {workingSummary.primaryConsumedTokens !== null ? (
-                <span className="flex min-h-16 flex-col justify-between rounded-lg border border-white/10 bg-white/[0.03] px-3.5 py-3">
+                <span className="flex min-h-16 flex-col justify-between rounded-lg border border-white/10 bg-[#060A13] px-3.5 py-3">
                   <span className="text-[11px] font-medium text-zinc-400">
                     {primaryWindowLabel} token spend
                   </span>

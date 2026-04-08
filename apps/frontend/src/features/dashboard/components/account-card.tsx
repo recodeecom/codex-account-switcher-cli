@@ -290,16 +290,42 @@ function OmxPlanningPromptGraph({
     <div
       data-testid="omx-planning-prompt-graph"
       className={cn(
-        "group relative mx-auto aspect-square w-full max-w-[34rem] overflow-hidden rounded-xl bg-transparent",
+        "group relative mx-auto aspect-square w-full max-w-[34rem] overflow-hidden rounded-xl border border-cyan-300/20 bg-[#020817]/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_20px_48px_rgba(2,6,23,0.5)]",
       )}
     >
       <div
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_48%,rgba(34,211,238,0.08),transparent_72%)]"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_48%,rgba(34,211,238,0.13),transparent_72%)]"
         aria-hidden
       />
 
       <div
-        className="pointer-events-none absolute left-1/2 top-1/2 h-[76%] w-[76%] -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-300/14"
+        className={cn(
+          "pointer-events-none absolute left-1/2 top-1/2 h-[70%] w-[70%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-gradient-to-br opacity-70 blur-2xl",
+          cliStateStyle.glowClassName,
+        )}
+        aria-hidden
+      />
+
+      <div
+        className="pointer-events-none absolute left-1/2 top-1/2 h-[84%] w-[84%] -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-300/18"
+        aria-hidden
+      />
+
+      <div
+        className="pointer-events-none absolute left-1/2 top-1/2 h-[68%] w-[68%] -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-300/20"
+        aria-hidden
+      />
+
+      <div
+        className="pointer-events-none absolute inset-0"
+        aria-hidden
+      >
+        <div className="absolute inset-x-[15%] top-1/2 h-px -translate-y-1/2 bg-cyan-300/10" />
+        <div className="absolute inset-y-[15%] left-1/2 w-px -translate-x-1/2 bg-cyan-300/10" />
+      </div>
+
+      <div
+        className="pointer-events-none absolute left-1/2 top-1/2 h-[76%] w-[76%] -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-300/12"
         aria-hidden
       />
 
@@ -317,7 +343,8 @@ function OmxPlanningPromptGraph({
             y2={String(node.y)}
             stroke={node.key === activeNodeKey ? "rgba(34,211,238,0.72)" : "rgba(148,163,184,0.28)"}
             strokeDasharray="3 2"
-            strokeWidth="0.6"
+            strokeLinecap="round"
+            strokeWidth={node.key === activeNodeKey ? "0.9" : "0.62"}
             className={cn(
               "motion-safe:transition-all motion-safe:duration-300",
               node.key === activeNodeKey &&
@@ -333,14 +360,21 @@ function OmxPlanningPromptGraph({
           <div
             key={node.key}
             className={cn(
-              "absolute inline-flex min-w-[4.9rem] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-md border px-2.5 py-1 text-[10px] font-semibold tracking-[0.1em] transition-all duration-300",
+              "absolute inline-flex min-w-[5.2rem] -translate-x-1/2 -translate-y-1/2 items-center justify-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[10px] font-semibold tracking-[0.08em] backdrop-blur-sm transition-all duration-300",
               nodeActive
-                ? "scale-[1.05] border-cyan-300/70 bg-cyan-400/20 text-cyan-50 shadow-[0_0_16px_rgba(34,211,238,0.32)]"
-                : "border-white/20 bg-black/55 text-zinc-100/95",
+                ? "scale-[1.05] border-cyan-200/80 bg-cyan-400/22 text-cyan-50 shadow-[0_0_0_1px_rgba(34,211,238,0.2),0_0_18px_rgba(34,211,238,0.32)]"
+                : "border-white/18 bg-slate-950/72 text-zinc-100/95",
             )}
             style={{ left: `${node.x}%`, top: `${node.y}%` }}
           >
-            {node.label}
+            <span
+              className={cn(
+                "h-1.5 w-1.5 rounded-full",
+                nodeActive ? "bg-cyan-100" : "bg-zinc-300/65",
+              )}
+              aria-hidden
+            />
+            <span>{node.label}</span>
             {nodeActive ? (
               <span
                 className="ml-1 inline-flex h-1.5 w-1.5 rounded-full bg-cyan-200 motion-safe:animate-ping"
@@ -351,11 +385,13 @@ function OmxPlanningPromptGraph({
         );
       })}
 
-      <div className="absolute left-1/2 top-1/2 flex h-[62%] w-[62%] -translate-x-1/2 -translate-y-1/2 flex-col justify-center rounded-full border border-cyan-200/45 bg-black/70 px-5 text-center shadow-[0_10px_24px_rgba(0,0,0,0.35)]">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-100/95">
-          Prompt
-        </p>
-        <div className="mt-2 max-h-[45%] overflow-y-auto text-[11.5px] leading-[1.35] text-zinc-50">
+      <div className="absolute left-1/2 top-1/2 flex h-[60%] w-[60%] -translate-x-1/2 -translate-y-1/2 flex-col justify-center rounded-full border border-cyan-200/50 bg-slate-950/86 px-6 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_14px_36px_rgba(2,6,23,0.6)]">
+        <div className="flex items-center justify-center gap-2 text-[9px] font-semibold uppercase tracking-[0.2em] text-cyan-100/95">
+          <span className="h-px w-5 bg-cyan-200/45" aria-hidden />
+          <span>Prompt</span>
+          <span className="h-px w-5 bg-cyan-200/45" aria-hidden />
+        </div>
+        <div className="mt-3 max-h-[52%] overflow-y-auto text-[12px] leading-[1.45] text-zinc-50">
           <p className="break-words whitespace-pre-wrap">{prompt}</p>
         </div>
       </div>
@@ -364,7 +400,7 @@ function OmxPlanningPromptGraph({
         <span
           data-testid="omx-planning-cli-state"
           className={cn(
-            "inline-flex h-6 items-center gap-1.5 rounded-full border bg-black/70 px-2.5 text-[9px] font-semibold uppercase tracking-[0.11em] backdrop-blur-sm",
+            "inline-flex h-6 items-center gap-1.5 rounded-full border bg-black/75 px-2.5 text-[9px] font-semibold uppercase tracking-[0.11em] shadow-[0_6px_16px_rgba(2,6,23,0.45)] backdrop-blur-sm",
             cliStateStyle.badgeClassName,
           )}
         >
@@ -1473,7 +1509,7 @@ export function AccountCard(props: AccountCardProps) {
   const waitingTaskPillLabel = resolveWaitingTaskPillLabel(
     displayCurrentTaskPreview,
   );
-  const showOmxPlanningPromptGraph = !hideCurrentTaskPreview;
+  const showOmxPlanningPromptGraph = !hideCurrentTaskPreview && isWorkingNow;
   const promptDrivenOmxPlanningActiveNodeKey = resolveOmxPlanningActiveNodeKey(
     newestPromptForPlanningGraph,
   );
@@ -1542,6 +1578,11 @@ export function AccountCard(props: AccountCardProps) {
     sessionTaskPreviews,
   ]);
   const hasSessionTaskRows = sessionTaskRows.length > 0;
+  const shouldRenderTaskPanel =
+    showOmxPlanningPromptGraph ||
+    Boolean(taskPanelAddon) ||
+    showLastTaskPreview ||
+    hasSessionTaskRows;
   const hasLiveCliSessions = codexLiveSessionCount > 0;
   const latestThinkingTaskTimestampMs = useMemo(() => {
     let latest: number | null = null;
@@ -1681,7 +1722,7 @@ export function AccountCard(props: AccountCardProps) {
       >
         <div
           className={cn(
-            "card-hover relative overflow-hidden rounded-[18px] border border-white/10 bg-[#101826] px-3.5 py-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_18px_42px_rgba(0,0,0,0.58)]",
+            "card-hover relative overflow-hidden rounded-[18px] border border-white/10 bg-[#060A13] px-3.5 py-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_18px_42px_rgba(0,0,0,0.58)]",
             showLimitTint && "border-red-500/40",
           )}
         >
@@ -1779,45 +1820,49 @@ export function AccountCard(props: AccountCardProps) {
                   ) : null}
                 </div>
               </div>
-            <p
-              className="mt-1 truncate text-[11px] font-semibold uppercase tracking-[0.13em] text-zinc-300"
-              title={
-                showAccountId ? `Account ID ${account.accountId}` : undefined
-              }
-            >
-              {showCodexOnlyAccountSubtitle ? (
-                codexOnlyEmailLabel ? (
-                  <>
-                    CODEX ONLY ACCOUNT ·{" "}
-                    {codexOnlyEmailIsSensitive && blurred ? (
-                      <span className="privacy-blur">{codexOnlyEmailLabel}</span>
+            <div className="mt-2 flex items-start gap-2.5">
+              <div className="mt-0.5 flex shrink-0 items-center gap-2 text-zinc-200/85">
+                <div className="h-5 w-7 rounded-[4px] border border-amber-200/35 bg-[linear-gradient(145deg,#f2ca7d_0%,#d79a24_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.35)]" />
+                <span className="text-xs tracking-[0.18em]">)))</span>
+              </div>
+              <div className="min-w-0 flex-1">
+                <p
+                  className="truncate text-[11px] font-semibold uppercase tracking-[0.13em] text-zinc-300"
+                  title={
+                    showAccountId ? `Account ID ${account.accountId}` : undefined
+                  }
+                >
+                  {showCodexOnlyAccountSubtitle ? (
+                    codexOnlyEmailLabel ? (
+                      <>
+                        CODEX ONLY ACCOUNT ·{" "}
+                        {codexOnlyEmailIsSensitive && blurred ? (
+                          <span className="privacy-blur">{codexOnlyEmailLabel}</span>
+                        ) : (
+                          codexOnlyEmailLabel
+                        )}
+                      </>
                     ) : (
-                      codexOnlyEmailLabel
-                    )}
-                  </>
-                ) : (
-                  "CODEX ONLY ACCOUNT"
-                )
-              ) : snapshotIsEmail && blurred ? (
-                <>
-                  {planLabel} ·{" "}
-                  <span className="privacy-blur">{snapshotLabel}</span>
-                </>
-              ) : (
-                planWithSnapshot
-              )}
-              {idSuffix}
-            </p>
-            <p className="mt-0.5 truncate text-sm font-semibold leading-tight text-zinc-200/85">
-              {accountIdentityIsSensitive && blurred ? (
-                <span className="privacy-blur">{accountIdentityLabel}</span>
-              ) : (
-                accountIdentityLabel
-              )}
-            </p>
-            <div className="mt-3 flex items-center gap-2 text-zinc-200/85">
-              <div className="h-5 w-7 rounded-[4px] border border-amber-200/35 bg-[linear-gradient(145deg,#f2ca7d_0%,#d79a24_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.35)]" />
-              <span className="text-xs tracking-[0.18em]">)))</span>
+                      "CODEX ONLY ACCOUNT"
+                    )
+                  ) : snapshotIsEmail && blurred ? (
+                    <>
+                      {planLabel} ·{" "}
+                      <span className="privacy-blur">{snapshotLabel}</span>
+                    </>
+                  ) : (
+                    planWithSnapshot
+                  )}
+                  {idSuffix}
+                </p>
+                <p className="mt-0.5 truncate text-sm font-semibold leading-tight text-zinc-200/85">
+                  {accountIdentityIsSensitive && blurred ? (
+                    <span className="privacy-blur">{accountIdentityLabel}</span>
+                  ) : (
+                    accountIdentityLabel
+                  )}
+                </p>
+              </div>
             </div>
             <div className="mt-3 grid grid-cols-2 gap-2.5">
               <div className="space-y-1">
@@ -1873,38 +1918,39 @@ export function AccountCard(props: AccountCardProps) {
               </div>
             </div>
 
-            <div className="relative mt-3">
-              <div className="space-y-1.5">
-                <div
-                  className={cn(
-                    "relative transition-all duration-200",
-                    hideTaskContainerChrome
-                      ? "px-0 py-0"
-                      : showOmxPlanningPromptGraph
+            {shouldRenderTaskPanel ? (
+              <div className="relative mt-3">
+                <div className="space-y-1.5">
+                  <div
+                    className={cn(
+                      "relative transition-all duration-200",
+                      hideTaskContainerChrome
                         ? "px-0 py-0"
-                      : cn(
-                          "rounded-lg border px-2 py-1.5",
-                          isCurrentTaskWaiting
-                            ? "border-cyan-400/30 bg-transparent hover:border-cyan-300/45 hover:shadow-[0_0_0_1px_rgba(34,211,238,0.16)]"
-                            : "border-indigo-300/30 bg-transparent hover:border-indigo-200/45 hover:shadow-[0_0_0_1px_rgba(129,140,248,0.18)]",
-                        ),
-                  )}
-                >
-                  {!hideCurrentTaskPreview ? (
-                    showOmxPlanningPromptGraph ? (
-                      <OmxPlanningPromptGraph
-                        prompt={newestPromptForPlanningGraph}
-                        activeNodeKey={omxPlanningActiveNodeKey}
-                        cliRuntimeState={omxPlanningCliRuntimeState}
-                      />
-                    ) : null
-                  ) : null}
-                  {taskPanelAddon ? (
-                    <div className={cn(!hideCurrentTaskPreview && "mt-2")}>
-                      {taskPanelAddon}
-                    </div>
-                  ) : null}
-                </div>
+                        : showOmxPlanningPromptGraph
+                          ? "px-0 py-0"
+                          : cn(
+                              "rounded-lg border px-2 py-1.5",
+                              isCurrentTaskWaiting
+                                ? "border-cyan-400/30 bg-transparent hover:border-cyan-300/45 hover:shadow-[0_0_0_1px_rgba(34,211,238,0.16)]"
+                                : "border-indigo-300/30 bg-transparent hover:border-indigo-200/45 hover:shadow-[0_0_0_1px_rgba(129,140,248,0.18)]",
+                            ),
+                    )}
+                  >
+                    {!hideCurrentTaskPreview ? (
+                      showOmxPlanningPromptGraph ? (
+                        <OmxPlanningPromptGraph
+                          prompt={newestPromptForPlanningGraph}
+                          activeNodeKey={omxPlanningActiveNodeKey}
+                          cliRuntimeState={omxPlanningCliRuntimeState}
+                        />
+                      ) : null
+                    ) : null}
+                    {taskPanelAddon ? (
+                      <div className={cn(!hideCurrentTaskPreview && "mt-2")}>
+                        {taskPanelAddon}
+                      </div>
+                    ) : null}
+                  </div>
 
                 {showLastTaskPreview ? (
                   <div className="rounded-lg border border-white/15 bg-transparent px-2 py-1">
@@ -2164,7 +2210,8 @@ export function AccountCard(props: AccountCardProps) {
                   </div>
                 ) : null}
               </div>
-            </div>
+              </div>
+            ) : null}
           </div>
 
           <div className="sr-only">

@@ -63,6 +63,19 @@ describe("AccountCard", () => {
     expect(screen.getByRole("button", { name: "Sessions" })).toBeInTheDocument();
   });
 
+  it("keeps the card icon inline before team/email values", () => {
+    const account = createAccountSummary();
+
+    render(<AccountCard account={account} />);
+
+    const iconText = screen.getByText(")))");
+    const identityRow = iconText.parentElement?.parentElement as HTMLElement | null;
+    expect(identityRow).not.toBeNull();
+    expect(identityRow).toHaveClass("mt-2", "flex", "items-start");
+    expect(within(identityRow as HTMLElement).getByText("Plus · main")).toBeInTheDocument();
+    expect(within(identityRow as HTMLElement).getByText("primary@example.com")).toBeInTheDocument();
+  });
+
   it("renders quota bars inside the OpenAI token card container", () => {
     const account = createAccountSummary({
       codexLiveSessionCount: 2,
@@ -1528,6 +1541,7 @@ describe("AccountCard", () => {
   });
 
   it("renders current task preview when provided", () => {
+    const nowIso = new Date().toISOString();
     const account = createAccountSummary({
       codexLiveSessionCount: 2,
       codexSessionCount: 2,
@@ -1540,6 +1554,8 @@ describe("AccountCard", () => {
         isActiveSnapshot: true,
         hasLiveSession: true,
       },
+      lastUsageRecordedAtPrimary: nowIso,
+      lastUsageRecordedAtSecondary: nowIso,
     });
 
     render(<AccountCard account={account} />);
@@ -1561,6 +1577,7 @@ describe("AccountCard", () => {
   });
 
   it("renders the OMX planning graph with planning role nodes", () => {
+    const nowIso = new Date().toISOString();
     const account = createAccountSummary({
       codexLiveSessionCount: 1,
       codexSessionCount: 1,
@@ -1573,6 +1590,8 @@ describe("AccountCard", () => {
         isActiveSnapshot: true,
         hasLiveSession: true,
       },
+      lastUsageRecordedAtPrimary: nowIso,
+      lastUsageRecordedAtSecondary: nowIso,
     });
 
     render(<AccountCard account={account} />);
@@ -1602,6 +1621,7 @@ describe("AccountCard", () => {
   });
 
   it("shows waiting CLI runtime state inside the OMX planning graph when sessions are idle", () => {
+    const nowIso = new Date().toISOString();
     const account = createAccountSummary({
       codexLiveSessionCount: 1,
       codexSessionCount: 1,
@@ -1621,6 +1641,8 @@ describe("AccountCard", () => {
         isActiveSnapshot: true,
         hasLiveSession: true,
       },
+      lastUsageRecordedAtPrimary: nowIso,
+      lastUsageRecordedAtSecondary: nowIso,
     });
 
     render(<AccountCard account={account} />);
@@ -1637,6 +1659,7 @@ describe("AccountCard", () => {
   });
 
   it("keeps planner highlighted when CLI state is waiting even if prompt keywords map elsewhere", () => {
+    const nowIso = new Date().toISOString();
     const account = createAccountSummary({
       codexLiveSessionCount: 1,
       codexSessionCount: 1,
@@ -1655,6 +1678,8 @@ describe("AccountCard", () => {
         isActiveSnapshot: true,
         hasLiveSession: true,
       },
+      lastUsageRecordedAtPrimary: nowIso,
+      lastUsageRecordedAtSecondary: nowIso,
     });
 
     render(<AccountCard account={account} />);
@@ -1668,6 +1693,7 @@ describe("AccountCard", () => {
   });
 
   it("falls back to the newest non-waiting prompt in the planning graph", () => {
+    const nowIso = new Date().toISOString();
     const account = createAccountSummary({
       codexLiveSessionCount: 1,
       codexSessionCount: 1,
@@ -1681,6 +1707,8 @@ describe("AccountCard", () => {
         isActiveSnapshot: true,
         hasLiveSession: true,
       },
+      lastUsageRecordedAtPrimary: nowIso,
+      lastUsageRecordedAtSecondary: nowIso,
     });
 
     render(<AccountCard account={account} />);
@@ -1721,7 +1749,7 @@ describe("AccountCard", () => {
     expect(screen.getAllByLabelText("Next.js task").length).toBeGreaterThanOrEqual(2);
   });
 
-  it("renders current task preview for non-working accounts when provided", () => {
+  it("hides the planning prompt graph for non-working accounts", () => {
     const account = createAccountSummary({
       codexLiveSessionCount: 0,
       codexSessionCount: 0,
@@ -1738,21 +1766,35 @@ describe("AccountCard", () => {
     render(<AccountCard account={account} />);
 
     expect(screen.queryByText("Current task")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("omx-planning-prompt-graph")).not.toBeInTheDocument();
     expect(
-      screen.getByText("Review sticky session cleanup edge-cases"),
-    ).toBeInTheDocument();
+      screen.queryByText("Review sticky session cleanup edge-cases"),
+    ).not.toBeInTheDocument();
   });
 
-  it("shows a current task placeholder when no task preview is available", () => {
+  it("shows a waiting placeholder in the planning graph when runtime reports a live session but no task preview", () => {
+    const nowIso = new Date().toISOString();
     const account = createAccountSummary({
       codexCurrentTaskPreview: null,
+      codexLiveSessionCount: 0,
+      codexSessionCount: 0,
+      codexTrackedSessionCount: 0,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+      lastUsageRecordedAtPrimary: nowIso,
+      lastUsageRecordedAtSecondary: nowIso,
     });
 
     render(<AccountCard account={account} />);
 
     expect(screen.queryByText("Current task")).not.toBeInTheDocument();
     const planningGraph = screen.getByTestId("omx-planning-prompt-graph");
-    expect(within(planningGraph).getByText("No prompt reported yet")).toBeInTheDocument();
+    expect(within(planningGraph).getByText("Waiting for new task")).toBeInTheDocument();
   });
 
   it("shows waiting for new task without the thinking indicator when a live session has no task preview", () => {
@@ -2078,6 +2120,10 @@ describe("AccountCard", () => {
       codexLiveSessionCount: 0,
       codexSessionCount: 0,
       codexTrackedSessionCount: 0,
+      usage: {
+        primaryRemainingPercent: 10,
+        secondaryRemainingPercent: 67,
+      },
       codexAuth: {
         hasSnapshot: true,
         snapshotName: "main",

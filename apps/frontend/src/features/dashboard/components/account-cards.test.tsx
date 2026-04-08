@@ -353,8 +353,13 @@ describe("AccountCards", () => {
     );
     expect(taskingCard).toBeDefined();
     expect(
-      within(taskingCard as HTMLElement).getByText("Investigate session handoff mismatch"),
-    ).toBeInTheDocument();
+      within(taskingCard as HTMLElement).queryByText(
+        "Investigate session handoff mismatch",
+      ),
+    ).not.toBeInTheDocument();
+    expect(
+      within(taskingCard as HTMLElement).queryByTestId("omx-planning-prompt-graph"),
+    ).not.toBeInTheDocument();
   });
 
   it("uses primary window remaining for regular-account token balance", () => {
@@ -621,6 +626,26 @@ describe("AccountCards", () => {
     const card = screen.getByText("weekly@example.com").closest(".card-hover");
     expect(card).not.toBeNull();
     expect(within(card as HTMLElement).getByText("500k")).toBeInTheDocument();
+  });
+
+  it("uses the tighter remaining quota when both 5h and weekly token windows exist", () => {
+    const account = createAccountSummary({
+      accountId: "acc_tight_quota",
+      email: "tight-quota@example.com",
+      displayName: "tight-quota@example.com",
+    });
+
+    render(
+      <AccountCards
+        accounts={[account]}
+        primaryWindow={buildWindow("primary", "acc_tight_quota", 1000, 225)}
+        secondaryWindow={buildWindow("secondary", "acc_tight_quota", 2000, 12)}
+      />,
+    );
+
+    const card = screen.getByText("tight-quota@example.com").closest(".card-hover");
+    expect(card).not.toBeNull();
+    expect(within(card as HTMLElement).getByText("12k")).toBeInTheDocument();
   });
 
   it("renders deactivated accounts after active accounts", () => {
