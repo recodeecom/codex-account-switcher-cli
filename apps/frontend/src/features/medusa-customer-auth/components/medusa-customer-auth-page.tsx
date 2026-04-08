@@ -90,26 +90,26 @@ export function MedusaCustomerAuthPage({
   };
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center p-4">
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute -top-1/4 -right-1/4 h-[600px] w-[600px] rounded-full bg-primary/5 blur-3xl" />
-        <div className="absolute -bottom-1/4 -left-1/4 h-[500px] w-[500px] rounded-full bg-primary/3 blur-3xl" />
-      </div>
-
-      <div className="relative w-full max-w-md animate-fade-in-up">
+    <div className="flex min-h-screen items-center justify-center px-6 py-10">
+      <div className="w-full max-w-md animate-fade-in-up">
         <div className="mb-8 flex flex-col items-center gap-3 text-center">
-          <div className="flex h-24 w-28 items-center justify-center rounded-[1.5rem] border border-primary/20 bg-gradient-to-br from-primary/20 via-primary/10 to-background shadow-sm ring-2 ring-primary/10 ring-offset-2 ring-offset-background">
-            <CodexLogo size={56} className="text-primary" />
+          <div
+            data-testid="medusa-auth-logo-shell"
+            className="flex items-center justify-center"
+          >
+            <CodexLogo size={64} className="text-primary" />
           </div>
           <div>
-            <h1 className="text-xl font-semibold tracking-tight">recodee.com</h1>
+            <h1 className="text-xl font-semibold tracking-tight">
+              recodee.com
+            </h1>
             <p className="mt-0.5 text-sm text-muted-foreground">
               Dashboard access via Medusa backend account
             </p>
           </div>
         </div>
 
-        <div className="rounded-2xl border bg-card p-6 shadow-[var(--shadow-md)]">
+        <div data-testid="medusa-auth-surface" className="space-y-5">
           <Tabs
             value={activeTab}
             onValueChange={(value) => {
@@ -118,14 +118,25 @@ export function MedusaCustomerAuthPage({
               clearError();
             }}
           >
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="login">Login</TabsTrigger>
-              <TabsTrigger value="register">Register</TabsTrigger>
+            <TabsList
+              data-testid="medusa-auth-tabs"
+              variant="line"
+              className="grid w-full grid-cols-2 border-b border-border p-0"
+            >
+              <TabsTrigger value="login" className="rounded-none">
+                Login
+              </TabsTrigger>
+              <TabsTrigger value="register" className="rounded-none">
+                Register
+              </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="login" className="mt-4">
+            <TabsContent value="login" className="mt-0 pt-1">
               <Form {...loginForm}>
-                <form className="space-y-4" onSubmit={loginForm.handleSubmit(handleLogin)}>
+                <form
+                  className="space-y-4"
+                  onSubmit={loginForm.handleSubmit(handleLogin)}
+                >
                   <FormField
                     control={loginForm.control}
                     name="email"
@@ -174,7 +185,9 @@ export function MedusaCustomerAuthPage({
                     )}
                   />
 
-                  {error ? <AlertMessage variant="error">{error}</AlertMessage> : null}
+                  {error ? (
+                    <AlertMessage variant="error">{error}</AlertMessage>
+                  ) : null}
 
                   <Button type="submit" className="w-full" disabled={loading}>
                     {loading ? <Spinner size="sm" className="mr-2" /> : null}
@@ -184,9 +197,12 @@ export function MedusaCustomerAuthPage({
               </Form>
             </TabsContent>
 
-            <TabsContent value="register" className="mt-4">
+            <TabsContent value="register" className="mt-0 pt-1">
               <Form {...registerForm}>
-                <form className="space-y-4" onSubmit={registerForm.handleSubmit(handleRegister)}>
+                <form
+                  className="space-y-4"
+                  onSubmit={registerForm.handleSubmit(handleRegister)}
+                >
                   <div className="grid gap-3 sm:grid-cols-2">
                     <FormField
                       control={registerForm.control}
@@ -195,7 +211,12 @@ export function MedusaCustomerAuthPage({
                         <FormItem>
                           <FormLabel>First name</FormLabel>
                           <FormControl>
-                            <Input {...field} autoComplete="given-name" placeholder="First" disabled={loading} />
+                            <Input
+                              {...field}
+                              autoComplete="given-name"
+                              placeholder="First"
+                              disabled={loading}
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -209,7 +230,12 @@ export function MedusaCustomerAuthPage({
                         <FormItem>
                           <FormLabel>Last name</FormLabel>
                           <FormControl>
-                            <Input {...field} autoComplete="family-name" placeholder="Last" disabled={loading} />
+                            <Input
+                              {...field}
+                              autoComplete="family-name"
+                              placeholder="Last"
+                              disabled={loading}
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -289,7 +315,9 @@ export function MedusaCustomerAuthPage({
                     )}
                   />
 
-                  {error ? <AlertMessage variant="error">{error}</AlertMessage> : null}
+                  {error ? (
+                    <AlertMessage variant="error">{error}</AlertMessage>
+                  ) : null}
 
                   <Button type="submit" className="w-full" disabled={loading}>
                     {loading ? <Spinner size="sm" className="mr-2" /> : null}
