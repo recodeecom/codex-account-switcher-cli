@@ -1082,7 +1082,7 @@ describe("AccountCard", () => {
     }
   });
 
-  it("auto-terminates CLI sessions once the usage-limit grace window expires", () => {
+  it("does not auto-terminate CLI sessions when the usage-limit grace window expires", () => {
     vi.useFakeTimers();
     try {
       const now = new Date("2026-04-05T00:00:00.000Z");
@@ -1115,7 +1115,7 @@ describe("AccountCard", () => {
       act(() => {
         vi.advanceTimersByTime(61_000);
       });
-      expect(onAction).toHaveBeenCalledWith(account, "terminateCliSessions");
+      expect(onAction).not.toHaveBeenCalledWith(account, "terminateCliSessions");
 
       act(() => {
         vi.advanceTimersByTime(5_000);
@@ -1124,13 +1124,13 @@ describe("AccountCard", () => {
         ([calledAccount, action]) =>
           calledAccount === account && action === "terminateCliSessions",
       );
-      expect(terminateCalls).toHaveLength(1);
+      expect(terminateCalls).toHaveLength(0);
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it("does not repeatedly auto-terminate when telemetry timestamps keep rotating", () => {
+  it("keeps CLI sessions intact when telemetry timestamps keep rotating after grace expiry", () => {
     vi.useFakeTimers();
     try {
       const now = new Date("2026-04-05T00:00:00.000Z");
@@ -1162,7 +1162,7 @@ describe("AccountCard", () => {
       act(() => {
         vi.advanceTimersByTime(61_000);
       });
-      expect(onAction).toHaveBeenCalledWith(account, "terminateCliSessions");
+      expect(onAction).not.toHaveBeenCalledWith(account, "terminateCliSessions");
 
       const refreshedAccount = {
         ...account,
@@ -1174,14 +1174,14 @@ describe("AccountCard", () => {
       const terminateCalls = onAction.mock.calls.filter(
         ([, action]) => action === "terminateCliSessions",
       );
-      expect(terminateCalls).toHaveLength(1);
+      expect(terminateCalls).toHaveLength(0);
       expect(screen.queryByText(/Leaving working now in/i)).not.toBeInTheDocument();
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it("does not repeatedly auto-terminate when remaining quota display changes after grace expiry", () => {
+  it("keeps CLI sessions intact when remaining quota display changes after grace expiry", () => {
     vi.useFakeTimers();
     try {
       const now = new Date("2026-04-05T00:00:00.000Z");
@@ -1214,7 +1214,7 @@ describe("AccountCard", () => {
       act(() => {
         vi.advanceTimersByTime(61_000);
       });
-      expect(onAction).toHaveBeenCalledWith(account, "terminateCliSessions");
+      expect(onAction).not.toHaveBeenCalledWith(account, "terminateCliSessions");
 
       const refreshedAccount = {
         ...account,
@@ -1230,7 +1230,7 @@ describe("AccountCard", () => {
       const terminateCalls = onAction.mock.calls.filter(
         ([, action]) => action === "terminateCliSessions",
       );
-      expect(terminateCalls).toHaveLength(1);
+      expect(terminateCalls).toHaveLength(0);
     } finally {
       vi.useRealTimers();
     }

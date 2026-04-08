@@ -12,7 +12,7 @@ import {
   SquareTerminal,
   Trash2,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
 import { isLikelyEmailValue } from "@/components/blur-email";
@@ -1101,39 +1101,6 @@ export function AccountCard(props: AccountCardProps) {
   const useLocalButtonDisabledReason = useLocalBlockedByWeeklyQuota
     ? "Weekly quota shown as 0%."
     : useLocalDisabledReason;
-  const autoTerminateSignature = [
-    account.accountId,
-    account.codexAuth?.snapshotName ?? "",
-  ].join("|");
-  const lastAutoTerminateSignatureRef = useRef<string | null>(null);
-  useEffect(() => {
-    const shouldAutoTerminateLiveSessions =
-      hasActiveCliSession &&
-      usageLimitHit &&
-      usageLimitHitCountdownMs != null &&
-      usageLimitHitCountdownMs <= 0;
-
-    if (!shouldAutoTerminateLiveSessions) {
-      if (!usageLimitHit) {
-        lastAutoTerminateSignatureRef.current = null;
-      }
-      return;
-    }
-
-    if (lastAutoTerminateSignatureRef.current === autoTerminateSignature) {
-      return;
-    }
-    lastAutoTerminateSignatureRef.current = autoTerminateSignature;
-    onAction?.(account, "terminateCliSessions");
-  }, [
-    account,
-    autoTerminateSignature,
-    hasActiveCliSession,
-    onAction,
-    usageLimitHit,
-    usageLimitHitCountdownMs,
-  ]);
-
   const handleUnlock = () => {
     if (onAction) {
       onAction(account, "reauth");
