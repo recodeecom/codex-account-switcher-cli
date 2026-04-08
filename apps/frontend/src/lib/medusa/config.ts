@@ -6,11 +6,25 @@ export type MedusaRuntimeConfig = {
   publishableKey: string | null;
 };
 
+function normalizeBrowserHostname(value?: string): string | null {
+  const hostname = value?.trim();
+
+  if (!hostname) {
+    return null;
+  }
+
+  if (hostname === "0.0.0.0" || hostname === "::" || hostname === "[::]") {
+    return "localhost";
+  }
+
+  return hostname;
+}
+
 function normalizeUrl(value?: string): string {
   const candidate = value?.trim();
   if (!candidate) {
     if (typeof window !== "undefined") {
-      const hostname = window.location.hostname?.trim();
+      const hostname = normalizeBrowserHostname(window.location.hostname);
       if (hostname) {
         const protocol = window.location.protocol === "https:" ? "https" : "http";
         return `${protocol}://${hostname}:${DEFAULT_MEDUSA_BACKEND_PORT}`;

@@ -7,6 +7,7 @@ import {
 } from "@/features/medusa-customer-auth/api";
 import type { MedusaCustomer, MedusaCustomerRegisterRequest } from "@/features/medusa-customer-auth/schemas";
 import { MedusaClientError } from "@/lib/medusa/client";
+import { getMedusaRuntimeConfig } from "@/lib/medusa/config";
 
 const MEDUSA_CUSTOMER_TOKEN_STORAGE_KEY = "codex-lb-medusa-customer-token";
 
@@ -20,6 +21,11 @@ function getErrorMessage(error: unknown): string {
     } catch {
       // fall through to generic messages.
     }
+  }
+
+  if (error instanceof TypeError && /failed to fetch|load failed|networkerror/i.test(error.message)) {
+    const { backendUrl } = getMedusaRuntimeConfig();
+    return `Unable to reach Medusa backend at ${backendUrl}. Check NEXT_PUBLIC_MEDUSA_BACKEND_URL and ensure the backend is running.`;
   }
 
   if (error instanceof Error) {

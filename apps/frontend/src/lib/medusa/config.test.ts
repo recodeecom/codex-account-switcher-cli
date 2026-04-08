@@ -40,6 +40,25 @@ describe("getMedusaRuntimeConfig", () => {
     });
   });
 
+  it("normalizes 0.0.0.0 browser origins back to localhost for backend fallback", () => {
+    delete process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL;
+    delete process.env.MEDUSA_BACKEND_URL;
+    delete process.env.NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY;
+    delete process.env.MEDUSA_PUBLISHABLE_KEY;
+
+    vi.stubGlobal("window", {
+      location: {
+        hostname: "0.0.0.0",
+        protocol: "http:",
+      },
+    } as unknown as Window & typeof globalThis);
+
+    expect(getMedusaRuntimeConfig()).toEqual({
+      backendUrl: "http://localhost:9000",
+      publishableKey: null,
+    });
+  });
+
   it("prefers NEXT_PUBLIC values and trims trailing slash", () => {
     process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL = "https://commerce.example.com/";
     process.env.NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY = "pk_live_123";

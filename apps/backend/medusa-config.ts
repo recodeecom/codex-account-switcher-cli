@@ -43,6 +43,7 @@ const splitCorsOrigins = (value?: string) =>
     .filter(Boolean);
 
 const dedupeOrigins = (origins: string[]) => Array.from(new Set(origins));
+const FRONTEND_DEVELOPMENT_PORTS = [5173, 5174, 5175, 5176];
 
 const isPrivateIPv4Address = (value: string) =>
   /^10\./.test(value) ||
@@ -80,6 +81,7 @@ const withDevelopmentCorsOrigins = (value: string | undefined, ports: number[]) 
   const developmentOrigins = ports.flatMap((port) => [
     `http://localhost:${port}`,
     `http://127.0.0.1:${port}`,
+    `http://0.0.0.0:${port}`,
     ...resolveLanOriginsForPort(port),
   ]);
 
@@ -124,9 +126,9 @@ module.exports = defineConfig({
     databaseDriverOptions: disablePgSsl ? { ssl: false } : undefined,
 
     http: {
-      storeCors: withDevelopmentCorsOrigins(process.env.STORE_CORS, [8000]),
-      adminCors: withDevelopmentCorsOrigins(process.env.ADMIN_CORS, [9000, 5173]),
-      authCors: withDevelopmentCorsOrigins(process.env.AUTH_CORS, [8000, 9000, 5173]),
+      storeCors: withDevelopmentCorsOrigins(process.env.STORE_CORS, [8000, ...FRONTEND_DEVELOPMENT_PORTS]),
+      adminCors: withDevelopmentCorsOrigins(process.env.ADMIN_CORS, [9000, ...FRONTEND_DEVELOPMENT_PORTS]),
+      authCors: withDevelopmentCorsOrigins(process.env.AUTH_CORS, [8000, 9000, ...FRONTEND_DEVELOPMENT_PORTS]),
       jwtSecret: process.env.JWT_SECRET || "supersecret",
       cookieSecret: process.env.COOKIE_SECRET || "supersecret",
     },

@@ -46,6 +46,30 @@ describe("auth flow integration", () => {
     });
   });
 
+  it("shows an inline error when the Medusa backend is unreachable", async () => {
+    const user = userEvent.setup({ delay: null });
+
+    window.localStorage.removeItem(STORAGE_KEY);
+
+    server.use(
+      http.post("*/auth/customer/emailpass", () => HttpResponse.error()),
+    );
+
+    window.history.pushState({}, "", "/dashboard");
+    renderWithProviders(<App />);
+
+    expect(await screen.findByRole("tab", { name: "Login" })).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("Email"), "customer@example.com");
+    await user.type(screen.getByLabelText("Password"), "supersecret");
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+
+    expect(
+      await screen.findByText(/Unable to reach Medusa backend at .*Check NEXT_PUBLIC_MEDUSA_BACKEND_URL/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Dashboard" })).not.toBeInTheDocument();
+  });
+
   it("registers a new Medusa customer account", async () => {
     const user = userEvent.setup({ delay: null });
 

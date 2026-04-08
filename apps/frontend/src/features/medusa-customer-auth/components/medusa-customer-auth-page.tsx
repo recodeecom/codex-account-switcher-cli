@@ -76,17 +76,25 @@ export function MedusaCustomerAuthPage({
     values: z.infer<typeof MedusaCustomerLoginRequestSchema>,
   ) => {
     clearError();
-    await login(values.email, values.password);
+    try {
+      await login(values.email, values.password);
+    } catch {
+      // Auth state already stores the user-facing error message.
+    }
   };
 
   const handleRegister = async (values: z.infer<typeof RegisterFormSchema>) => {
     clearError();
-    await register({
-      email: values.email,
-      password: values.password,
-      firstName: values.firstName?.trim() || undefined,
-      lastName: values.lastName?.trim() || undefined,
-    });
+    try {
+      await register({
+        email: values.email,
+        password: values.password,
+        firstName: values.firstName?.trim() || undefined,
+        lastName: values.lastName?.trim() || undefined,
+      });
+    } catch {
+      // Auth state already stores the user-facing error message.
+    }
   };
 
   return (
