@@ -285,47 +285,48 @@ function OmxPlanningPromptGraph({
 }) {
   const cliStateStyle =
     OMX_CLI_STATE_STYLES[cliRuntimeState] ?? OMX_CLI_STATE_STYLES.finished;
+  const activeStrokeColor =
+    cliRuntimeState === "thinking"
+      ? "rgba(129,140,248,0.78)"
+      : cliRuntimeState === "waiting"
+        ? "rgba(34,211,238,0.76)"
+        : "rgba(16,185,129,0.78)";
+  const activeNodeClasses =
+    cliRuntimeState === "thinking"
+      ? "border-indigo-200/80 bg-indigo-400/22 text-indigo-50 shadow-[0_0_0_1px_rgba(129,140,248,0.24),0_0_18px_rgba(129,140,248,0.35)]"
+      : cliRuntimeState === "waiting"
+        ? "border-cyan-200/80 bg-cyan-400/22 text-cyan-50 shadow-[0_0_0_1px_rgba(34,211,238,0.2),0_0_18px_rgba(34,211,238,0.32)]"
+        : "border-emerald-200/80 bg-emerald-400/20 text-emerald-50 shadow-[0_0_0_1px_rgba(16,185,129,0.2),0_0_18px_rgba(16,185,129,0.32)]";
+  const centerShellBorderClass =
+    cliRuntimeState === "thinking"
+      ? "border-indigo-200/50"
+      : cliRuntimeState === "waiting"
+        ? "border-cyan-200/50"
+        : "border-emerald-200/50";
+  const centerRuleClass =
+    cliRuntimeState === "thinking"
+      ? "bg-indigo-200/45"
+      : cliRuntimeState === "waiting"
+        ? "bg-cyan-200/45"
+        : "bg-emerald-200/45";
 
   return (
     <div
       data-testid="omx-planning-prompt-graph"
       className={cn(
-        "group relative mx-auto aspect-square w-full max-w-[34rem] overflow-hidden rounded-xl border border-cyan-300/20 bg-[#020817]/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_20px_48px_rgba(2,6,23,0.5)]",
+        "group relative mx-auto aspect-square w-full max-w-[34rem] overflow-hidden rounded-xl border border-white/10 bg-[#060A13]",
       )}
     >
       <div
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_48%,rgba(34,211,238,0.13),transparent_72%)]"
+        className="pointer-events-none absolute inset-0 bg-gradient-to-b from-cyan-500/[0.04] to-transparent"
         aria-hidden
       />
 
       <div
         className={cn(
-          "pointer-events-none absolute left-1/2 top-1/2 h-[70%] w-[70%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-gradient-to-br opacity-70 blur-2xl",
+          "pointer-events-none absolute left-1/2 top-[48%] h-[64%] w-[64%] -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-gradient-to-br opacity-55 blur-2xl",
           cliStateStyle.glowClassName,
         )}
-        aria-hidden
-      />
-
-      <div
-        className="pointer-events-none absolute left-1/2 top-1/2 h-[84%] w-[84%] -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-300/18"
-        aria-hidden
-      />
-
-      <div
-        className="pointer-events-none absolute left-1/2 top-1/2 h-[68%] w-[68%] -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-300/20"
-        aria-hidden
-      />
-
-      <div
-        className="pointer-events-none absolute inset-0"
-        aria-hidden
-      >
-        <div className="absolute inset-x-[15%] top-1/2 h-px -translate-y-1/2 bg-cyan-300/10" />
-        <div className="absolute inset-y-[15%] left-1/2 w-px -translate-x-1/2 bg-cyan-300/10" />
-      </div>
-
-      <div
-        className="pointer-events-none absolute left-1/2 top-1/2 h-[76%] w-[76%] -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-300/12"
         aria-hidden
       />
 
@@ -341,7 +342,7 @@ function OmxPlanningPromptGraph({
             y1="50"
             x2={String(node.x)}
             y2={String(node.y)}
-            stroke={node.key === activeNodeKey ? "rgba(34,211,238,0.72)" : "rgba(148,163,184,0.28)"}
+            stroke={node.key === activeNodeKey ? activeStrokeColor : "rgba(148,163,184,0.28)"}
             strokeDasharray="3 2"
             strokeLinecap="round"
             strokeWidth={node.key === activeNodeKey ? "0.9" : "0.62"}
@@ -362,11 +363,17 @@ function OmxPlanningPromptGraph({
             className={cn(
               "absolute inline-flex min-w-[5.2rem] -translate-x-1/2 -translate-y-1/2 items-center justify-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[10px] font-semibold tracking-[0.08em] backdrop-blur-sm transition-all duration-300",
               nodeActive
-                ? "scale-[1.05] border-cyan-200/80 bg-cyan-400/22 text-cyan-50 shadow-[0_0_0_1px_rgba(34,211,238,0.2),0_0_18px_rgba(34,211,238,0.32)]"
-                : "border-white/18 bg-slate-950/72 text-zinc-100/95",
+                ? cn("scale-[1.05]", activeNodeClasses)
+                : "border-white/14 bg-[#060A13] text-zinc-100/95",
             )}
             style={{ left: `${node.x}%`, top: `${node.y}%` }}
           >
+            {nodeActive ? (
+              <span
+                className="pointer-events-none absolute -inset-1 rounded-lg border border-white/25"
+                aria-hidden
+              />
+            ) : null}
             <span
               className={cn(
                 "h-1.5 w-1.5 rounded-full",
@@ -385,11 +392,16 @@ function OmxPlanningPromptGraph({
         );
       })}
 
-      <div className="absolute left-1/2 top-1/2 flex h-[60%] w-[60%] -translate-x-1/2 -translate-y-1/2 flex-col justify-center rounded-full border border-cyan-200/50 bg-slate-950/86 px-6 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_14px_36px_rgba(2,6,23,0.6)]">
+      <div
+        className={cn(
+          "absolute left-1/2 top-1/2 flex h-[54%] w-[64%] -translate-x-1/2 -translate-y-1/2 flex-col justify-center rounded-xl border bg-[#060A13] px-5 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_12px_30px_rgba(2,6,23,0.45)]",
+          centerShellBorderClass,
+        )}
+      >
         <div className="flex items-center justify-center gap-2 text-[9px] font-semibold uppercase tracking-[0.2em] text-cyan-100/95">
-          <span className="h-px w-5 bg-cyan-200/45" aria-hidden />
+          <span className={cn("h-px w-5", centerRuleClass)} aria-hidden />
           <span>Prompt</span>
-          <span className="h-px w-5 bg-cyan-200/45" aria-hidden />
+          <span className={cn("h-px w-5", centerRuleClass)} aria-hidden />
         </div>
         <div className="mt-3 max-h-[52%] overflow-y-auto text-[12px] leading-[1.45] text-zinc-50">
           <p className="break-words whitespace-pre-wrap">{prompt}</p>
@@ -400,7 +412,7 @@ function OmxPlanningPromptGraph({
         <span
           data-testid="omx-planning-cli-state"
           className={cn(
-            "inline-flex h-6 items-center gap-1.5 rounded-full border bg-black/75 px-2.5 text-[9px] font-semibold uppercase tracking-[0.11em] shadow-[0_6px_16px_rgba(2,6,23,0.45)] backdrop-blur-sm",
+            "inline-flex h-6 items-center gap-1.5 rounded-full border bg-[#060A13] px-2.5 text-[9px] font-semibold uppercase tracking-[0.11em] shadow-[0_6px_16px_rgba(2,6,23,0.35)] backdrop-blur-sm",
             cliStateStyle.badgeClassName,
           )}
         >
