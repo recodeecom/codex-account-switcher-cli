@@ -614,6 +614,45 @@ describe("isAccountWorkingNow", () => {
     expect(isAccountWorkingNow(resumedSameCycle, resumedNowMs)).toBe(true);
   });
 
+  it("drops working-now after grace once session task previews report terminal errors", () => {
+    const base = createAccountSummary({
+      status: "active",
+      usage: {
+        primaryRemainingPercent: 0,
+        secondaryRemainingPercent: 88,
+      },
+      resetAtPrimary: "2026-04-04T14:30:00.000Z",
+      codexLiveSessionCount: 0,
+      codexTrackedSessionCount: 0,
+      codexSessionCount: 0,
+      codexCurrentTaskPreview: null,
+      codexSessionTaskPreviews: [
+        {
+          sessionKey: "sess-error",
+          taskPreview: "Task failed: command exited with code 1",
+          taskUpdatedAt: "2026-04-04T11:59:30.000Z",
+        },
+      ],
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+      lastUsageRecordedAtPrimary: null,
+      lastUsageRecordedAtSecondary: null,
+    });
+
+    const firstNowMs = new Date("2026-04-04T11:59:00.000Z").getTime();
+    expect(getWorkingNowUsageLimitHitCountdownMs(base, firstNowMs)).toBeGreaterThan(0);
+
+    const afterGraceMs = new Date("2026-04-04T12:00:10.000Z").getTime();
+    expect(getWorkingNowUsageLimitHitCountdownMs(base, afterGraceMs)).toBe(0);
+    expect(hasActiveCliSessionSignal(base, afterGraceMs)).toBe(true);
+    expect(isAccountWorkingNow(base, afterGraceMs)).toBe(false);
+  });
+
   it("returns false when no-live-telemetry fallback reports 0% even if baseline usage is higher", () => {
     const nowMs = new Date("2026-04-04T12:00:00.000Z").getTime();
     const account = createAccountSummary({

@@ -144,6 +144,8 @@ const TASK_FINISHED_LABEL = "Task finished";
 const TASK_PREVIEW_TRUNCATION_LENGTH = 100;
 const TASK_FINISHED_PREVIEW_RE =
   /^(?:task\s+)?(?:is\s+)?(?:already\s+)?(?:done|complete(?:d)?|finished)(?:\s+already)?[.!]?$/i;
+const TASK_TERMINAL_ERROR_PREVIEW_RE =
+  /^(?:task\s+)?(?:error|errored|failed|failure|stopped|terminated|aborted|cancelled|canceled|exited)\b/i;
 const UNKNOWN_TOKENS_SYNC_LABEL = "syncing…";
 const NEXT_TASK_PREVIEW_PATTERN = /\bnext(?:\.?js)?\b|\bturbopack\b/i;
 const USAGE_LIMIT_TASK_PREVIEW_PATTERN =
@@ -599,7 +601,8 @@ function resolveSessionTaskState(taskPreview: string): SessionTaskState {
   const normalized = taskPreview.trim().toLowerCase();
   if (
     normalized === TASK_FINISHED_LABEL.toLowerCase() ||
-    TASK_FINISHED_PREVIEW_RE.test(taskPreview.trim())
+    TASK_FINISHED_PREVIEW_RE.test(taskPreview.trim()) ||
+    TASK_TERMINAL_ERROR_PREVIEW_RE.test(taskPreview.trim())
   ) {
     return "finished";
   }

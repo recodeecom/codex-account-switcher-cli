@@ -14,3 +14,8 @@ The Dashboard page SHALL display: summary metric cards (requests 7d, tokens, cos
 - **WHEN** an account card is usage-limit-hit and its 60-second grace has expired
 - **AND** strong CLI session evidence is no longer present
 - **THEN** the card SHALL hide stale prior `Current task` text.
+
+#### Scenario: Terminal session previews are treated as settled after grace
+- **WHEN** an account is usage-limit-hit and its 60-second grace has expired
+- **AND** session task previews report terminal outcomes (`failed`, `errored`, or `stopped`)
+- **THEN** those previews SHALL NOT keep the account in `Working now`.

@@ -2145,6 +2145,36 @@ describe("AccountCard", () => {
     expect(screen.getByText("1 finished")).toBeInTheDocument();
   });
 
+  it("treats failed-style task previews as finished instead of thinking", () => {
+    const account = createAccountSummary({
+      codexCurrentTaskPreview: "Investigate snapshot handoff",
+      codexSessionTaskPreviews: [
+        {
+          sessionKey: "sess-failed",
+          taskPreview: "Task failed: command exited with code 1",
+          taskUpdatedAt: "2026-04-05T10:00:00.000Z",
+        },
+      ],
+      codexLiveSessionCount: 1,
+      codexSessionCount: 1,
+      codexTrackedSessionCount: 1,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+    });
+
+    render(<AccountCard account={account} />);
+
+    expect(screen.getByText("sess-failed")).toBeInTheDocument();
+    expect(screen.getByText("task finished")).toBeInTheDocument();
+    expect(screen.queryByText("thinking")).not.toBeInTheDocument();
+    expect(screen.getByText("1 finished")).toBeInTheDocument();
+  });
+
   it("marks thinking session tasks as finished after CLI sessions disconnect", () => {
     const account = createAccountSummary({
       codexCurrentTaskPreview: null,

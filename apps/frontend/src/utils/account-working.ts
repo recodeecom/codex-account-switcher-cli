@@ -9,6 +9,8 @@ const RECENT_USAGE_SIGNAL_STALE_AFTER_MS = 36 * 60 * 60 * 1000;
 const RESET_ALIGNMENT_TOLERANCE_MS = 30 * 1000;
 const STATUS_ONLY_TASK_PREVIEW_RE =
   /^(?:task\s+)?(?:is\s+)?(?:already\s+)?(?:done|complete(?:d)?|finished)(?:\s+already)?[.!]?$/i;
+const TERMINAL_SESSION_TASK_PREVIEW_RE =
+  /^(?:task\s+)?(?:error|errored|failed|failure|stopped|terminated|aborted|cancelled|canceled|exited)\b/i;
 
 type UsageLimitHitEntry = {
   fingerprint: string;
@@ -441,6 +443,7 @@ function hasFreshTaskPreviewSignal(
 ): boolean {
   const isMeaningfulTaskPreview = (
     taskPreview: string | null | undefined,
+    { sessionScoped = false }: { sessionScoped?: boolean } = {},
   ): boolean => {
     const normalized = taskPreview?.trim().replace(/\s+/g, " ") ?? "";
     if (!normalized) {
@@ -452,6 +455,9 @@ function hasFreshTaskPreviewSignal(
     if (STATUS_ONLY_TASK_PREVIEW_RE.test(normalized)) {
       return false;
     }
+    if (sessionScoped && TERMINAL_SESSION_TASK_PREVIEW_RE.test(normalized)) {
+      return false;
+    }
     return true;
   };
 
@@ -461,7 +467,7 @@ function hasFreshTaskPreviewSignal(
 
   const sessionTaskPreviews = account.codexSessionTaskPreviews ?? [];
   for (const preview of sessionTaskPreviews) {
-    if (!isMeaningfulTaskPreview(preview.taskPreview)) {
+    if (!isMeaningfulTaskPreview(preview.taskPreview, { sessionScoped: true })) {
       continue;
     }
     // Session rows represent concrete tracked Codex sessions; keep them as
