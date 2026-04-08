@@ -631,7 +631,7 @@ export function AccountCards({
     }
 
     return {
-      working: sortAccountsByAvailableQuota(working, nowMs),
+      working,
       remaining: [
         ...(otherAccountsSortMode === "available-first"
           ? sortAccountsByLastSeenAndAvailableQuota(active, nowMs)
@@ -648,7 +648,12 @@ export function AccountCards({
               )),
       ],
     };
-  }, [accounts, nowMs, otherAccountsSortMode, stableAccountOrder]);
+  }, [
+    accounts,
+    nowMs,
+    otherAccountsSortMode,
+    stableAccountOrder,
+  ]);
   const workingSummary = useMemo(() => {
     const liveSessions = groupedAccounts.working.reduce((sum, account) => {
       if (!hasFreshLiveTelemetry(account, nowMs)) {

@@ -199,6 +199,98 @@ describe("AccountCards", () => {
     expect(within(cards[1] as HTMLElement).getByText("idle@example.com")).toBeInTheDocument();
   });
 
+  it("appends newly-live cards after the current working-now cards without reordering", () => {
+    const nowIso = new Date().toISOString();
+    const currentWorking = createAccountSummary({
+      accountId: "acc_current_working",
+      email: "current-working@example.com",
+      displayName: "current-working@example.com",
+      usage: {
+        primaryRemainingPercent: 18,
+        secondaryRemainingPercent: 22,
+      },
+      codexLiveSessionCount: 1,
+      codexSessionCount: 1,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "current-working",
+        activeSnapshotName: "current-working",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+      lastUsageRecordedAtPrimary: nowIso,
+      lastUsageRecordedAtSecondary: nowIso,
+    });
+    const newLiveCandidate = createAccountSummary({
+      accountId: "acc_new_live_candidate",
+      email: "new-live-candidate@example.com",
+      displayName: "new-live-candidate@example.com",
+      usage: {
+        primaryRemainingPercent: 97,
+        secondaryRemainingPercent: 96,
+      },
+      codexLiveSessionCount: 0,
+      codexSessionCount: 0,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "new-live-candidate",
+        activeSnapshotName: "current-working",
+        isActiveSnapshot: false,
+        hasLiveSession: false,
+      },
+      lastUsageRecordedAtPrimary: null,
+      lastUsageRecordedAtSecondary: null,
+    });
+
+    const { rerender } = render(
+      <AccountCards
+        accounts={[currentWorking, newLiveCandidate]}
+        primaryWindow={null}
+        secondaryWindow={null}
+      />,
+    );
+
+    rerender(
+      <AccountCards
+        accounts={[
+          currentWorking,
+          {
+            ...newLiveCandidate,
+            codexLiveSessionCount: 2,
+            codexSessionCount: 2,
+            codexAuth: {
+              hasSnapshot: true,
+              snapshotName: "new-live-candidate",
+              activeSnapshotName: "current-working",
+              isActiveSnapshot: false,
+              hasLiveSession: true,
+            },
+            lastUsageRecordedAtPrimary: nowIso,
+            lastUsageRecordedAtSecondary: nowIso,
+          },
+        ]}
+        primaryWindow={null}
+        secondaryWindow={null}
+      />,
+    );
+
+    const workingSection = screen
+      .getByRole("heading", { name: "Working now" })
+      .closest("section");
+    expect(workingSection).not.toBeNull();
+
+    const titles = Array.from(
+      (workingSection as HTMLElement).querySelectorAll(
+        "p.truncate.text-sm.font-semibold.leading-tight",
+      ),
+    ).map((element) => element.textContent);
+
+    expect(titles).toEqual([
+      "current-working@example.com",
+      "new-live-candidate@example.com",
+    ]);
+  });
+
   it("keeps accounts with active CLI task signals in working-now even if status is deactivated", () => {
     const taskingDeactivated = createAccountSummary({
       accountId: "acc_tasking_deactivated",
