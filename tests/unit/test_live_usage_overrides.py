@@ -643,6 +643,55 @@ def test_apply_local_live_usage_overrides_includes_account_owned_snapshot_aliase
     assert codex_session_counts_by_account[account.id] == 2
 
 
+def test_apply_local_live_usage_overrides_keeps_non_email_account_aliases_for_presence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    account = _make_account("acc-a", "admin@recodee.com")
+    snapshot_index = CodexAuthSnapshotIndex(
+        snapshots_by_account_id={account.id: ["odin", "legacy-cica"]},
+        active_snapshot_name="odin",
+    )
+    codex_auth_by_account = {
+        account.id: AccountCodexAuthStatus(
+            has_snapshot=True,
+            snapshot_name="odin",
+            active_snapshot_name="odin",
+            is_active_snapshot=True,
+            has_live_session=False,
+        )
+    }
+    codex_session_counts_by_account = {account.id: 0}
+
+    monkeypatch.setattr(
+        "app.modules.accounts.live_usage_overrides.read_local_codex_live_usage_by_snapshot",
+        lambda: {},
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.live_usage_overrides.read_local_codex_live_usage_samples_by_snapshot",
+        lambda: {},
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.live_usage_overrides.read_live_codex_process_session_counts_by_snapshot",
+        lambda: {"legacy-cica": 1},
+    )
+    monkeypatch.setattr(
+        "app.modules.accounts.live_usage_overrides.read_runtime_live_session_counts_by_snapshot",
+        lambda: {},
+    )
+
+    apply_local_live_usage_overrides(
+        accounts=[account],
+        snapshot_index=snapshot_index,
+        codex_auth_by_account=codex_auth_by_account,
+        primary_usage={},
+        secondary_usage={},
+        codex_live_session_counts_by_account=codex_session_counts_by_account,
+    )
+
+    assert codex_auth_by_account[account.id].has_live_session is True
+    assert codex_session_counts_by_account[account.id] == 1
+
+
 def test_apply_local_live_usage_overrides_preserves_runtime_session_count_without_process_visibility(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

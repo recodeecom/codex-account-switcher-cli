@@ -273,7 +273,7 @@ def apply_local_live_usage_overrides(
         effective_live_runtime_session_count = (
             live_runtime_session_count if not has_process_session_visibility else 0
         )
-        has_live_runtime_session = live_runtime_session_count > 0
+        has_live_runtime_session = effective_live_runtime_session_count > 0
         has_recently_terminated_cli_session = has_recently_terminated_cli_session_snapshot(
             session_presence_snapshot_names,
             selected_snapshot_name=effective_selected_snapshot_name,
@@ -1137,68 +1137,13 @@ def _resolve_session_presence_snapshot_names_for_account(
             snapshot_names=fallback_snapshot_names,
         )
 
-    if any(_is_email_like_snapshot_name(name) for name in snapshot_names_from_index):
-        return _augment_session_presence_snapshot_names_with_email_aliases(
-            account_email=account_email,
-            snapshot_names=snapshot_names_from_index,
-        )
-
-    if not selected_snapshot_name:
-        return _augment_session_presence_snapshot_names_with_email_aliases(
-            account_email=account_email,
-            snapshot_names=snapshot_names_from_index,
-        )
-
-    selected = _normalize_snapshot_name(selected_snapshot_name)
-    account_local_part = _normalize_snapshot_local_part(account_email)
-    selected_local_part = _normalize_snapshot_local_part(selected_snapshot_name)
-
-    if selected is None:
-        return _augment_session_presence_snapshot_names_with_email_aliases(
-            account_email=account_email,
-            snapshot_names=fallback_snapshot_names,
-        )
-
-    scoped_names: list[str] = []
-    seen: set[str] = set()
-    for snapshot_name in snapshot_names_from_index:
-        normalized_snapshot = _normalize_snapshot_name(snapshot_name)
-        if normalized_snapshot is None or normalized_snapshot in seen:
-            continue
-        snapshot_local_part = _normalize_snapshot_local_part(snapshot_name)
-
-        if normalized_snapshot == selected:
-            scoped_names.append(snapshot_name)
-            seen.add(normalized_snapshot)
-            continue
-
-        if account_local_part is None or snapshot_local_part is None:
-            continue
-
-        if snapshot_local_part == account_local_part:
-            scoped_names.append(snapshot_name)
-            seen.add(normalized_snapshot)
-            continue
-
-        if selected_local_part is None:
-            continue
-
-        if (
-            snapshot_local_part.startswith(account_local_part)
-            and selected_local_part.startswith(account_local_part)
-        ):
-            scoped_names.append(snapshot_name)
-            seen.add(normalized_snapshot)
-
-    if scoped_names:
-        return _augment_session_presence_snapshot_names_with_email_aliases(
-            account_email=account_email,
-            snapshot_names=scoped_names,
-        )
-
+    # Keep the full account-owned snapshot set for live-session presence hints.
+    # The upstream candidate resolver already limits names to this account's
+    # ownership scope; pruning non-email aliases here can hide real running
+    # CLI sessions after snapshot renames/rotations.
     return _augment_session_presence_snapshot_names_with_email_aliases(
         account_email=account_email,
-        snapshot_names=fallback_snapshot_names,
+        snapshot_names=snapshot_names_from_index,
     )
 
 
@@ -1779,6 +1724,13 @@ def _resolve_live_process_session_count_for_account(
     normalized_counts_by_snapshot = _build_normalized_snapshot_count_index(
         live_process_session_counts_by_snapshot
     )
+    selected_count = _resolve_snapshot_count(
+        snapshot_name=selected_snapshot_name,
+        normalized_counts_by_snapshot=normalized_counts_by_snapshot,
+    )
+    if selected_count > 0:
+        return selected_count
+
     total = 0
     for snapshot_name in candidate_names:
         total += _resolve_snapshot_count(
@@ -1801,6 +1753,13 @@ def _resolve_live_runtime_session_count_for_account(
     normalized_counts_by_snapshot = _build_normalized_snapshot_count_index(
         runtime_live_session_counts_by_snapshot
     )
+    selected_count = _resolve_snapshot_count(
+        snapshot_name=selected_snapshot_name,
+        normalized_counts_by_snapshot=normalized_counts_by_snapshot,
+    )
+    if selected_count > 0:
+        return selected_count
+
     total = 0
     for snapshot_name in candidate_names:
         total += _resolve_snapshot_count(

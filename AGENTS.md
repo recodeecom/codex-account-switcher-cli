@@ -15,6 +15,12 @@ The `/project-conventions` skill is auto-activated on code edits (PreToolUse gua
 | Code Conventions (Full) | `/project-conventions` skill          | On code edit (auto-enforced) |
 | Git Workflow            | `.agents/conventions/git-workflow.md` | Commit / PR                  |
 
+## UI/UX Skill Default (UI Pro Max)
+
+- For any frontend/UI/UX request (new page, component, styling, layout, redesign, or UI review), **always load and apply** `.codex/skills/ui-ux-pro-max/SKILL.md` first.
+- Treat `ui-ux-pro-max` as the default UI decision surface unless the user explicitly asks to skip it.
+- Follow the skill workflow before implementation (including design-system guidance) so generated UI stays consistent and high quality.
+
 ## Git Hygiene Preference
 
 - Prefer committing and pushing completed work by default unless the user explicitly asks to keep it local.
