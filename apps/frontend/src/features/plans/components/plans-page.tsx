@@ -871,7 +871,7 @@ export function PlansPage() {
                     <div className="space-y-2">
                       <p className="text-xs uppercase tracking-wide text-muted-foreground">Summary</p>
                       <div
-                        className="max-h-56 space-y-2 overflow-auto rounded-lg border border-cyan-500/15 bg-[#030915] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
+                        className="max-h-56 space-y-1 overflow-auto rounded-lg border border-border/55 bg-background/[0.28] p-2.5"
                         data-testid="plan-summary-content"
                       >
                         {summaryLines.length > 0 ? (
@@ -888,12 +888,12 @@ export function PlansPage() {
                             return (
                               <div
                                 key={`${index}-${line}`}
-                                className="rounded-md border border-cyan-500/15 bg-[#020714] px-2.5 py-1.5"
+                                className="rounded-sm border-b border-border/35 px-2 py-1.5 last:border-b-0"
                               >
-                                <p className="text-[11px] uppercase tracking-wide text-cyan-100/70">
+                                <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
                                   {keyValueMatch[1]}
                                 </p>
-                                <p className="text-xs leading-relaxed text-zinc-100">{keyValueMatch[2]}</p>
+                                <p className="text-xs leading-relaxed text-foreground/90">{keyValueMatch[2]}</p>
                               </div>
                             );
                           })
