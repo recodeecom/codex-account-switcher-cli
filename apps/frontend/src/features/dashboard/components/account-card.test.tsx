@@ -2219,6 +2219,42 @@ describe("AccountCard", () => {
     expect(screen.getAllByText("Waiting for new task").length).toBeGreaterThanOrEqual(1);
   });
 
+  it("keeps the newest prompt when duplicate session keys are reported", () => {
+    const olderPrompt = "Older prompt should be replaced";
+    const newestPrompt = "Newest prompt should be visible";
+    const account = createAccountSummary({
+      codexCurrentTaskPreview: newestPrompt,
+      codexSessionTaskPreviews: [
+        {
+          sessionKey: "sess-duplicate",
+          taskPreview: olderPrompt,
+          taskUpdatedAt: "2026-04-05T10:00:00.000Z",
+        },
+        {
+          sessionKey: "sess-duplicate",
+          taskPreview: newestPrompt,
+          taskUpdatedAt: "2026-04-05T10:02:00.000Z",
+        },
+      ],
+      codexLiveSessionCount: 1,
+      codexSessionCount: 1,
+      codexTrackedSessionCount: 1,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+    });
+
+    render(<AccountCard account={account} />);
+
+    expect(screen.getByText("sess-duplicate")).toBeInTheDocument();
+    expect(screen.getByText(newestPrompt)).toBeInTheDocument();
+    expect(screen.queryByText(olderPrompt)).not.toBeInTheDocument();
+  });
+
   it("renders usage-limit session previews in red", () => {
     const usageLimitPreview = "You've hit your usage limit. Try again at 2:36 PM.";
     const account = createAccountSummary({

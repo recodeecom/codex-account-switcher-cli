@@ -1655,21 +1655,65 @@ export function AccountCard(props: AccountCardProps) {
     : account.codexCurrentTaskPreview?.trim() || null;
   const codexLastTaskPreview = account.codexLastTaskPreview?.trim() || null;
   const sessionTaskPreviews = useMemo(() => {
-    const seenSessionKeys = new Set<string>();
-    const normalized = (account.codexSessionTaskPreviews ?? [])
-      .filter((preview) => {
-        const sessionKey = preview.sessionKey?.trim();
-        if (!sessionKey || seenSessionKeys.has(sessionKey)) {
-          return false;
-        }
-        seenSessionKeys.add(sessionKey);
-        return true;
-      })
-      .map((preview) => ({
-        sessionKey: preview.sessionKey.trim(),
+    const resolveTimestamp = (value: string | null | undefined): number | null => {
+      if (!value) {
+        return null;
+      }
+      const timestamp = Date.parse(value);
+      return Number.isFinite(timestamp) ? timestamp : null;
+    };
+
+    const dedupedBySessionKey = new Map<
+      string,
+      {
+        sessionKey: string;
+        taskPreview: string;
+        taskUpdatedAt: string | null;
+        sourceIndex: number;
+      }
+    >();
+
+    for (const [index, preview] of (
+      account.codexSessionTaskPreviews ?? []
+    ).entries()) {
+      const sessionKey = preview.sessionKey?.trim();
+      if (!sessionKey) {
+        continue;
+      }
+      const candidate = {
+        sessionKey,
         taskPreview: resolveSessionTaskPreview(preview.taskPreview),
         taskUpdatedAt: preview.taskUpdatedAt ?? null,
-      }));
+        sourceIndex: index,
+      };
+      const existing = dedupedBySessionKey.get(sessionKey);
+      if (!existing) {
+        dedupedBySessionKey.set(sessionKey, candidate);
+        continue;
+      }
+
+      const existingTimestamp = resolveTimestamp(existing.taskUpdatedAt);
+      const candidateTimestamp = resolveTimestamp(candidate.taskUpdatedAt);
+      const shouldReplace =
+        candidateTimestamp != null
+          ? existingTimestamp == null ||
+            candidateTimestamp > existingTimestamp ||
+            (candidateTimestamp === existingTimestamp &&
+              candidate.sourceIndex > existing.sourceIndex)
+          : existingTimestamp == null &&
+            candidate.sourceIndex > existing.sourceIndex;
+      if (shouldReplace) {
+        dedupedBySessionKey.set(sessionKey, candidate);
+      }
+    }
+
+    const normalized = Array.from(dedupedBySessionKey.values()).map(
+      ({ sessionKey, taskPreview, taskUpdatedAt }) => ({
+        sessionKey,
+        taskPreview,
+        taskUpdatedAt,
+      }),
+    );
     if (
       codexLiveSessionCount <= 0 ||
       normalized.length <= codexLiveSessionCount
