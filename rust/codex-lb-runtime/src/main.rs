@@ -1,18 +1,20 @@
 use axum::{
     Json, Router,
-    body::Body,
-    extract::{Bytes, Path, RawQuery, State},
-    http::{HeaderMap, HeaderValue, StatusCode, header},
+    body::{Body, Bytes},
+    extract::{Path, RawQuery, State},
+    http::{HeaderMap, StatusCode, header},
     response::{Html, Response},
-    routing::{delete, get, post},
+    routing::{any, get},
 };
 use reqwest::Client;
 use serde::Serialize;
 use serde_json::Value;
 use std::{
     collections::BTreeMap,
-    env,
+    env, fs,
     net::SocketAddr,
+    process::Command,
+    sync::{Mutex, OnceLock},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tracing::info;
@@ -74,6 +76,27 @@ struct PythonLayerApisResponse {
     detail: Option<String>,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DashboardSystemMonitorSampleResponse {
+    sampled_at: String,
+    cpu_percent: f64,
+    gpu_percent: Option<f64>,
+    vram_percent: Option<f64>,
+    network_mb_s: f64,
+    memory_percent: f64,
+    spike: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct CpuTotals {
+    idle: u64,
+    total: u64,
+}
+
+static PREVIOUS_CPU_TOTALS: OnceLock<Mutex<Option<CpuTotals>>> = OnceLock::new();
+static PREVIOUS_NETWORK_SAMPLE: OnceLock<Mutex<Option<(u64, f64)>>> = OnceLock::new();
+
 #[derive(Debug, Clone)]
 struct RuntimeFlags {
     profile: String,
@@ -126,80 +149,9 @@ fn app_with_state(state: RuntimeState) -> Router {
             "/api/projects/plans/{plan_slug}/runtime",
             get(project_plan_runtime),
         )
-        .route("/api/accounts", get(accounts_list))
-        .route("/api/accounts/import", post(accounts_import))
-        .route("/api/accounts/{account_id}/trends", get(accounts_trends))
-        .route("/api/accounts/{account_id}/reactivate", post(accounts_reactivate))
-        .route("/api/accounts/{account_id}/pause", post(accounts_pause))
-        .route("/api/accounts/{account_id}", delete(accounts_delete))
-        .route("/api/accounts/{account_id}/use-local", post(accounts_use_local))
-        .route(
-            "/api/accounts/{account_id}/refresh-auth",
-            post(accounts_refresh_auth),
-        )
-        .route(
-            "/api/accounts/{account_id}/repair-snapshot",
-            post(accounts_repair_snapshot),
-        )
-        .route(
-            "/api/accounts/{account_id}/open-terminal",
-            post(accounts_open_terminal),
-        )
-        .route(
-            "/api/accounts/{account_id}/terminate-cli-sessions",
-            post(accounts_terminate_cli_sessions),
-        )
-        .route("/api/dashboard-auth/session", get(dashboard_auth_session))
-        .route(
-            "/api/dashboard-auth/password/setup",
-            post(dashboard_auth_password_setup),
-        )
-        .route(
-            "/api/dashboard-auth/password/login",
-            post(dashboard_auth_password_login),
-        )
-        .route(
-            "/api/dashboard-auth/password/change",
-            post(dashboard_auth_password_change),
-        )
-        .route(
-            "/api/dashboard-auth/password",
-            delete(dashboard_auth_password_delete),
-        )
-        .route(
-            "/api/dashboard-auth/totp/setup/start",
-            post(dashboard_auth_totp_setup_start),
-        )
-        .route(
-            "/api/dashboard-auth/totp/setup/confirm",
-            post(dashboard_auth_totp_setup_confirm),
-        )
-        .route(
-            "/api/dashboard-auth/totp/verify",
-            post(dashboard_auth_totp_verify),
-        )
-        .route(
-            "/api/dashboard-auth/totp/disable",
-            post(dashboard_auth_totp_disable),
-        )
-        .route("/api/dashboard-auth/logout", post(dashboard_auth_logout))
-        .route("/api/medusa-admin-auth/status", get(medusa_admin_auth_status))
-        .route(
-            "/api/medusa-admin-auth/totp/setup/start",
-            post(medusa_admin_auth_totp_setup_start),
-        )
-        .route(
-            "/api/medusa-admin-auth/totp/setup/confirm",
-            post(medusa_admin_auth_totp_setup_confirm),
-        )
-        .route(
-            "/api/medusa-admin-auth/totp/verify",
-            post(medusa_admin_auth_totp_verify),
-        )
-        .route(
-            "/api/medusa-admin-auth/totp/disable",
-            post(medusa_admin_auth_totp_disable),
-        )
+        .route("/api/{*path}", any(proxy_api_wildcard))
+        .route("/backend-api/{*path}", any(proxy_backend_api_wildcard))
+        .route("/v1/{*path}", any(proxy_v1_wildcard))
         .route("/_rust_layer/info", get(runtime_info))
         .route("/_python_layer/health", get(python_layer_health))
         .route("/_python_layer/apis", get(python_layer_apis))
@@ -432,16 +384,24 @@ async fn dashboard_overview(
 
 async fn dashboard_system_monitor(
     State(state): State<RuntimeState>,
-    raw_query: RawQuery,
+    _raw_query: RawQuery,
     headers: HeaderMap,
 ) -> Response {
-    proxy_python_json_endpoint(
-        &state,
-        "/api/dashboard/system-monitor",
-        raw_query.0.as_deref(),
-        &headers,
-    )
-    .await
+    if let Some(auth_failure) = ensure_dashboard_session(&state, &headers).await {
+        return auth_failure;
+    }
+
+    match serde_json::to_vec(&collect_dashboard_system_monitor_sample()) {
+        Ok(body) => raw_response(
+            StatusCode::OK,
+            "application/json",
+            "no-store",
+            Body::from(body),
+        ),
+        Err(error) => json_fallback_response(format!(
+            r#"{{"detail":"system monitor encode failed: {error}"}}"#
+        )),
+    }
 }
 
 async fn projects_plans(
@@ -476,6 +436,66 @@ async fn project_plan_runtime(
 ) -> Response {
     let endpoint = format!("/api/projects/plans/{plan_slug}/runtime");
     proxy_python_json_endpoint(&state, &endpoint, raw_query.0.as_deref(), &headers).await
+}
+
+async fn proxy_api_wildcard(
+    State(state): State<RuntimeState>,
+    method: axum::http::Method,
+    Path(path): Path<String>,
+    raw_query: RawQuery,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    let endpoint = format!("/api/{path}");
+    proxy_python_json_endpoint_with_method(
+        &state,
+        reqwest_method_from_axum(&method),
+        &endpoint,
+        raw_query.0.as_deref(),
+        &headers,
+        Some(body),
+    )
+    .await
+}
+
+async fn proxy_backend_api_wildcard(
+    State(state): State<RuntimeState>,
+    method: axum::http::Method,
+    Path(path): Path<String>,
+    raw_query: RawQuery,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    let endpoint = format!("/backend-api/{path}");
+    proxy_python_json_endpoint_with_method(
+        &state,
+        reqwest_method_from_axum(&method),
+        &endpoint,
+        raw_query.0.as_deref(),
+        &headers,
+        Some(body),
+    )
+    .await
+}
+
+async fn proxy_v1_wildcard(
+    State(state): State<RuntimeState>,
+    method: axum::http::Method,
+    Path(path): Path<String>,
+    raw_query: RawQuery,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    let endpoint = format!("/v1/{path}");
+    proxy_python_json_endpoint_with_method(
+        &state,
+        reqwest_method_from_axum(&method),
+        &endpoint,
+        raw_query.0.as_deref(),
+        &headers,
+        Some(body),
+    )
+    .await
 }
 
 async fn python_layer_health(
@@ -543,28 +563,60 @@ async fn fetch_python_openapi_paths(
     base_url: &str,
 ) -> Result<Vec<String>, String> {
     let url = format!("{}{}", base_url.trim_end_matches('/'), "/openapi.json");
-    let response = client
-        .get(url)
-        .send()
-        .await
-        .map_err(|error| format!("openapi request failed: {error}"))?;
+    let mut last_error = "openapi request failed".to_string();
 
-    if !response.status().is_success() {
-        return Err(format!("openapi returned {}", response.status().as_u16()));
+    for attempt in 0..3 {
+        let response = match client.get(&url).send().await {
+            Ok(response) => response,
+            Err(error) => {
+                last_error = format!("openapi request failed: {error}");
+                if attempt < 2 {
+                    tokio::time::sleep(Duration::from_millis(150 * (attempt + 1) as u64)).await;
+                    continue;
+                }
+                return Err(last_error);
+            }
+        };
+
+        if !response.status().is_success() {
+            last_error = format!("openapi returned {}", response.status().as_u16());
+            if attempt < 2 {
+                tokio::time::sleep(Duration::from_millis(150 * (attempt + 1) as u64)).await;
+                continue;
+            }
+            return Err(last_error);
+        }
+
+        let payload: Value = match response.json().await {
+            Ok(payload) => payload,
+            Err(error) => {
+                last_error = format!("openapi json parse failed: {error}");
+                if attempt < 2 {
+                    tokio::time::sleep(Duration::from_millis(150 * (attempt + 1) as u64)).await;
+                    continue;
+                }
+                return Err(last_error);
+            }
+        };
+
+        let paths_obj = match payload.get("paths").and_then(|paths| paths.as_object()) {
+            Some(paths_obj) => paths_obj,
+            None => {
+                last_error = "openapi missing paths object".to_string();
+                if attempt < 2 {
+                    tokio::time::sleep(Duration::from_millis(150 * (attempt + 1) as u64)).await;
+                    continue;
+                }
+                return Err(last_error);
+            }
+        };
+
+        let mut paths: Vec<String> = paths_obj.keys().cloned().collect();
+        paths.sort();
+        return Ok(paths);
     }
 
-    let payload: Value = response
-        .json()
-        .await
-        .map_err(|error| format!("openapi json parse failed: {error}"))?;
-    let paths_obj = payload
-        .get("paths")
-        .and_then(|paths| paths.as_object())
-        .ok_or_else(|| "openapi missing paths object".to_string())?;
-
-    let mut paths: Vec<String> = paths_obj.keys().cloned().collect();
-    paths.sort();
-    Ok(paths)
+    Err(last_error)
 }
 
 async fn probe_python_endpoint(
@@ -713,29 +765,40 @@ async fn root_panel(State(state): State<RuntimeState>) -> Html<String> {
       (async () => {{
         const statusEl = document.getElementById("python-api-status");
         const linksEl = document.getElementById("python-api-links");
-        try {{
-          const response = await fetch("/_python_layer/apis", {{ cache: "no-store" }});
-          const payload = await response.json();
-          if (!response.ok || payload.status !== "ok") {{
-            const detail = payload && payload.detail ? payload.detail : "python apis unavailable";
-            statusEl.textContent = "Python API sync failed: " + detail;
-            statusEl.classList.add("error");
-            return;
-          }}
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        let retryCount = 0;
+        while (true) {{
+          try {{
+            const response = await fetch("/_python_layer/apis", {{ cache: "no-store" }});
+            const payload = await response.json();
+            if (!response.ok || payload.status !== "ok") {{
+              const detail = payload && payload.detail ? payload.detail : "python apis unavailable";
+              retryCount += 1;
+              statusEl.textContent = "Python API sync retrying (" + retryCount + "): " + detail;
+              statusEl.classList.add("error");
+              await sleep(Math.min(2500, 300 + retryCount * 200));
+              continue;
+            }}
 
-          statusEl.textContent = "Loaded " + payload.paths.length + " APIs from " + payload.python_base_url;
-          const baseUrl = String(payload.python_base_url || "").replace(/\/+$/, "");
-          for (const path of payload.paths) {{
-            const link = document.createElement("a");
-            link.textContent = path;
-            link.href = baseUrl + path;
-            link.target = "_blank";
-            link.rel = "noreferrer";
-            linksEl.appendChild(link);
+            statusEl.classList.remove("error");
+            statusEl.textContent = "Loaded " + payload.paths.length + " APIs from " + payload.python_base_url;
+            linksEl.innerHTML = "";
+            const baseUrl = String(payload.python_base_url || "").replace(/\/+$/, "");
+            for (const path of payload.paths) {{
+              const link = document.createElement("a");
+              link.textContent = path;
+              link.href = baseUrl + path;
+              link.target = "_blank";
+              link.rel = "noreferrer";
+              linksEl.appendChild(link);
+            }}
+            break;
+          }} catch (error) {{
+            retryCount += 1;
+            statusEl.textContent = "Python API sync retrying (" + retryCount + "): " + error;
+            statusEl.classList.add("error");
+            await sleep(Math.min(2500, 300 + retryCount * 200));
           }}
-        }} catch (error) {{
-          statusEl.textContent = "Python API sync failed: " + error;
-          statusEl.classList.add("error");
         }}
       }})();
     </script>
@@ -822,6 +885,222 @@ fn generated_at_epoch_seconds() -> String {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs().to_string())
         .unwrap_or_else(|_| "0".to_string())
+}
+
+fn reqwest_method_from_axum(method: &axum::http::Method) -> reqwest::Method {
+    reqwest::Method::from_bytes(method.as_str().as_bytes()).unwrap_or(reqwest::Method::GET)
+}
+
+async fn ensure_dashboard_session(
+    state: &RuntimeState,
+    incoming_headers: &HeaderMap,
+) -> Option<Response> {
+    let url = build_python_url(&state.python_base_url, "/api/dashboard-auth/session", None);
+    let request = forward_proxy_headers(state.python_client.get(url), incoming_headers);
+
+    match request.send().await {
+        Ok(upstream_response) => {
+            if upstream_response.status().is_success() {
+                return None;
+            }
+
+            let status = upstream_response.status();
+            let content_type = upstream_response
+                .headers()
+                .get(header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok())
+                .unwrap_or("application/json")
+                .to_string();
+            let cache_control = upstream_response
+                .headers()
+                .get(header::CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok())
+                .unwrap_or("no-store")
+                .to_string();
+
+            Some(match upstream_response.bytes().await {
+                Ok(body) => raw_response(status, &content_type, &cache_control, Body::from(body)),
+                Err(error) => json_fallback_response(format!(
+                    r#"{{"detail":"dashboard session check body read failed: {error}"}}"#
+                )),
+            })
+        }
+        Err(error) => Some(json_fallback_response(format!(
+            r#"{{"detail":"dashboard session check failed: {error}"}}"#
+        ))),
+    }
+}
+
+fn collect_dashboard_system_monitor_sample() -> DashboardSystemMonitorSampleResponse {
+    let cpu_percent = sample_cpu_percent();
+    let memory_percent = read_memory_percent();
+    let network_mb_s = sample_network_mb_s();
+    let gpu_percent = None;
+    let vram_percent = None;
+    let spike = cpu_percent >= 85.0 || memory_percent >= 90.0 || network_mb_s >= 25.0;
+
+    DashboardSystemMonitorSampleResponse {
+        sampled_at: utc_iso8601_now(),
+        cpu_percent,
+        gpu_percent,
+        vram_percent,
+        network_mb_s,
+        memory_percent,
+        spike,
+    }
+}
+
+fn sample_cpu_percent() -> f64 {
+    let Some((idle, total)) = read_proc_cpu_totals() else {
+        return 0.0;
+    };
+
+    let lock = PREVIOUS_CPU_TOTALS.get_or_init(|| Mutex::new(None));
+    let mut previous = lock.lock().expect("cpu totals mutex poisoned");
+    let result = match *previous {
+        Some(prev) if total > prev.total => {
+            let total_delta = total.saturating_sub(prev.total);
+            let idle_delta = idle.saturating_sub(prev.idle);
+            if total_delta == 0 {
+                0.0
+            } else {
+                clamp_percent(100.0 * (1.0 - (idle_delta as f64 / total_delta as f64)))
+            }
+        }
+        _ => 0.0,
+    };
+    *previous = Some(CpuTotals { idle, total });
+    round_metric(result)
+}
+
+fn read_proc_cpu_totals() -> Option<(u64, u64)> {
+    let first_line = fs::read_to_string("/proc/stat")
+        .ok()?
+        .lines()
+        .next()
+        .map(str::to_string)?;
+    if !first_line.starts_with("cpu ") {
+        return None;
+    }
+    let values: Vec<u64> = first_line
+        .split_whitespace()
+        .skip(1)
+        .filter_map(|part| part.parse::<u64>().ok())
+        .collect();
+    if values.len() < 4 {
+        return None;
+    }
+    let idle = values[3] + values.get(4).copied().unwrap_or(0);
+    let total = values.iter().sum();
+    Some((idle, total))
+}
+
+fn read_memory_percent() -> f64 {
+    let content = match fs::read_to_string("/proc/meminfo") {
+        Ok(value) => value,
+        Err(_) => return 0.0,
+    };
+
+    let mut total_kib = 0_u64;
+    let mut available_kib = None::<u64>;
+    let mut free_kib = 0_u64;
+    let mut buffers_kib = 0_u64;
+    let mut cached_kib = 0_u64;
+
+    for line in content.lines() {
+        let mut parts = line.split(':');
+        let key = parts.next().unwrap_or_default().trim();
+        let value_part = parts
+            .next()
+            .unwrap_or_default()
+            .split_whitespace()
+            .next()
+            .unwrap_or_default();
+        let Ok(value) = value_part.parse::<u64>() else {
+            continue;
+        };
+        match key {
+            "MemTotal" => total_kib = value,
+            "MemAvailable" => available_kib = Some(value),
+            "MemFree" => free_kib = value,
+            "Buffers" => buffers_kib = value,
+            "Cached" => cached_kib = value,
+            _ => {}
+        }
+    }
+
+    if total_kib == 0 {
+        return 0.0;
+    }
+    let available = available_kib.unwrap_or(free_kib + buffers_kib + cached_kib);
+    let used = total_kib.saturating_sub(available);
+    round_metric(clamp_percent((used as f64 / total_kib as f64) * 100.0))
+}
+
+fn sample_network_mb_s() -> f64 {
+    let current_bytes = read_network_total_bytes();
+    let now_seconds = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs_f64())
+        .unwrap_or(0.0);
+    let lock = PREVIOUS_NETWORK_SAMPLE.get_or_init(|| Mutex::new(None));
+    let mut previous = lock.lock().expect("network sample mutex poisoned");
+    let result = match *previous {
+        Some((prev_bytes, prev_ts)) if now_seconds > prev_ts => {
+            let elapsed = now_seconds - prev_ts;
+            let bytes_per_second = current_bytes.saturating_sub(prev_bytes) as f64 / elapsed;
+            bytes_per_second / (1024.0 * 1024.0)
+        }
+        _ => 0.0,
+    };
+    *previous = Some((current_bytes, now_seconds));
+    round_metric(result)
+}
+
+fn read_network_total_bytes() -> u64 {
+    let content = match fs::read_to_string("/proc/net/dev") {
+        Ok(value) => value,
+        Err(_) => return 0,
+    };
+    content
+        .lines()
+        .skip(2)
+        .filter_map(|line| {
+            let (interface, payload) = line.split_once(':')?;
+            if interface.trim() == "lo" {
+                return Some(0_u64);
+            }
+            let mut fields = payload.split_whitespace();
+            let rx = fields.next()?.parse::<u64>().ok()?;
+            let tx = fields.nth(7)?.parse::<u64>().ok()?;
+            Some(rx + tx)
+        })
+        .sum()
+}
+
+fn utc_iso8601_now() -> String {
+    let output = Command::new("date")
+        .args(["-u", "+%Y-%m-%dT%H:%M:%SZ"])
+        .output();
+    if let Ok(result) = output {
+        if result.status.success() {
+            if let Ok(value) = String::from_utf8(result.stdout) {
+                let trimmed = value.trim();
+                if !trimmed.is_empty() {
+                    return trimmed.to_string();
+                }
+            }
+        }
+    }
+    "1970-01-01T00:00:00Z".to_string()
+}
+
+fn clamp_percent(value: f64) -> f64 {
+    value.clamp(0.0, 100.0)
+}
+
+fn round_metric(value: f64) -> f64 {
+    (value * 10.0).round() / 10.0
 }
 
 async fn proxy_python_live_usage_xml(
@@ -944,6 +1223,51 @@ async fn proxy_python_json_endpoint(
 ) -> Response {
     let url = build_python_url(&state.python_base_url, endpoint, raw_query);
     let request = forward_proxy_headers(state.python_client.get(url), incoming_headers);
+    match request.send().await {
+        Ok(upstream_response) => {
+            let status = upstream_response.status();
+            let content_type = upstream_response
+                .headers()
+                .get(header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok())
+                .unwrap_or("application/json")
+                .to_string();
+            let cache_control = upstream_response
+                .headers()
+                .get(header::CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok())
+                .unwrap_or("no-store")
+                .to_string();
+
+            match upstream_response.bytes().await {
+                Ok(body) => raw_response(status, &content_type, &cache_control, Body::from(body)),
+                Err(error) => json_fallback_response(format!(
+                    r#"{{"detail":"upstream body read failed: {error}"}}"#
+                )),
+            }
+        }
+        Err(error) => json_fallback_response(format!(
+            r#"{{"detail":"upstream request failed: {error}"}}"#
+        )),
+    }
+}
+
+async fn proxy_python_json_endpoint_with_method(
+    state: &RuntimeState,
+    method: reqwest::Method,
+    endpoint: &str,
+    raw_query: Option<&str>,
+    incoming_headers: &HeaderMap,
+    body: Option<Bytes>,
+) -> Response {
+    let url = build_python_url(&state.python_base_url, endpoint, raw_query);
+    let mut request =
+        forward_proxy_headers(state.python_client.request(method, url), incoming_headers);
+
+    if let Some(body) = body {
+        request = request.body(body);
+    }
+
     match request.send().await {
         Ok(upstream_response) => {
             let status = upstream_response.status();
@@ -1425,6 +1749,62 @@ mod tests {
         assert_eq!(payload["overview"], "proxied");
 
         server_handle.abort();
+    }
+
+    #[tokio::test]
+    async fn dashboard_system_monitor_returns_native_sample_shape() {
+        let (python_base_url, server_handle) = spawn_python_dashboard_api_stub().await;
+        let app = app_with_state(state_for_python_base_url(python_base_url));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/dashboard/system-monitor")
+                    .header("cookie", "dashboard_session=test")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = http_body_util::BodyExt::collect(response.into_body())
+            .await
+            .unwrap()
+            .to_bytes();
+        let payload: Value = serde_json::from_slice(&body).unwrap();
+        assert!(payload.get("status").is_none());
+        assert!(
+            payload["sampledAt"]
+                .as_str()
+                .unwrap_or_default()
+                .contains('T')
+        );
+        assert!(payload["cpuPercent"].is_number());
+        assert!(payload["memoryPercent"].is_number());
+        assert!(payload["networkMbS"].is_number());
+        assert!(payload["spike"].is_boolean());
+
+        server_handle.abort();
+    }
+
+    #[tokio::test]
+    async fn dashboard_system_monitor_fails_closed_when_python_unreachable() {
+        let app = app_with_state(state_for_python_base_url("http://127.0.0.1:9".to_string()));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/dashboard/system-monitor")
+                    .header("cookie", "dashboard_session=test")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
 
     #[tokio::test]
@@ -1920,6 +2300,25 @@ mod tests {
                         )
                     },
                 ),
+            )
+            .route(
+                "/api/dashboard-auth/session",
+                get(|headers: axum::http::HeaderMap| async move {
+                    if !has_dashboard_cookie(&headers) {
+                        return (
+                            StatusCode::UNAUTHORIZED,
+                            Json(json!({ "detail": "missing dashboard session" })),
+                        );
+                    }
+
+                    (
+                        StatusCode::OK,
+                        Json(json!({
+                            "status": "ok",
+                            "authenticated": true
+                        })),
+                    )
+                }),
             )
             .route(
                 "/api/projects/plans",
