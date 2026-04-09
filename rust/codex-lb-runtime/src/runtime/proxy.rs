@@ -222,7 +222,11 @@ pub(crate) fn build_python_url(base_url: &str, endpoint: &str, raw_query: Option
     url
 }
 
-pub(crate) fn build_python_ws_url(base_url: &str, endpoint: &str, raw_query: Option<&str>) -> String {
+pub(crate) fn build_python_ws_url(
+    base_url: &str,
+    endpoint: &str,
+    raw_query: Option<&str>,
+) -> String {
     let mut ws_base = base_url.trim_end_matches('/').to_string();
     if let Some(rest) = ws_base.strip_prefix("https://") {
         ws_base = format!("wss://{rest}");
