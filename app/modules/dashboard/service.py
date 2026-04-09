@@ -112,7 +112,6 @@ class DashboardService:
             primary_usage=primary_usage,
             secondary_usage=secondary_usage,
             codex_live_session_counts_by_account=codex_live_session_counts_by_account,
-            live_quota_debug_by_account=live_quota_debug_by_account,
         )
         if persist_candidates:
             await persist_live_usage_overrides(
@@ -124,7 +123,6 @@ class DashboardService:
             codex_tracked_session_counts_by_account=codex_tracked_session_counts_by_account,
             codex_current_task_preview_by_account=codex_current_task_preview_by_account,
             codex_session_task_previews_by_account=codex_session_task_previews_by_account,
-            live_quota_debug_by_account=live_quota_debug_by_account,
         ):
             overlay_live_codex_task_previews(
                 accounts=accounts,
@@ -147,7 +145,6 @@ class DashboardService:
             codex_current_task_preview_by_account=codex_current_task_preview_by_account,
             codex_last_task_preview_by_account=codex_last_task_preview_by_account,
             codex_session_task_previews_by_account=codex_session_task_previews_by_account,
-            live_quota_debug_by_account=live_quota_debug_by_account,
             codex_auth_by_account=codex_auth_by_account,
             encryptor=self._encryptor,
             include_auth=False,
@@ -298,7 +295,6 @@ class DashboardService:
 
         pri_depletion, sec_depletion = _build_depletion_by_window(primary_history, secondary_history, now)
 
-        additional_ts = await self._repo.latest_additional_recorded_at()
         return DashboardOverviewResponse(
             last_sync_at=now,
             accounts=account_summaries,
@@ -316,7 +312,6 @@ def _should_overlay_live_task_previews(
     codex_tracked_session_counts_by_account: dict[str, int],
     codex_current_task_preview_by_account: dict[str, str],
     codex_session_task_previews_by_account: dict[str, list[AccountSessionTaskPreview]],
-    live_quota_debug_by_account: dict[str, AccountLiveQuotaDebug],
 ) -> bool:
     if any(count > 0 for count in codex_live_session_counts_by_account.values()):
         return True
@@ -325,8 +320,6 @@ def _should_overlay_live_task_previews(
     if codex_current_task_preview_by_account:
         return True
     if any(previews for previews in codex_session_task_previews_by_account.values()):
-        return True
-    if any(debug.raw_samples for debug in live_quota_debug_by_account.values()):
         return True
     return False
 
@@ -395,18 +388,3 @@ def _usage_history_to_window_row(entry: UsageHistory) -> UsageWindowRow:
         window_minutes=entry.window_minutes,
         recorded_at=entry.recorded_at,
     )
-
-
-def _latest_recorded_at(
-    primary_usage: dict[str, UsageHistory],
-    secondary_usage: dict[str, UsageHistory],
-    additional_ts: datetime | None = None,
-):
-    timestamps = [
-        entry.recorded_at
-        for entry in list(primary_usage.values()) + list(secondary_usage.values())
-        if entry.recorded_at is not None
-    ]
-    if additional_ts is not None:
-        timestamps.append(additional_ts)
-    return max(timestamps) if timestamps else None

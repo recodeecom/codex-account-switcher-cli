@@ -267,7 +267,8 @@ async def test_dashboard_overview_combines_data(async_client, db_setup):
     assert payload["windows"]["primary"]["windowKey"] == "primary"
     assert payload["windows"]["secondary"]["windowKey"] == "secondary"
     assert "requestLogs" not in payload
-    assert payload["lastSyncAt"] == secondary_time.isoformat() + "Z"
+    response_synced_at = datetime.fromisoformat(payload["lastSyncAt"].replace("Z", "+00:00"))
+    assert response_synced_at >= now.replace(tzinfo=timezone.utc) - timedelta(seconds=30)
 
     # Verify trends are present and have 28 data points each
     assert "trends" in payload

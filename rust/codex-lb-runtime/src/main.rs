@@ -126,6 +126,80 @@ fn app_with_state(state: RuntimeState) -> Router {
             "/api/projects/plans/{plan_slug}/runtime",
             get(project_plan_runtime),
         )
+        .route("/api/accounts", get(accounts_list))
+        .route("/api/accounts/import", post(accounts_import))
+        .route("/api/accounts/{account_id}/trends", get(accounts_trends))
+        .route("/api/accounts/{account_id}/reactivate", post(accounts_reactivate))
+        .route("/api/accounts/{account_id}/pause", post(accounts_pause))
+        .route("/api/accounts/{account_id}", delete(accounts_delete))
+        .route("/api/accounts/{account_id}/use-local", post(accounts_use_local))
+        .route(
+            "/api/accounts/{account_id}/refresh-auth",
+            post(accounts_refresh_auth),
+        )
+        .route(
+            "/api/accounts/{account_id}/repair-snapshot",
+            post(accounts_repair_snapshot),
+        )
+        .route(
+            "/api/accounts/{account_id}/open-terminal",
+            post(accounts_open_terminal),
+        )
+        .route(
+            "/api/accounts/{account_id}/terminate-cli-sessions",
+            post(accounts_terminate_cli_sessions),
+        )
+        .route("/api/dashboard-auth/session", get(dashboard_auth_session))
+        .route(
+            "/api/dashboard-auth/password/setup",
+            post(dashboard_auth_password_setup),
+        )
+        .route(
+            "/api/dashboard-auth/password/login",
+            post(dashboard_auth_password_login),
+        )
+        .route(
+            "/api/dashboard-auth/password/change",
+            post(dashboard_auth_password_change),
+        )
+        .route(
+            "/api/dashboard-auth/password",
+            delete(dashboard_auth_password_delete),
+        )
+        .route(
+            "/api/dashboard-auth/totp/setup/start",
+            post(dashboard_auth_totp_setup_start),
+        )
+        .route(
+            "/api/dashboard-auth/totp/setup/confirm",
+            post(dashboard_auth_totp_setup_confirm),
+        )
+        .route(
+            "/api/dashboard-auth/totp/verify",
+            post(dashboard_auth_totp_verify),
+        )
+        .route(
+            "/api/dashboard-auth/totp/disable",
+            post(dashboard_auth_totp_disable),
+        )
+        .route("/api/dashboard-auth/logout", post(dashboard_auth_logout))
+        .route("/api/medusa-admin-auth/status", get(medusa_admin_auth_status))
+        .route(
+            "/api/medusa-admin-auth/totp/setup/start",
+            post(medusa_admin_auth_totp_setup_start),
+        )
+        .route(
+            "/api/medusa-admin-auth/totp/setup/confirm",
+            post(medusa_admin_auth_totp_setup_confirm),
+        )
+        .route(
+            "/api/medusa-admin-auth/totp/verify",
+            post(medusa_admin_auth_totp_verify),
+        )
+        .route(
+            "/api/medusa-admin-auth/totp/disable",
+            post(medusa_admin_auth_totp_disable),
+        )
         .route("/_rust_layer/info", get(runtime_info))
         .route("/_python_layer/health", get(python_layer_health))
         .route("/_python_layer/apis", get(python_layer_apis))
