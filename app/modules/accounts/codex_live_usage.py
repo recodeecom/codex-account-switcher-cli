@@ -808,6 +808,7 @@ def _resolve_ambiguous_uncached_unlabeled_default_scope_pids(
     default_current_path: Path,
     default_auth_path: Path,
 ) -> set[int]:
+    recent_post_switch_uncached_pids: list[int] = []
     ambiguous_uncached_pids: list[int] = []
 
     for pid, env in processes:
@@ -840,7 +841,7 @@ def _resolve_ambiguous_uncached_unlabeled_default_scope_pids(
                 default_current_path=process_default_current_path,
             )
         ):
-            ambiguous_uncached_pids.append(pid)
+            recent_post_switch_uncached_pids.append(pid)
             continue
 
         if not _is_unlabeled_default_scope_fallback_ambiguous_for_pid(
@@ -852,9 +853,10 @@ def _resolve_ambiguous_uncached_unlabeled_default_scope_pids(
 
         ambiguous_uncached_pids.append(pid)
 
+    suppressed_pids: set[int] = set(recent_post_switch_uncached_pids)
     if len(ambiguous_uncached_pids) > 1:
-        return set(ambiguous_uncached_pids)
-    return set()
+        suppressed_pids.update(ambiguous_uncached_pids)
+    return suppressed_pids
 
 
 def _is_recent_default_scope_switch_with_previous_snapshot(
