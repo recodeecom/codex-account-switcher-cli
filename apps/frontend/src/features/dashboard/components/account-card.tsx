@@ -1696,14 +1696,13 @@ export function AccountCard(props: AccountCardProps) {
     (codexLastTaskPreview && !isWaitingTaskPreview(codexLastTaskPreview)
       ? codexLastTaskPreview
       : null);
-  const hasRalplanSessionTaskContext = sessionTaskPreviews.some((preview) =>
-    hasRalplanTaskMarker(preview.taskPreview),
+  const hasRalplanSessionTaskContext = hasRalplanTaskMarker(
+    newestNonWaitingSessionTaskPreview,
   );
-  const isRalplanTaskContext =
-    hasRalplanTaskMarker(currentNonWaitingTaskPreview) ||
-    hasRalplanSessionTaskContext ||
-    (!currentNonWaitingTaskPreview &&
-      hasRalplanTaskMarker(codexLastTaskPreview));
+  const isRalplanTaskContext = currentNonWaitingTaskPreview
+    ? hasRalplanTaskMarker(currentNonWaitingTaskPreview)
+    : hasRalplanSessionTaskContext ||
+      hasRalplanTaskMarker(codexLastTaskPreview);
   const newestPromptForAgentPanel =
     selectedTaskContextPreview ??
     codexCurrentTaskPreview ??

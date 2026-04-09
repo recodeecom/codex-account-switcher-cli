@@ -1828,6 +1828,80 @@ describe("AccountCard", () => {
     ).toBeGreaterThanOrEqual(1);
   });
 
+  it("keeps codex-active panel when current prompt is non-ralplan even if an older session preview contains ralplan", () => {
+    const nowIso = new Date().toISOString();
+    const account = createAccountSummary({
+      codexLiveSessionCount: 2,
+      codexSessionCount: 2,
+      codexCurrentTaskPreview: "Investigate sticky routing for sessions page",
+      codexSessionTaskPreviews: [
+        {
+          sessionKey: "session-old",
+          taskPreview: "$ralplan finalize consensus acceptance criteria",
+          taskUpdatedAt: "2026-04-05T10:00:00.000Z",
+        },
+        {
+          sessionKey: "session-new",
+          taskPreview: "Investigate sticky routing for sessions page",
+          taskUpdatedAt: "2026-04-05T10:05:00.000Z",
+        },
+      ],
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+      lastUsageRecordedAtPrimary: nowIso,
+      lastUsageRecordedAtSecondary: nowIso,
+    });
+
+    render(<AccountCard account={account} />);
+
+    expect(screen.queryByTestId("omx-planning-prompt-graph")).not.toBeInTheDocument();
+    const codexActiveCard = screen.getByTestId("codex-active-agent-card");
+    expect(within(codexActiveCard).getByText("Codex")).toBeInTheDocument();
+    expect(
+      screen.getAllByText("Investigate sticky routing for sessions page").length,
+    ).toBeGreaterThanOrEqual(1);
+  });
+
+  it("does not keep planning mode on an older ralplan session when a newer session preview is non-ralplan", () => {
+    const nowIso = new Date().toISOString();
+    const account = createAccountSummary({
+      codexLiveSessionCount: 2,
+      codexSessionCount: 2,
+      codexCurrentTaskPreview: "Waiting for new task",
+      codexSessionTaskPreviews: [
+        {
+          sessionKey: "session-old",
+          taskPreview: "$ralplan finalize consensus acceptance criteria",
+          taskUpdatedAt: "2026-04-05T10:00:00.000Z",
+        },
+        {
+          sessionKey: "session-new",
+          taskPreview: "Investigate sticky routing for sessions page",
+          taskUpdatedAt: "2026-04-05T10:05:00.000Z",
+        },
+      ],
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+      lastUsageRecordedAtPrimary: nowIso,
+      lastUsageRecordedAtSecondary: nowIso,
+    });
+
+    render(<AccountCard account={account} />);
+
+    expect(screen.queryByTestId("omx-planning-prompt-graph")).not.toBeInTheDocument();
+    expect(screen.getByTestId("codex-active-agent-card")).toBeInTheDocument();
+  });
+
   it("treats role-keyword prompts without ralplan marker as codex-active mode", () => {
     const nowIso = new Date().toISOString();
     const account = createAccountSummary({
