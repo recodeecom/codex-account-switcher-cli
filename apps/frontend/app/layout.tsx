@@ -5,9 +5,8 @@ import "../src/index.css";
 import { AppProviders } from "./providers";
 
 const LIGHT_BOOTSTRAP_BACKGROUND = "#f8f9fb";
-const DARK_BOOTSTRAP_BACKGROUND = "#030915";
-const DARK_BOOTSTRAP_BACKGROUND_IMAGE =
-  "radial-gradient(120% 140% at 50% -20%, rgba(34, 211, 238, 0.2) 0%, rgba(34, 211, 238, 0) 58%), radial-gradient(120% 160% at 100% 0%, rgba(59, 130, 246, 0.16) 0%, rgba(59, 130, 246, 0) 62%), linear-gradient(180deg, #020612 0%, #030915 52%, #020814 100%), url('/appbg.png')";
+const DARK_BOOTSTRAP_BACKGROUND = "#000000";
+const DARK_BOOTSTRAP_BACKGROUND_IMAGE = "none";
 
 const THEME_BOOTSTRAP_STYLES = `
   html {

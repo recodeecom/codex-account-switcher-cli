@@ -2,9 +2,8 @@ import { create } from "zustand";
 
 const THEME_STORAGE_KEY = "codex-lb-theme";
 const LIGHT_BACKGROUND_COLOR = "#f8f9fb";
-const DARK_BACKGROUND_COLOR = "#030915";
-const DARK_BACKGROUND_IMAGE =
-  "radial-gradient(120% 140% at 50% -20%, rgba(34, 211, 238, 0.2) 0%, rgba(34, 211, 238, 0) 58%), radial-gradient(120% 160% at 100% 0%, rgba(59, 130, 246, 0.16) 0%, rgba(59, 130, 246, 0) 62%), linear-gradient(180deg, #020612 0%, #030915 52%, #020814 100%), url('/appbg.png')";
+const DARK_BACKGROUND_COLOR = "#000000";
+const DARK_BACKGROUND_IMAGE = "none";
 
 export type ThemePreference = "light" | "dark" | "auto";
 export type ResolvedTheme = "light" | "dark";
