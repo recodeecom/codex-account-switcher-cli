@@ -29,6 +29,7 @@ class OpenSpecPlanSummary(DashboardModel):
     slug: str
     title: str
     status: str
+    created_at: datetime
     updated_at: datetime
     summary_markdown: str
     roles: list[PlanRoleProgress]
@@ -52,6 +53,7 @@ class OpenSpecPlanDetail(DashboardModel):
     slug: str
     title: str
     status: str
+    created_at: datetime
     updated_at: datetime
     summary_markdown: str
     checkpoints_markdown: str

@@ -38,7 +38,7 @@ from app.modules.usage.depletion_service import (
     compute_depletion_for_account,
 )
 
-_DASHBOARD_ACTIVE_CLI_SESSION_WINDOW = timedelta(hours=12)
+_DASHBOARD_ACTIVE_CLI_SESSION_WINDOW = timedelta(minutes=90)
 
 
 class DashboardService:
@@ -325,8 +325,6 @@ def _should_overlay_live_task_previews(
     if codex_current_task_preview_by_account:
         return True
     if any(previews for previews in codex_session_task_previews_by_account.values()):
-        return True
-    if any(debug.raw_samples for debug in live_quota_debug_by_account.values()):
         return True
     return False
 

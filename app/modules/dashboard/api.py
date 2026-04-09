@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Awaitable, Callable
+
 from fastapi import APIRouter, Depends, WebSocket
 
 from app.core.auth.dependencies import (
@@ -24,11 +27,44 @@ router = APIRouter(
 ws_router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 
+class _DashboardOverviewSingleFlight:
+    def __init__(self) -> None:
+        self._lock = asyncio.Lock()
+        self._inflight: asyncio.Task[DashboardOverviewResponse] | None = None
+
+    async def run(
+        self,
+        loader: Callable[[], Awaitable[DashboardOverviewResponse]],
+    ) -> DashboardOverviewResponse:
+        async with self._lock:
+            task = self._inflight
+            if task is None:
+                task = asyncio.create_task(loader())
+                self._inflight = task
+                task.add_done_callback(self._clear_if_done)
+        return await asyncio.shield(task)
+
+    def _clear_if_done(self, task: asyncio.Task[DashboardOverviewResponse]) -> None:
+        # Read terminal state so cancelled orphan tasks never produce
+        # "Task exception was never retrieved" warnings.
+        try:
+            task.exception()
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            pass
+        if self._inflight is task:
+            self._inflight = None
+
+
+_overview_singleflight = _DashboardOverviewSingleFlight()
+
+
 @router.get("/dashboard/overview", response_model=DashboardOverviewResponse)
 async def get_overview(
     context: DashboardContext = Depends(get_dashboard_context),
 ) -> DashboardOverviewResponse:
-    return await context.service.get_overview()
+    return await _overview_singleflight.run(context.service.get_overview)
 
 
 @ws_router.websocket("/overview/ws")
