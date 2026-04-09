@@ -6,7 +6,7 @@ use axum::{
     body::{Body, Bytes},
     extract::{
         Path, RawQuery, State,
-        ws::{Message as AxumWsMessage, WebSocket, WebSocketUpgrade},
+        ws::{CloseFrame as AxumCloseFrame, Message as AxumWsMessage, WebSocket, WebSocketUpgrade},
     },
     http::{HeaderMap, HeaderName, HeaderValue, StatusCode, header},
     response::Response,
@@ -14,7 +14,10 @@ use axum::{
 use futures_util::{SinkExt, StreamExt};
 use tokio_tungstenite::{
     connect_async,
-    tungstenite::{Message as UpstreamWsMessage, client::IntoClientRequest},
+    tungstenite::{
+        Message as UpstreamWsMessage, client::IntoClientRequest,
+        protocol::CloseFrame as WsCloseFrame, protocol::frame::coding::CloseCode as WsCloseCode,
+    },
 };
 
 pub(crate) async fn proxy_backend_codex_responses_ws(
@@ -286,7 +289,9 @@ fn downstream_to_upstream_message(message: AxumWsMessage) -> Option<UpstreamWsMe
         AxumWsMessage::Binary(binary) => Some(UpstreamWsMessage::Binary(binary.to_vec())),
         AxumWsMessage::Ping(ping) => Some(UpstreamWsMessage::Ping(ping.to_vec())),
         AxumWsMessage::Pong(pong) => Some(UpstreamWsMessage::Pong(pong.to_vec())),
-        AxumWsMessage::Close(_) => Some(UpstreamWsMessage::Close(None)),
+        AxumWsMessage::Close(close_frame) => Some(UpstreamWsMessage::Close(
+            close_frame.map(axum_close_frame_to_upstream),
+        )),
     }
 }
 
@@ -296,8 +301,24 @@ fn upstream_to_downstream_message(message: UpstreamWsMessage) -> Option<AxumWsMe
         UpstreamWsMessage::Binary(binary) => Some(AxumWsMessage::Binary(binary.into())),
         UpstreamWsMessage::Ping(ping) => Some(AxumWsMessage::Ping(ping.into())),
         UpstreamWsMessage::Pong(pong) => Some(AxumWsMessage::Pong(pong.into())),
-        UpstreamWsMessage::Close(_) => Some(AxumWsMessage::Close(None)),
+        UpstreamWsMessage::Close(close_frame) => Some(AxumWsMessage::Close(
+            close_frame.map(upstream_close_frame_to_axum),
+        )),
         _ => None,
+    }
+}
+
+fn axum_close_frame_to_upstream(frame: AxumCloseFrame) -> WsCloseFrame<'static> {
+    WsCloseFrame {
+        code: WsCloseCode::from(frame.code),
+        reason: frame.reason.to_string().into(),
+    }
+}
+
+fn upstream_close_frame_to_axum(frame: WsCloseFrame<'_>) -> AxumCloseFrame {
+    AxumCloseFrame {
+        code: u16::from(frame.code),
+        reason: frame.reason.to_string().into(),
     }
 }
 
@@ -321,4 +342,72 @@ fn bridge_draining_response() -> Response {
                 .body(Body::from(r#"{"detail":"Service is draining"}"#))
                 .expect("build static JSON draining response")
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::extract::ws::Message as AxumMessage;
+
+    #[test]
+    fn forward_websocket_headers_filters_handshake_and_sets_turn_state() {
+        let mut outgoing = HeaderMap::new();
+        let mut incoming = HeaderMap::new();
+        incoming.insert("cookie", HeaderValue::from_static("dashboard_session=test"));
+        incoming.insert("authorization", HeaderValue::from_static("Bearer test"));
+        incoming.insert("host", HeaderValue::from_static("localhost:8099"));
+        incoming.insert("connection", HeaderValue::from_static("upgrade"));
+
+        forward_websocket_headers(&mut outgoing, &incoming, "turn_test");
+
+        assert_eq!(
+            outgoing.get("cookie").and_then(|value| value.to_str().ok()),
+            Some("dashboard_session=test")
+        );
+        assert_eq!(
+            outgoing
+                .get("authorization")
+                .and_then(|value| value.to_str().ok()),
+            Some("Bearer test")
+        );
+        assert!(outgoing.get("host").is_none());
+        assert!(outgoing.get("connection").is_none());
+        assert_eq!(
+            outgoing
+                .get("x-codex-turn-state")
+                .and_then(|value| value.to_str().ok()),
+            Some("turn_test")
+        );
+    }
+
+    #[test]
+    fn downstream_close_frame_preserves_code_and_reason() {
+        let message = AxumMessage::Close(Some(AxumCloseFrame {
+            code: 1008,
+            reason: "policy".into(),
+        }));
+
+        let Some(UpstreamWsMessage::Close(Some(frame))) = downstream_to_upstream_message(message)
+        else {
+            panic!("expected upstream close frame");
+        };
+
+        assert_eq!(u16::from(frame.code), 1008);
+        assert_eq!(frame.reason, "policy");
+    }
+
+    #[test]
+    fn upstream_close_frame_preserves_code_and_reason() {
+        let upstream = UpstreamWsMessage::Close(Some(WsCloseFrame {
+            code: WsCloseCode::from(1011),
+            reason: "upstream-error".into(),
+        }));
+
+        let Some(AxumMessage::Close(Some(frame))) = upstream_to_downstream_message(upstream) else {
+            panic!("expected downstream close frame");
+        };
+
+        assert_eq!(frame.code, 1011);
+        assert_eq!(frame.reason.as_str(), "upstream-error");
+    }
 }

@@ -1394,7 +1394,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/backend-api/transcribe")
+                    .uri("/backend-api/transcribe?source=runtime-proxy")
                     .header(
                         "content-type",
                         format!("multipart/form-data; boundary={boundary}"),
@@ -1420,6 +1420,7 @@ mod tests {
                 .starts_with("multipart/form-data")
         );
         assert_eq!(payload["has_file_part"], true);
+        assert_eq!(payload["query_source"], "runtime-proxy");
         assert!(payload["size_bytes"].as_u64().unwrap_or_default() > 0);
 
         server_handle.abort();
@@ -1471,7 +1472,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/v1/audio/transcriptions")
+                    .uri("/v1/audio/transcriptions?format=json")
                     .header(
                         "content-type",
                         format!("multipart/form-data; boundary={boundary}"),
@@ -1498,8 +1499,71 @@ mod tests {
         );
         assert_eq!(payload["has_model_part"], true);
         assert_eq!(payload["has_file_part"], true);
+        assert_eq!(payload["query_format"], "json");
 
         server_handle.abort();
+    }
+
+    #[tokio::test]
+    async fn backend_responses_http_fails_closed_when_python_unreachable() {
+        let app = app_with_state(state_for_python_base_url("http://127.0.0.1:9".to_string()));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/backend-api/codex/responses")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"input":"hello"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+        let body = http_body_util::BodyExt::collect(response.into_body())
+            .await
+            .unwrap()
+            .to_bytes();
+        let payload: Value = serde_json::from_slice(&body).unwrap();
+        assert!(
+            payload["detail"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("upstream request failed")
+        );
+    }
+
+    #[tokio::test]
+    async fn v1_responses_http_fails_closed_when_python_unreachable() {
+        let app = app_with_state(state_for_python_base_url("http://127.0.0.1:9".to_string()));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/responses")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"input":"hello"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+        let body = http_body_util::BodyExt::collect(response.into_body())
+            .await
+            .unwrap()
+            .to_bytes();
+        let payload: Value = serde_json::from_slice(&body).unwrap();
+        assert!(
+            payload["detail"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("upstream request failed")
+        );
     }
 
     #[tokio::test]
@@ -2141,21 +2205,50 @@ mod tests {
             )
             .route(
                 "/backend-api/transcribe",
+                post(
+                    |axum::extract::RawQuery(raw_query): axum::extract::RawQuery,
+                     headers: axum::http::HeaderMap,
+                     body: axum::body::Bytes| async move {
+                        let content_type = headers
+                            .get("content-type")
+                            .and_then(|value| value.to_str().ok())
+                            .unwrap_or_default()
+                            .to_string();
+                        let body_text = String::from_utf8_lossy(&body);
+                        let query_source =
+                            query_param(raw_query.as_deref(), "source").unwrap_or_default();
+
+                        (
+                            StatusCode::OK,
+                            Json(json!({
+                                "status": "ok",
+                                "content_type": content_type,
+                                "size_bytes": body.len(),
+                                "has_file_part": body_text.contains("filename=\"clip.wav\""),
+                                "query_source": query_source
+                            })),
+                        )
+                    },
+                ),
+            )
+            .route(
+                "/backend-api/codex/responses",
                 post(|headers: axum::http::HeaderMap, body: axum::body::Bytes| async move {
                     let content_type = headers
                         .get("content-type")
                         .and_then(|value| value.to_str().ok())
                         .unwrap_or_default()
                         .to_string();
-                    let body_text = String::from_utf8_lossy(&body);
+                    let payload: Value =
+                        serde_json::from_slice(&body).unwrap_or_else(|_| json!({ "input": "" }));
 
                     (
                         StatusCode::OK,
                         Json(json!({
                             "status": "ok",
+                            "route": "backend-api",
                             "content_type": content_type,
-                            "size_bytes": body.len(),
-                            "has_file_part": body_text.contains("filename=\"clip.wav\"")
+                            "input": payload.get("input").cloned().unwrap_or(Value::Null)
                         })),
                     )
                 }),
@@ -2184,22 +2277,51 @@ mod tests {
             )
             .route(
                 "/v1/audio/transcriptions",
+                post(
+                    |axum::extract::RawQuery(raw_query): axum::extract::RawQuery,
+                     headers: axum::http::HeaderMap,
+                     body: axum::body::Bytes| async move {
+                        let content_type = headers
+                            .get("content-type")
+                            .and_then(|value| value.to_str().ok())
+                            .unwrap_or_default()
+                            .to_string();
+                        let body_text = String::from_utf8_lossy(&body);
+                        let query_format =
+                            query_param(raw_query.as_deref(), "format").unwrap_or_default();
+
+                        (
+                            StatusCode::OK,
+                            Json(json!({
+                                "status": "ok",
+                                "content_type": content_type,
+                                "has_model_part": body_text.contains("name=\"model\"")
+                                    && body_text.contains("gpt-4o-transcribe"),
+                                "has_file_part": body_text.contains("filename=\"sample.wav\""),
+                                "query_format": query_format
+                            })),
+                        )
+                    },
+                ),
+            )
+            .route(
+                "/v1/responses",
                 post(|headers: axum::http::HeaderMap, body: axum::body::Bytes| async move {
                     let content_type = headers
                         .get("content-type")
                         .and_then(|value| value.to_str().ok())
                         .unwrap_or_default()
                         .to_string();
-                    let body_text = String::from_utf8_lossy(&body);
+                    let payload: Value =
+                        serde_json::from_slice(&body).unwrap_or_else(|_| json!({ "input": "" }));
 
                     (
                         StatusCode::OK,
                         Json(json!({
                             "status": "ok",
+                            "route": "v1",
                             "content_type": content_type,
-                            "has_model_part": body_text.contains("name=\"model\"")
-                                && body_text.contains("gpt-4o-transcribe"),
-                            "has_file_part": body_text.contains("filename=\"sample.wav\"")
+                            "input": payload.get("input").cloned().unwrap_or(Value::Null)
                         })),
                     )
                 }),
