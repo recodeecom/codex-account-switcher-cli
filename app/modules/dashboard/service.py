@@ -112,6 +112,7 @@ class DashboardService:
             primary_usage=primary_usage,
             secondary_usage=secondary_usage,
             codex_live_session_counts_by_account=codex_live_session_counts_by_account,
+            live_quota_debug_by_account=live_quota_debug_by_account,
         )
         if persist_candidates:
             await persist_live_usage_overrides(
@@ -123,6 +124,7 @@ class DashboardService:
             codex_tracked_session_counts_by_account=codex_tracked_session_counts_by_account,
             codex_current_task_preview_by_account=codex_current_task_preview_by_account,
             codex_session_task_previews_by_account=codex_session_task_previews_by_account,
+            live_quota_debug_by_account=live_quota_debug_by_account,
         ):
             overlay_live_codex_task_previews(
                 accounts=accounts,
@@ -145,6 +147,7 @@ class DashboardService:
             codex_current_task_preview_by_account=codex_current_task_preview_by_account,
             codex_last_task_preview_by_account=codex_last_task_preview_by_account,
             codex_session_task_previews_by_account=codex_session_task_previews_by_account,
+            live_quota_debug_by_account=live_quota_debug_by_account,
             codex_auth_by_account=codex_auth_by_account,
             encryptor=self._encryptor,
             include_auth=False,
@@ -312,6 +315,7 @@ def _should_overlay_live_task_previews(
     codex_tracked_session_counts_by_account: dict[str, int],
     codex_current_task_preview_by_account: dict[str, str],
     codex_session_task_previews_by_account: dict[str, list[AccountSessionTaskPreview]],
+    live_quota_debug_by_account: dict[str, AccountLiveQuotaDebug] | None = None,
 ) -> bool:
     if any(count > 0 for count in codex_live_session_counts_by_account.values()):
         return True
@@ -320,6 +324,10 @@ def _should_overlay_live_task_previews(
     if codex_current_task_preview_by_account:
         return True
     if any(previews for previews in codex_session_task_previews_by_account.values()):
+        return True
+    if live_quota_debug_by_account and any(
+        debug.raw_samples for debug in live_quota_debug_by_account.values()
+    ):
         return True
     return False
 

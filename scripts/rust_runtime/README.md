@@ -25,15 +25,18 @@ Rust also exposes a Python-bridge probe endpoint:
 
 Optional environment variables:
 
-- `PYTHON_RUNTIME_BASE_URL` (default: `http://127.0.0.1:${APP_BACKEND_PORT:-2455}`)
+- `PYTHON_RUNTIME_BASE_URL` (default: `http://127.0.0.1:${APP_BACKEND_PORT:-8000}`)
 - `RUST_RUNTIME_PYTHON_TIMEOUT_MS` (default: `1500`)
+
+When using `scripts/dev-all.sh`, `APP_BACKEND_PORT` is forwarded to Rust automatically,
+so the bridge follows the app backend port (default `2455`) without extra env setup.
 
 ## 3) Compare parity and latency
 
 ```bash
 cd /home/deadpool/Documents/codex-lb
 python scripts/rust_runtime/compare_runtime.py \
-  --python-base-url http://127.0.0.1:2455 \
+  --python-base-url http://127.0.0.1:8000 \
   --rust-base-url http://127.0.0.1:8099 \
   --iterations 20 \
   --endpoints /health /health/live /health/ready /health/startup \
@@ -70,7 +73,7 @@ Phase-3 behavior:
 ```bash
 cd /home/deadpool/Documents/codex-lb
 python scripts/rust_runtime/compare_runtime.py \
-  --python-base-url http://127.0.0.1:2455 \
+  --python-base-url http://127.0.0.1:8000 \
   --rust-base-url http://127.0.0.1:8099 \
   --iterations 20 \
   --endpoints /live_usage /live_usage/mapping \

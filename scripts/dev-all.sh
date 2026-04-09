@@ -447,7 +447,7 @@ else
   echo "[dev] Starting rust runtime on http://localhost:${rust_runtime_port}"
   (
     cd "$ROOT_DIR"
-    RUST_RUNTIME_BIND="127.0.0.1:${rust_runtime_port}" sh ./scripts/run-rust-runtime-dev.sh
+    APP_BACKEND_PORT="$APP_PORT" RUST_RUNTIME_BIND="127.0.0.1:${rust_runtime_port}" sh ./scripts/run-rust-runtime-dev.sh
   ) >>"$RUST_RUNTIME_LOG_FILE" 2>&1 &
   rust_pid="$!"
   rust_runtime_needs_wait=true
