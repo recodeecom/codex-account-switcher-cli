@@ -62,7 +62,7 @@ if [[ "$current_branch" != "$BASE_BRANCH" ]]; then
   git checkout "$BASE_BRANCH"
 fi
 
-if [[ "$PUSH_ENABLED" -eq 1 ]] && git show-ref --verify --quiet "refs/remotes/origin/${BASE_BRANCH}"; then
+if git show-ref --verify --quiet "refs/remotes/origin/${BASE_BRANCH}"; then
   git fetch origin "$BASE_BRANCH" --quiet
   git pull --ff-only origin "$BASE_BRANCH"
 fi
