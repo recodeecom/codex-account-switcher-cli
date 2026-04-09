@@ -10,13 +10,16 @@ LOG_DIR="${DEV_LOG_DIR:-$ROOT_DIR/logs}"
 APP_LOG_FILE="${APP_LOG_FILE:-$LOG_DIR/server.log}"
 BACKEND_LOG_FILE="${BACKEND_LOG_FILE:-$LOG_DIR/backend.log}"
 FRONTEND_LOG_FILE="${FRONTEND_LOG_FILE:-$LOG_DIR/frontend.log}"
+RUST_RUNTIME_LOG_FILE="${RUST_RUNTIME_LOG_FILE:-$LOG_DIR/rust-runtime.log}"
 APP_PORT="${APP_BACKEND_PORT:-2455}"
 DEFAULT_MEDUSA_PORT="${MEDUSA_BACKEND_PORT:-9000}"
 DEFAULT_FRONTEND_PORT="${FRONTEND_PORT:-5174}"
+DEFAULT_RUST_RUNTIME_PORT="${RUST_RUNTIME_PORT:-8099}"
 
 app_pid=""
 backend_pid=""
 frontend_pid=""
+rust_pid=""
 ready_label="[dev] Ready"
 
 if [[ -t 1 ]] && [[ -z "${NO_COLOR:-}" ]]; then
@@ -287,6 +290,45 @@ PY
   return 1
 }
 
+rust_port_serves_health() {
+  local port="$1"
+  local attempts="${2:-10}"
+
+  while (( attempts > 0 )); do
+    if python3 - "$port" <<'PY'
+import json
+import sys
+import urllib.error
+import urllib.request
+
+port = sys.argv[1]
+health_url = f"http://127.0.0.1:{port}/health"
+info_url = f"http://127.0.0.1:{port}/_rust_layer/info"
+
+try:
+    with urllib.request.urlopen(health_url, timeout=0.5) as response:
+        health_payload = json.loads(response.read().decode("utf-8"))
+    with urllib.request.urlopen(info_url, timeout=0.5) as response:
+        info_payload = json.loads(response.read().decode("utf-8"))
+except (OSError, ValueError, urllib.error.URLError, urllib.error.HTTPError):
+    raise SystemExit(1)
+
+if health_payload.get("status") == "ok" and info_payload.get("language") == "rust":
+    raise SystemExit(0)
+
+raise SystemExit(1)
+PY
+    then
+      return 0
+    fi
+
+    attempts=$((attempts - 1))
+    sleep 0.2
+  done
+
+  return 1
+}
+
 wait_for_url_from_log() {
   local log_file="$1"
   local marker="$2"
@@ -347,7 +389,7 @@ start_frontend_dev_server() {
 
 cleanup() {
   set +e
-  for pid in "$frontend_pid" "$backend_pid" "$app_pid"; do
+  for pid in "$frontend_pid" "$backend_pid" "$rust_pid" "$app_pid"; do
     if [[ -n "$pid" ]] && is_pid_alive "$pid"; then
       kill "$pid" >/dev/null 2>&1 || true
     fi
@@ -386,6 +428,31 @@ else
   app_needs_wait=true
 fi
 
+rust_runtime_port="$DEFAULT_RUST_RUNTIME_PORT"
+rust_runtime_needs_wait=false
+mark_log_session "rust-runtime" "$RUST_RUNTIME_LOG_FILE"
+if port_in_use "$rust_runtime_port"; then
+  existing_rust_pid="$(find_pid_on_port "$rust_runtime_port" || true)"
+  if ! rust_port_serves_health "$rust_runtime_port" 10; then
+    echo "[dev] Rust runtime port ${rust_runtime_port} is already in use by a non-rust-runtime service. Stop it or set RUST_RUNTIME_PORT to a free port." >&2
+    exit 1
+  fi
+
+  echo "[dev] Reusing rust runtime on http://localhost:${rust_runtime_port}"
+  if [[ -n "$existing_rust_pid" ]] && is_pid_alive "$existing_rust_pid"; then
+    spawn_pid_watcher "$existing_rust_pid" rust_pid
+  fi
+else
+  require_cmd cargo
+  echo "[dev] Starting rust runtime on http://localhost:${rust_runtime_port}"
+  (
+    cd "$ROOT_DIR"
+    RUST_RUNTIME_BIND="127.0.0.1:${rust_runtime_port}" sh ./scripts/run-rust-runtime-dev.sh
+  ) >>"$RUST_RUNTIME_LOG_FILE" 2>&1 &
+  rust_pid="$!"
+  rust_runtime_needs_wait=true
+fi
+
 medusa_port="$DEFAULT_MEDUSA_PORT"
 frontend_medusa_port="$medusa_port"
 backend_needs_wait=false
@@ -410,6 +477,10 @@ if [[ "$app_needs_wait" == "true" ]]; then
   wait_for_port "$APP_PORT" 20 "app API" "$app_pid" "$APP_LOG_FILE"
 fi
 
+if [[ "$rust_runtime_needs_wait" == "true" ]]; then
+  wait_for_port "$rust_runtime_port" 20 "rust runtime" "$rust_pid" "$RUST_RUNTIME_LOG_FILE"
+fi
+
 start_frontend_dev_server "$frontend_medusa_port"
 
 if [[ "$backend_needs_wait" == "true" ]]; then
@@ -432,23 +503,26 @@ frontend_url="$(wait_for_url_from_log \
   "$frontend_pid" \
   "http://localhost:${DEFAULT_FRONTEND_PORT}")"
 app_url="http://localhost:${APP_PORT}"
+rust_runtime_url="http://localhost:${rust_runtime_port}"
 backend_url="$(extract_latest_url "$BACKEND_LOG_FILE" "Admin URL" || true)"
 backend_url="${backend_url:-http://localhost:${medusa_port}/app}"
 
 echo
 echo "$ready_label"
 echo "  app      ${app_url}"
+echo "  rust     ${rust_runtime_url}"
 echo "  backend  ${backend_url}"
 echo "  frontend ${frontend_url}"
 echo
 echo "[dev] Watch logs with:"
 echo "  bun run logs -watch app"
+echo "  bun run logs -watch rust"
 echo "  bun run logs -watch server"
 echo "  bun run logs -watch backend"
 echo "  bun run logs -watch frontend"
 
 wait_pids=()
-for pid in "$app_pid" "$backend_pid" "$frontend_pid"; do
+for pid in "$app_pid" "$rust_pid" "$backend_pid" "$frontend_pid"; do
   if [[ -n "$pid" ]]; then
     wait_pids+=("$pid")
   fi
