@@ -14,24 +14,70 @@
 npm i -g multiagent-safety
 ```
 
-## Apply to any repo
+## Apply to one repo
 
 ```bash
 cd /path/to/your/repo
 multiagent-safety install
 ```
 
+## Apply to many repos in a workspace
+
+```bash
+# easiest: run from workspace root (auto-scans current folder at depth 2)
+cd ~/projects
+multiagent-safety install-many
+
+# explicit workspace root
+multiagent-safety install-many --workspace ~/projects --max-depth 2
+
+# explicit repo list (comma-separated)
+multiagent-safety install-many --targets ~/repo-a,~/repo-b
+
+# explicit repo list from file (newline or comma separated; # comments allowed)
+multiagent-safety install-many --targets-file ./workspace-repos.txt
+```
+
+## Create a reusable workspace targets file
+
+```bash
+# generate once, then commit/share this file in your workspace tools repo
+multiagent-safety init-workspace --workspace ~/projects
+
+# apply guardrails from the generated list
+multiagent-safety install-many --targets-file ~/projects/.multiagent-safety-targets.txt
+```
+
 ## Command options
 
 ```bash
 multiagent-safety install [--target <path>] [--force] [--skip-agents] [--skip-package-json] [--dry-run]
+multiagent-safety install-many [--workspace <path>] [--max-depth <n>] [--target <path>] [--targets <a,b,c>] [--targets-file <file>] [--force] [--skip-agents] [--skip-package-json] [--dry-run] [--fail-fast]
+multiagent-safety init-workspace [--workspace <path>] [--max-depth <n>] [--output <file>] [--force]
 ```
 
-- `--target <path>`: install into another repo path
+Shared install flags:
+
 - `--force`: overwrite existing managed files
 - `--skip-agents`: do not create/update `AGENTS.md`
 - `--skip-package-json`: do not add npm script entries
 - `--dry-run`: print what would happen
+
+`install-many` specific flags:
+
+- `--workspace <path>`: recursively discover git repos under a workspace root
+- `--max-depth <n>`: discovery depth for `--workspace` (default: `2`)
+- `--target <path>`: add one explicit target (can be repeated)
+- `--targets <a,b,c>`: add comma-separated explicit targets
+- `--targets-file <file>`: load targets from file (`#` comments supported)
+- `--fail-fast`: stop immediately after first failed target
+
+`init-workspace` specific flags:
+
+- `--workspace <path>`: scan this workspace (default: current directory)
+- `--max-depth <n>`: discovery depth (default: `2`)
+- `--output <file>`: output targets file path (default: `<workspace>/.multiagent-safety-targets.txt`)
+- `--force`: overwrite existing targets file
 
 ## What gets added
 

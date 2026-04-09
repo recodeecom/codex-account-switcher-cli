@@ -14,22 +14,29 @@ function run(args, cwd) {
   });
 }
 
-test('install provisions workflow files and repo config', () => {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'multiagent-safety-'));
-  const repoDir = path.join(tempDir, 'repo');
-  fs.mkdirSync(repoDir);
+function initGitRepo(repoDir, withPackageJson = true) {
+  fs.mkdirSync(repoDir, { recursive: true });
 
   let result = cp.spawnSync('git', ['init', '-b', 'dev'], { cwd: repoDir, encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr);
 
-  fs.writeFileSync(
-    path.join(repoDir, 'package.json'),
-    JSON.stringify({ name: 'demo', private: true, scripts: {} }, null, 2) + '\n',
-  );
+  if (withPackageJson) {
+    fs.writeFileSync(
+      path.join(repoDir, 'package.json'),
+      JSON.stringify({ name: path.basename(repoDir), private: true, scripts: {} }, null, 2) + '\n',
+    );
+  }
 
-  result = run(['install', '--target', repoDir], repoDir);
-  assert.equal(result.status, 0, result.stderr || result.stdout);
+  result = cp.spawnSync('git', ['config', 'user.name', 'Test User'], { cwd: repoDir, encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  result = cp.spawnSync('git', ['config', 'user.email', 'test@example.com'], {
+    cwd: repoDir,
+    encoding: 'utf8',
+  });
+  assert.equal(result.status, 0, result.stderr);
+}
 
+function assertRepoInstalled(repoDir) {
   const requiredFiles = [
     'scripts/agent-branch-start.sh',
     'scripts/agent-branch-finish.sh',
@@ -51,13 +58,107 @@ test('install provisions workflow files and repo config', () => {
   const agentsContent = fs.readFileSync(path.join(repoDir, 'AGENTS.md'), 'utf8');
   assert.equal(agentsContent.includes('<!-- multiagent-safety:START -->'), true);
 
-  result = cp.spawnSync('git', ['config', '--get', 'core.hooksPath'], {
+  const hooksPath = cp.spawnSync('git', ['config', '--get', 'core.hooksPath'], {
     cwd: repoDir,
     encoding: 'utf8',
   });
-  assert.equal(result.status, 0, result.stderr);
-  assert.equal(result.stdout.trim(), '.githooks');
+  assert.equal(hooksPath.status, 0, hooksPath.stderr);
+  assert.equal(hooksPath.stdout.trim(), '.githooks');
+}
+
+test('install provisions workflow files and repo config', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'multiagent-safety-'));
+  const repoDir = path.join(tempDir, 'repo');
+  initGitRepo(repoDir, true);
+
+  const result = run(['install', '--target', repoDir], repoDir);
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+
+  assertRepoInstalled(repoDir);
 
   const secondRun = run(['install', '--target', repoDir], repoDir);
   assert.equal(secondRun.status, 0, secondRun.stderr || secondRun.stdout);
+});
+
+test('install-many applies guardrails across discovered workspace repos', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'multiagent-safety-many-'));
+  const workspaceDir = path.join(tempDir, 'workspace');
+  fs.mkdirSync(workspaceDir, { recursive: true });
+
+  const repoA = path.join(workspaceDir, 'repo-a');
+  const repoB = path.join(workspaceDir, 'nested', 'repo-b');
+  initGitRepo(repoA, true);
+  initGitRepo(repoB, true);
+
+  const result = run(['install-many', '--workspace', workspaceDir, '--max-depth', '3'], workspaceDir);
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(result.stdout, /install-many summary: installed=2, failures=0/);
+
+  assertRepoInstalled(repoA);
+  assertRepoInstalled(repoB);
+});
+
+test('install-many defaults to current workspace scan when no target options are passed', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'multiagent-safety-default-many-'));
+  const workspaceDir = path.join(tempDir, 'workspace');
+  fs.mkdirSync(workspaceDir, { recursive: true });
+
+  const repoA = path.join(workspaceDir, 'repo-a');
+  const repoB = path.join(workspaceDir, 'nested', 'repo-b');
+  initGitRepo(repoA, true);
+  initGitRepo(repoB, true);
+
+  const result = run(['install-many'], workspaceDir);
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(result.stdout, /Defaulting to workspace scan/);
+  assert.match(result.stdout, /install-many summary: installed=2, failures=0/);
+
+  assertRepoInstalled(repoA);
+  assertRepoInstalled(repoB);
+});
+
+test('init-workspace generates a targets file and install-many can consume it', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'multiagent-safety-init-workspace-'));
+  const workspaceDir = path.join(tempDir, 'workspace');
+  fs.mkdirSync(workspaceDir, { recursive: true });
+
+  const repoA = path.join(workspaceDir, 'repo-a');
+  const repoB = path.join(workspaceDir, 'nested', 'repo-b');
+  initGitRepo(repoA, true);
+  initGitRepo(repoB, true);
+
+  const targetsPath = path.join(workspaceDir, '.multiagent-safety-targets.txt');
+  const initResult = run(['init-workspace', '--workspace', workspaceDir], workspaceDir);
+  assert.equal(initResult.status, 0, initResult.stderr || initResult.stdout);
+  assert.equal(fs.existsSync(targetsPath), true, 'targets file missing');
+
+  const targetsContent = fs.readFileSync(targetsPath, 'utf8');
+  assert.match(targetsContent, new RegExp(repoA.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.match(targetsContent, new RegExp(repoB.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+
+  const installResult = run(['install-many', '--targets-file', targetsPath], workspaceDir);
+  assert.equal(installResult.status, 0, installResult.stderr || installResult.stdout);
+  assert.match(installResult.stdout, /install-many summary: installed=2, failures=0/);
+
+  assertRepoInstalled(repoA);
+  assertRepoInstalled(repoB);
+});
+
+test('install-many reports failures for invalid targets while still installing valid repos', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'multiagent-safety-targets-'));
+  const repoDir = path.join(tempDir, 'repo-good');
+  initGitRepo(repoDir, true);
+
+  const invalidTarget = path.join(tempDir, 'not-a-repo');
+  fs.mkdirSync(invalidTarget, { recursive: true });
+
+  const targetsFile = path.join(tempDir, 'targets.txt');
+  fs.writeFileSync(targetsFile, `# sample targets\n${repoDir}\n${invalidTarget}\n`, 'utf8');
+
+  const result = run(['install-many', '--targets-file', targetsFile], tempDir);
+  assert.equal(result.status, 1, 'expected non-zero when one target fails');
+  assert.match(result.stdout, /install-many summary: installed=1, failures=1/);
+  assert.match(result.stderr, /install-many completed with 1 failure/);
+
+  assertRepoInstalled(repoDir);
 });

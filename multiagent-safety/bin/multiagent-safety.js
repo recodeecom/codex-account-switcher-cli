@@ -26,18 +26,38 @@ const EXECUTABLE_RELATIVE_PATHS = new Set([
 ]);
 
 const AGENTS_MARKER_START = '<!-- multiagent-safety:START -->';
+const DEFAULT_INSTALL_MANY_MAX_DEPTH = 2;
+const DEFAULT_WORKSPACE_TARGETS_FILE = '.multiagent-safety-targets.txt';
+const WORKSPACE_SCAN_IGNORE = new Set([
+  '.git',
+  '.hg',
+  '.svn',
+  '.omx',
+  'node_modules',
+  'dist',
+  'build',
+  'coverage',
+  'target',
+]);
 
 function usage() {
   console.log(`multiagent-safety v${packageJson.version}
 
 Usage:
   multiagent-safety install [--target <path>] [--force] [--skip-agents] [--skip-package-json] [--dry-run]
+  multiagent-safety install-many [--workspace <path>] [--max-depth <n>] [--target <path>] [--targets <a,b,c>] [--targets-file <file>] [--force] [--skip-agents] [--skip-package-json] [--dry-run] [--fail-fast]
+  multiagent-safety init-workspace [--workspace <path>] [--max-depth <n>] [--output <file>] [--force]
   multiagent-safety print-agents-snippet
   multiagent-safety --help
 
 Examples:
   multiagent-safety install
+  multiagent-safety install-many
   multiagent-safety install --target ~/projects/my-repo
+  multiagent-safety install-many --workspace ~/projects --max-depth 2
+  multiagent-safety install-many --targets ~/repo-a,~/repo-b
+  multiagent-safety install-many --targets-file ./workspace-repos.txt
+  multiagent-safety init-workspace --workspace ~/projects
   npm i -g multiagent-safety && multiagent-safety install`);
 }
 
@@ -172,7 +192,9 @@ function ensurePackageScripts(repoRoot, dryRun) {
 function ensureAgentsSnippet(repoRoot, dryRun) {
   const relativePath = 'AGENTS.md';
   const agentsPath = path.join(repoRoot, relativePath);
-  const snippet = fs.readFileSync(path.join(TEMPLATE_ROOT, 'AGENTS.multiagent-safety.md'), 'utf8').trimEnd();
+  const snippet = fs
+    .readFileSync(path.join(TEMPLATE_ROOT, 'AGENTS.multiagent-safety.md'), 'utf8')
+    .trimEnd();
 
   if (!fs.existsSync(agentsPath)) {
     if (!dryRun) {
@@ -205,6 +227,34 @@ function configureHooks(repoRoot, dryRun) {
   return { status: 'set', key: 'core.hooksPath', value: '.githooks' };
 }
 
+function parseSharedInstallFlag(arg, options) {
+  if (arg === '--force' || arg === '-f') {
+    options.force = true;
+    return true;
+  }
+  if (arg === '--skip-agents' || arg === '-A') {
+    options.skipAgents = true;
+    return true;
+  }
+  if (arg === '--skip-package-json' || arg === '-P') {
+    options.skipPackageJson = true;
+    return true;
+  }
+  if (arg === '--dry-run' || arg === '-n') {
+    options.dryRun = true;
+    return true;
+  }
+  return false;
+}
+
+function requireValue(rawArgs, index, flagName) {
+  const value = rawArgs[index + 1];
+  if (value === undefined || value === '') {
+    throw new Error(`${flagName} requires a value`);
+  }
+  return value;
+}
+
 function parseInstallArgs(rawArgs) {
   const options = {
     target: process.cwd(),
@@ -216,41 +266,249 @@ function parseInstallArgs(rawArgs) {
 
   for (let index = 0; index < rawArgs.length; index += 1) {
     const arg = rawArgs[index];
-    if (arg === '--target') {
-      options.target = rawArgs[index + 1];
+    if (arg === '--target' || arg === '-t') {
+      options.target = requireValue(rawArgs, index, '--target');
       index += 1;
       continue;
     }
-    if (arg === '--force') {
-      options.force = true;
-      continue;
-    }
-    if (arg === '--skip-agents') {
-      options.skipAgents = true;
-      continue;
-    }
-    if (arg === '--skip-package-json') {
-      options.skipPackageJson = true;
-      continue;
-    }
-    if (arg === '--dry-run') {
-      options.dryRun = true;
-      continue;
-    }
-    throw new Error(`Unknown option: ${arg}`);
-  }
 
-  if (!options.target) {
-    throw new Error('--target requires a path value');
+    if (parseSharedInstallFlag(arg, options)) {
+      continue;
+    }
+
+    throw new Error(`Unknown option: ${arg}`);
   }
 
   return options;
 }
 
-function install(rawArgs) {
-  const options = parseInstallArgs(rawArgs);
-  const repoRoot = resolveRepoRoot(options.target);
+function splitCsvTargets(value) {
+  return value
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
 
+function readTargetsFile(targetsFilePath) {
+  const absolutePath = path.resolve(targetsFilePath);
+  if (!fs.existsSync(absolutePath)) {
+    throw new Error(`Targets file not found: ${absolutePath}`);
+  }
+
+  const lines = fs.readFileSync(absolutePath, 'utf8').split(/\r?\n/);
+  const targets = [];
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) {
+      continue;
+    }
+
+    if (line.includes(',')) {
+      targets.push(...splitCsvTargets(line));
+      continue;
+    }
+
+    targets.push(line);
+  }
+
+  return targets;
+}
+
+function discoverGitRepos(workspaceRoot, maxDepth) {
+  const resolvedWorkspace = path.resolve(workspaceRoot);
+  if (!fs.existsSync(resolvedWorkspace)) {
+    throw new Error(`Workspace path does not exist: ${resolvedWorkspace}`);
+  }
+
+  let workspaceStats;
+  try {
+    workspaceStats = fs.statSync(resolvedWorkspace);
+  } catch (error) {
+    throw new Error(`Unable to read workspace path: ${resolvedWorkspace} (${error.message})`);
+  }
+
+  if (!workspaceStats.isDirectory()) {
+    throw new Error(`Workspace path is not a directory: ${resolvedWorkspace}`);
+  }
+
+  const repos = [];
+
+  function walk(currentDir, depth) {
+    let entries;
+    try {
+      entries = fs.readdirSync(currentDir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+
+    if (entries.some((entry) => entry.name === '.git')) {
+      repos.push(currentDir);
+      return;
+    }
+
+    if (depth >= maxDepth) {
+      return;
+    }
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+      if (WORKSPACE_SCAN_IGNORE.has(entry.name)) {
+        continue;
+      }
+      walk(path.join(currentDir, entry.name), depth + 1);
+    }
+  }
+
+  walk(resolvedWorkspace, 0);
+  return repos;
+}
+
+function parseInstallManyArgs(rawArgs) {
+  const options = {
+    targets: [],
+    targetsFile: null,
+    workspace: null,
+    maxDepth: DEFAULT_INSTALL_MANY_MAX_DEPTH,
+    failFast: false,
+    usedImplicitWorkspaceDefault: false,
+    force: false,
+    skipAgents: false,
+    skipPackageJson: false,
+    dryRun: false,
+  };
+
+  for (let index = 0; index < rawArgs.length; index += 1) {
+    const arg = rawArgs[index];
+
+    if (arg === '--target' || arg === '-t') {
+      options.targets.push(requireValue(rawArgs, index, '--target'));
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--targets' || arg === '-l') {
+      options.targets.push(...splitCsvTargets(requireValue(rawArgs, index, '--targets')));
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--targets-file' || arg === '-T') {
+      options.targetsFile = requireValue(rawArgs, index, '--targets-file');
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--workspace' || arg === '-w') {
+      options.workspace = requireValue(rawArgs, index, '--workspace');
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--max-depth' || arg === '-d') {
+      const rawDepth = requireValue(rawArgs, index, '--max-depth');
+      const parsedDepth = Number.parseInt(rawDepth, 10);
+      if (!Number.isInteger(parsedDepth) || parsedDepth < 0) {
+        throw new Error(`--max-depth must be a non-negative integer (received: ${rawDepth})`);
+      }
+      options.maxDepth = parsedDepth;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--fail-fast' || arg === '-x') {
+      options.failFast = true;
+      continue;
+    }
+
+    if (parseSharedInstallFlag(arg, options)) {
+      continue;
+    }
+
+    throw new Error(`Unknown option: ${arg}`);
+  }
+
+  if (!options.targets.length && !options.targetsFile && !options.workspace) {
+    options.workspace = process.cwd();
+    options.usedImplicitWorkspaceDefault = true;
+  }
+
+  return options;
+}
+
+function parseInitWorkspaceArgs(rawArgs) {
+  const options = {
+    workspace: process.cwd(),
+    maxDepth: DEFAULT_INSTALL_MANY_MAX_DEPTH,
+    output: null,
+    force: false,
+  };
+
+  for (let index = 0; index < rawArgs.length; index += 1) {
+    const arg = rawArgs[index];
+
+    if (arg === '--workspace' || arg === '-w') {
+      options.workspace = requireValue(rawArgs, index, '--workspace');
+      index += 1;
+      continue;
+    }
+    if (arg === '--max-depth' || arg === '-d') {
+      const rawDepth = requireValue(rawArgs, index, '--max-depth');
+      const parsedDepth = Number.parseInt(rawDepth, 10);
+      if (!Number.isInteger(parsedDepth) || parsedDepth < 0) {
+        throw new Error(`--max-depth must be a non-negative integer (received: ${rawDepth})`);
+      }
+      options.maxDepth = parsedDepth;
+      index += 1;
+      continue;
+    }
+    if (arg === '--output' || arg === '-o') {
+      options.output = requireValue(rawArgs, index, '--output');
+      index += 1;
+      continue;
+    }
+    if (arg === '--force' || arg === '-f') {
+      options.force = true;
+      continue;
+    }
+    throw new Error(`Unknown option: ${arg}`);
+  }
+
+  return options;
+}
+
+function collectInstallManyTargets(options) {
+  const collected = [];
+
+  if (options.targets.length) {
+    collected.push(...options.targets);
+  }
+
+  if (options.targetsFile) {
+    collected.push(...readTargetsFile(options.targetsFile));
+  }
+
+  if (options.workspace) {
+    collected.push(...discoverGitRepos(options.workspace, options.maxDepth));
+  }
+
+  const deduped = [];
+  const seen = new Set();
+  for (const target of collected) {
+    const normalized = path.resolve(target);
+    if (seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    deduped.push(normalized);
+  }
+
+  return deduped;
+}
+
+function installIntoRepoRoot(repoRoot, options) {
   const operations = [];
 
   for (const templateFile of TEMPLATE_FILES) {
@@ -269,18 +527,152 @@ function install(rawArgs) {
 
   const hookResult = configureHooks(repoRoot, options.dryRun);
 
-  console.log(`[multiagent-safety] Target repo: ${repoRoot}`);
-  for (const operation of operations) {
+  return {
+    repoRoot,
+    operations,
+    hookResult,
+  };
+}
+
+function printInstallReport(report) {
+  console.log(`[multiagent-safety] Target repo: ${report.repoRoot}`);
+  for (const operation of report.operations) {
     const note = operation.note ? ` (${operation.note})` : '';
     console.log(`  - ${operation.status.padEnd(10)} ${operation.file}${note}`);
   }
-  console.log(`  - hooksPath  ${hookResult.status} ${hookResult.key}=${hookResult.value}`);
+  console.log(`  - hooksPath  ${report.hookResult.status} ${report.hookResult.key}=${report.hookResult.value}`);
+}
+
+function install(rawArgs) {
+  const options = parseInstallArgs(rawArgs);
+  const repoRoot = resolveRepoRoot(options.target);
+
+  const report = installIntoRepoRoot(repoRoot, options);
+  printInstallReport(report);
 
   if (options.dryRun) {
     console.log('[multiagent-safety] Dry run complete. No files were modified.');
   } else {
     console.log('[multiagent-safety] Installed multi-agent safety workflow.');
     console.log('[multiagent-safety] Next step: run `python3 scripts/agent-file-locks.py status` in the repo.');
+  }
+}
+
+function installMany(rawArgs) {
+  const options = parseInstallManyArgs(rawArgs);
+  const targets = collectInstallManyTargets(options);
+
+  if (!targets.length) {
+    throw new Error('install-many did not find any targets to process.');
+  }
+
+  if (options.usedImplicitWorkspaceDefault) {
+    console.log(
+      `[multiagent-safety] No explicit targets provided. Defaulting to workspace scan: ${path.resolve(
+        options.workspace,
+      )} (max depth ${options.maxDepth})`,
+    );
+  }
+
+  console.log(
+    `[multiagent-safety] install-many starting for ${targets.length} target path(s)${
+      options.dryRun ? ' [dry-run]' : ''
+    }`,
+  );
+
+  let installed = 0;
+  let duplicateRepos = 0;
+  const seenRepoRoots = new Set();
+  const failures = [];
+
+  for (const targetPath of targets) {
+    let repoRoot;
+    try {
+      repoRoot = resolveRepoRoot(targetPath);
+    } catch (error) {
+      failures.push({ target: targetPath, message: error.message });
+      if (options.failFast) {
+        break;
+      }
+      continue;
+    }
+
+    if (seenRepoRoots.has(repoRoot)) {
+      duplicateRepos += 1;
+      console.log(`[multiagent-safety] Skipping duplicate repo target: ${targetPath} -> ${repoRoot}`);
+      continue;
+    }
+
+    seenRepoRoots.add(repoRoot);
+
+    try {
+      const report = installIntoRepoRoot(repoRoot, options);
+      printInstallReport(report);
+      installed += 1;
+    } catch (error) {
+      failures.push({ target: repoRoot, message: error.message });
+      if (options.failFast) {
+        break;
+      }
+    }
+  }
+
+  console.log(
+    `[multiagent-safety] install-many summary: installed=${installed}, failures=${failures.length}, duplicate-targets=${duplicateRepos}`,
+  );
+
+  if (failures.length > 0) {
+    console.error('[multiagent-safety] Failed targets:');
+    for (const failure of failures) {
+      console.error(`  - ${failure.target}`);
+      console.error(`    ${failure.message}`);
+    }
+    throw new Error(`install-many completed with ${failures.length} failure(s)`);
+  }
+
+  if (options.dryRun) {
+    console.log('[multiagent-safety] Dry run complete. No files were modified.');
+  } else {
+    console.log('[multiagent-safety] Installed multi-agent safety workflow across all targets.');
+  }
+}
+
+function initWorkspace(rawArgs) {
+  const options = parseInitWorkspaceArgs(rawArgs);
+  const resolvedWorkspace = path.resolve(options.workspace);
+  const repos = discoverGitRepos(resolvedWorkspace, options.maxDepth)
+    .map((repoPath) => path.resolve(repoPath))
+    .sort();
+
+  const outputPath = options.output
+    ? path.resolve(options.output)
+    : path.join(resolvedWorkspace, DEFAULT_WORKSPACE_TARGETS_FILE);
+
+  if (fs.existsSync(outputPath) && !options.force) {
+    throw new Error(`Refusing to overwrite existing file without --force: ${outputPath}`);
+  }
+
+  const headerLines = [
+    '# multiagent-safety workspace targets',
+    `# generated: ${new Date().toISOString()}`,
+    `# workspace: ${resolvedWorkspace}`,
+    `# max-depth: ${options.maxDepth}`,
+    '#',
+    '# Run:',
+    `# multiagent-safety install-many --targets-file "${outputPath}"`,
+    '',
+  ];
+  const content = `${headerLines.join('\n')}${repos.join('\n')}${repos.length ? '\n' : ''}`;
+
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+  fs.writeFileSync(outputPath, content, 'utf8');
+
+  console.log(`[multiagent-safety] Workspace target file written: ${outputPath}`);
+  console.log(`[multiagent-safety] Repos discovered: ${repos.length}`);
+  if (repos.length === 0) {
+    console.log('[multiagent-safety] No git repos found. You can add target paths manually to the file.');
+  } else {
+    console.log(`[multiagent-safety] Next step: multiagent-safety install-many --targets-file "${outputPath}"`);
   }
 }
 
@@ -308,6 +700,18 @@ function main() {
   }
   if (command === 'install') {
     install(rest);
+    return;
+  }
+  if (command === 'install-many') {
+    installMany(rest);
+    return;
+  }
+  if (command === 'init-workspace') {
+    initWorkspace(rest);
+    return;
+  }
+  if (command === 'workspace') {
+    installMany(['--workspace', process.cwd(), ...rest]);
     return;
   }
   if (command === 'print-agents-snippet') {
