@@ -3,7 +3,6 @@ import {
   CheckCircle2,
   ChevronDown,
   Clock,
-  Download,
   Eye,
   ExternalLink,
   Lock,
@@ -16,7 +15,6 @@ import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
 import { isLikelyEmailValue } from "@/components/blur-email";
-import { CopyButton } from "@/components/copy-button";
 import { usePrivacyStore } from "@/hooks/use-privacy";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -1214,27 +1212,6 @@ function buildQuotaDebugLogLines(
   return lines;
 }
 
-function buildDebugLogFileName(accountId: string): string {
-  const safeAccountId = accountId.replace(/[^a-zA-Z0-9._-]/g, "_");
-  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-  return `cli-session-mapping-${safeAccountId}-${timestamp}.log`;
-}
-
-function saveQuotaDebugLogToFile(accountId: string, logs: string): void {
-  if (!logs.trim()) {
-    return;
-  }
-  const blob = new Blob([logs], { type: "text/plain;charset=utf-8" });
-  const objectUrl = window.URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = objectUrl;
-  anchor.download = buildDebugLogFileName(accountId);
-  anchor.click();
-  window.setTimeout(() => {
-    window.URL.revokeObjectURL(objectUrl);
-  }, 0);
-}
-
 function buildSessionTaskLogLines({
   accountId,
   row,
@@ -1334,7 +1311,6 @@ export function AccountCard(props: AccountCardProps) {
     return () => window.clearInterval(timer);
   }, []);
 
-  const [showQuotaDebug, setShowQuotaDebug] = useState(false);
   const [sessionTasksCollapsed, setSessionTasksCollapsed] = useState(
     initialSessionTasksCollapsed,
   );
@@ -2043,6 +2019,31 @@ export function AccountCard(props: AccountCardProps) {
       : `${codexLiveSessionCount} sessions`;
   const idSuffix = showAccountId ? ` | ID ${compactId}` : "";
   const isOmxBoosted = Boolean(account.codexAuth?.isOmxBoosted);
+  const primaryCliSessionKey = useMemo(
+    () =>
+      sessionTaskRows.find((row) => !row.synthetic)?.sessionKey ??
+      null,
+    [sessionTaskRows],
+  );
+  const openCodexLogsView = () => {
+    const focusSessionKey = primaryCliSessionKey ?? undefined;
+    const context = focusSessionKey
+      ? { focusSessionKey, source: "watch-logs" as const }
+      : undefined;
+    if (onAction) {
+      onAction(account, "sessions", context);
+      return;
+    }
+
+    const searchParams = new URLSearchParams({
+      accountId: account.accountId,
+    });
+    if (focusSessionKey) {
+      searchParams.set("sessionKey", focusSessionKey);
+      searchParams.set("view", "watch");
+    }
+    navigate(`/sessions?${searchParams.toString()}`);
+  };
   const tokenCardStatusClass = cn(
     "h-7 gap-1.5 rounded-full border px-3 text-[11px] font-semibold tracking-[0.02em] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]",
     status === "active" &&
@@ -2764,73 +2765,32 @@ export function AccountCard(props: AccountCardProps) {
             </div>
           </div>
 
-          {liveQuotaDebug ? (
-            <div className="mt-2.5">
-              <button
-                type="button"
-                className="inline-flex items-center gap-1.5 rounded-md border border-cyan-500/25 bg-cyan-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-700/90 transition-colors hover:bg-cyan-500/15 hover:text-cyan-800 dark:text-cyan-200/90 dark:hover:text-cyan-100"
-                aria-expanded={showQuotaDebug}
-                aria-label="Debug"
-                onClick={() => setShowQuotaDebug((current) => !current)}
-              >
-                Debug
-                <ChevronDown
-                  className={cn(
-                    "h-3 w-3 transition-transform duration-200",
-                    showQuotaDebug && "rotate-180",
-                  )}
-                />
-              </button>
+          {hasSessionInventory || liveQuotaDebug ? (
+            <div className="mt-2.5 rounded-xl border border-cyan-500/20 bg-[#020812]/95 px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
               <div
-                className="mt-2 flex w-full items-center gap-2 rounded-xl bg-[#020812]/95 px-3 py-2.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-100/95 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+                className="flex w-full items-center justify-between gap-2"
                 data-testid="codex-logs-label"
               >
-                <span className="h-1.5 w-1.5 rounded-full bg-cyan-200/85 shadow-[0_0_0_2px_rgba(34,211,238,0.12)]" />
-                <span>Codex logs</span>
-              </div>
-
-              {showQuotaDebug ? (
-                <div className="mt-2 space-y-2 rounded-lg border border-cyan-500/25 bg-[#061325] px-2.5 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-300">
-                      CLI session logs
-                    </p>
-                    <div className="flex items-center gap-1.5 origin-right scale-90">
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 gap-1.5 px-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-200 hover:bg-cyan-500/10 hover:text-cyan-100"
-                        onClick={() =>
-                          saveQuotaDebugLogToFile(
-                            account.accountId,
-                            quotaDebugLogText,
-                          )
-                        }
-                      >
-                        <Download className="h-3 w-3" />
-                        Save log file
-                      </Button>
-                      <CopyButton value={quotaDebugLogText} label="Copy logs" />
-                    </div>
-                  </div>
-                  <div className="rounded-md border border-cyan-500/20 bg-[#020812] p-1.5">
-                    <ol className="max-h-56 overflow-y-auto font-mono text-[11px] leading-5 text-cyan-100">
-                      {quotaDebugLogText.split("\n").map((line, index) => (
-                        <li
-                          key={`${account.accountId}-debug-line-${index}`}
-                          className="grid grid-cols-[2.2rem_minmax(0,1fr)] gap-2 rounded-sm px-1.5 even:bg-cyan-500/[0.06]"
-                        >
-                          <span className="select-none text-right text-cyan-400/55">
-                            {String(index + 1).padStart(2, "0")}
-                          </span>
-                          <span className="break-all">{line}</span>
-                        </li>
-                      ))}
-                    </ol>
-                  </div>
+                <div className="min-w-0">
+                  <p className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-100/95">
+                    <span className="h-1.5 w-1.5 rounded-full bg-cyan-200/85 shadow-[0_0_0_2px_rgba(34,211,238,0.12)]" />
+                    Codex logs
+                  </p>
+                  <p className="mt-1 text-[10px] leading-relaxed text-cyan-100/70">
+                    Hidden on the card. Open the session page to view terminal commands and runtime logs.
+                  </p>
                 </div>
-              ) : null}
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 shrink-0 gap-1.5 rounded-md border border-cyan-400/30 bg-cyan-500/10 px-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-cyan-100 hover:bg-cyan-500/16"
+                  onClick={openCodexLogsView}
+                >
+                  <ExternalLink className="h-3 w-3" />
+                  Open logs
+                </Button>
+              </div>
             </div>
           ) : null}
         </div>

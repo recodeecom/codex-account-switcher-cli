@@ -3288,8 +3288,7 @@ describe("AccountCard", () => {
     expect(within(card as HTMLElement).getByRole("button", { name: "Sessions" })).toBeDisabled();
   });
 
-  it("keeps live quota debug collapsed by default and expands on demand", async () => {
-    const user = userEvent.setup();
+  it("shows codex logs as hidden on-card content without the debug toggle", () => {
     const account = createAccountSummary({
       codexLiveSessionCount: 2,
       codexTrackedSessionCount: 1,
@@ -3347,37 +3346,31 @@ describe("AccountCard", () => {
 
     render(<AccountCard account={account} />);
 
-    expect(screen.getByRole("button", { name: /debug/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /debug/i })).not.toBeInTheDocument();
     expect(screen.getByTestId("codex-logs-label")).toHaveTextContent("Codex logs");
-    expect(screen.queryByText(/cli session logs/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/\$ merged 5h=17% weekly=77%/)).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: /debug/i }));
-    expect(screen.getByText(/cli session logs/i)).toBeInTheDocument();
-    expect(screen.getByText(/\$ merged 5h=17% weekly=77%/)).toBeInTheDocument();
-    expect(screen.getByText(/\$ override=applied_live_usage_windows/)).toBeInTheDocument();
+    expect(screen.getByText(/hidden on the card/i)).toBeInTheDocument();
     expect(
-      screen.getByText(/\$ cli_mapping selected_snapshot=snap-a active_snapshot=snap-a match=yes/),
+      screen.getByRole("button", { name: /open logs/i }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(/\$ cli_session_counts mapped=2 tracked=1 displayed=2 live_signal=yes/),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/\$ attribution=account-attributed override applied/),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /save log file/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /copy logs/i })).toBeInTheDocument();
-    expect(screen.queryByText(/\$ no cli sessions sampled/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /save log file/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /copy logs/i })).not.toBeInTheDocument();
   });
 
-  it("surfaces mapped live sessions without quota rows in CLI session logs", async () => {
+  it("routes codex logs open action to watch view for the current cli session", async () => {
     const user = userEvent.setup();
-    const nowIso = new Date().toISOString();
+    const onAction = vi.fn();
     const account = createAccountSummary({
-      codexLiveSessionCount: 2,
+      codexLiveSessionCount: 1,
       codexTrackedSessionCount: 1,
-      codexSessionCount: 2,
-      codexCurrentTaskPreview: null,
+      codexSessionCount: 1,
+      codexCurrentTaskPreview: "Investigate websocket sticky routing",
+      codexSessionTaskPreviews: [
+        {
+          sessionKey: "sess-alpha-123456",
+          taskPreview: "Investigate websocket sticky routing",
+          taskUpdatedAt: "2026-04-05T10:00:00.000Z",
+        },
+      ],
       codexAuth: {
         hasSnapshot: true,
         snapshotName: "snap-a",
@@ -3385,39 +3378,24 @@ describe("AccountCard", () => {
         isActiveSnapshot: true,
         hasLiveSession: true,
       },
-      lastUsageRecordedAtPrimary: nowIso,
-      lastUsageRecordedAtSecondary: nowIso,
-      liveQuotaDebug: {
-        snapshotsConsidered: ["snap-a"],
-        overrideApplied: false,
-        overrideReason: "no_live_telemetry",
-        merged: null,
-        rawSamples: [],
-      },
     });
 
-    render(<AccountCard account={account} />);
-    await user.click(screen.getByRole("button", { name: /debug/i }));
+    render(<AccountCard account={account} onAction={onAction} />);
+    await user.click(screen.getByRole("button", { name: /open logs/i }));
 
-    expect(
-      screen.getByText(/\$ cli_session_counts mapped=2 tracked=1 displayed=2 live_signal=yes/i),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/\$ mapped_cli_sessions=2 quota_sampled_rows=0/i),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/\$ live_sessions_without_quota_rows=2/i),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/\$ task_preview_state=waiting_for_new_task/i),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/\$ no quota-bearing cli samples/i)).toBeInTheDocument();
-    expect(screen.queryByText(/\$ no cli sessions sampled/i)).not.toBeInTheDocument();
+    expect(onAction).toHaveBeenCalledWith(account, "sessions", {
+      focusSessionKey: "sess-alpha-123456",
+      source: "watch-logs",
+    });
   });
 
-  it("scopes CLI session logs to the current account snapshot", async () => {
+  it("routes codex logs open action without focus when only synthetic rows exist", async () => {
     const user = userEvent.setup();
+    const onAction = vi.fn();
     const account = createAccountSummary({
+      codexLiveSessionCount: 1,
+      codexTrackedSessionCount: 1,
+      codexSessionCount: 1,
       codexAuth: {
         hasSnapshot: true,
         snapshotName: "csoves.com",
@@ -3470,20 +3448,9 @@ describe("AccountCard", () => {
       },
     });
 
-    render(<AccountCard account={account} />);
-    await user.click(screen.getByRole("button", { name: /debug/i }));
+    render(<AccountCard account={account} onAction={onAction} />);
+    await user.click(screen.getByRole("button", { name: /open logs/i }));
 
-    expect(
-      screen.getByText(/\$ cli_mapping selected_snapshot=csoves\.com active_snapshot=csoves\.com match=yes/i),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/\$ cli_session_counts mapped=0 tracked=0 displayed=0 live_signal=no/i),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/\$ attribution=diagnostic sample only \(not attributed\)/i),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/rollout-csoves\.jsonl/i)).toBeInTheDocument();
-    expect(screen.queryByText(/rollout-viktor\.jsonl/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/snapshot=viktor/i)).not.toBeInTheDocument();
+    expect(onAction).toHaveBeenCalledWith(account, "sessions", undefined);
   });
 });
