@@ -210,8 +210,12 @@ describe("AccountCards", () => {
 
     const cards = Array.from(container.querySelectorAll(".card-hover"));
     expect(cards).toHaveLength(2);
-    expect(within(cards[0] as HTMLElement).getByText("working@example.com")).toBeInTheDocument();
-    expect(within(cards[1] as HTMLElement).getByText("idle@example.com")).toBeInTheDocument();
+    const workingCard = cards[0] as HTMLElement;
+    const idleCard = cards[1] as HTMLElement;
+    expect(within(workingCard).getByText("working@example.com")).toBeInTheDocument();
+    expect(within(idleCard).getByText("idle@example.com")).toBeInTheDocument();
+    expect(within(workingCard).getByTestId("codex-active-agent-card")).toBeInTheDocument();
+    expect(within(idleCard).queryByTestId("codex-active-agent-card")).not.toBeInTheDocument();
   });
 
   it("keeps a recently-working account in Working now during short telemetry dips", () => {
@@ -381,7 +385,7 @@ describe("AccountCards", () => {
     expect(screen.queryByTestId("working-now-placeholder-card")).not.toBeInTheDocument();
   });
 
-  it("opens a popup with top three suggested accounts when clicking the add-card placeholder", () => {
+  it("opens a popup with suggested accounts that still have available quota", () => {
     const nowIso = new Date().toISOString();
     const working = createAccountSummary({
       accountId: "acc_working_popup",
@@ -463,6 +467,23 @@ describe("AccountCards", () => {
         secondaryRemainingPercent: 92,
       },
     });
+    const disconnectedAvailable = createAccountSummary({
+      accountId: "acc_disconnected_available",
+      email: "disconnected-available@example.com",
+      displayName: "disconnected-available@example.com",
+      status: "deactivated",
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "disconnected-available",
+        activeSnapshotName: "working-popup",
+        isActiveSnapshot: false,
+        hasLiveSession: false,
+      },
+      usage: {
+        primaryRemainingPercent: 72,
+        secondaryRemainingPercent: 64,
+      },
+    });
 
     render(
       <AccountCards
@@ -472,6 +493,7 @@ describe("AccountCards", () => {
           usageLimitSoonB,
           availableHigh,
           availableLow,
+          disconnectedAvailable,
         ]}
         primaryWindow={null}
         secondaryWindow={null}
@@ -497,11 +519,12 @@ describe("AccountCards", () => {
         ?.textContent,
     );
     expect(suggestionTitles).toEqual([
-      "usage-limit-a@example.com",
-      "usage-limit-b@example.com",
       "available-high@example.com",
+      "available-low@example.com",
     ]);
-    expect(suggestionTitles).not.toContain("available-low@example.com");
+    expect(suggestionTitles).not.toContain("usage-limit-a@example.com");
+    expect(suggestionTitles).not.toContain("usage-limit-b@example.com");
+    expect(suggestionTitles).not.toContain("disconnected-available@example.com");
   });
 
   it("forwards account selection from the suggestion popup and closes it after choosing use this account", () => {

@@ -81,6 +81,7 @@ export type AccountCardProps = {
   tokensRemaining?: number | null;
   showTokensRemaining?: boolean;
   showAccountId?: boolean;
+  showIdleCodexStatusPanel?: boolean;
   useLocalBusy?: boolean;
   deleteBusy?: boolean;
   initialSessionTasksCollapsed?: boolean;
@@ -1308,6 +1309,7 @@ export function AccountCard(props: AccountCardProps) {
     tokensUsed = null,
     showTokensRemaining = false,
     showAccountId = false,
+    showIdleCodexStatusPanel = true,
     useLocalBusy = false,
     deleteBusy = false,
     initialSessionTasksCollapsed = false,
@@ -1850,7 +1852,7 @@ export function AccountCard(props: AccountCardProps) {
   const canShowIdleCodexStatus = status !== "deactivated";
   const showCodexActiveAgentCard =
     !hideCurrentTaskPreview &&
-    canShowIdleCodexStatus &&
+    (isWorkingNow || (canShowIdleCodexStatus && showIdleCodexStatusPanel)) &&
     !showRalplanPlanningGraph;
   const promptDrivenOmxPlanningActiveNodeKey = resolveOmxPlanningActiveNodeKey(
     newestPromptForAgentPanel,

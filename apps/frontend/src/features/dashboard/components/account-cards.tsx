@@ -435,35 +435,54 @@ function resolveTopSuggestedAccounts(
     return [];
   }
 
-  const rankedByUsageLimit = sortAccountsByUsageLimitAvailableFirst(
-    accounts,
-    nowMs,
-  );
-  const suggestions: AccountSummary[] = [];
-  const includedAccountIds = new Set<string>();
+  return sortAccountsByLastSeenAndAvailableQuota(accounts, nowMs)
+    .filter((account) => {
+      const hasActiveCliSession = hasActiveCliSessionSignal(account, nowMs);
+      const effectiveStatus = resolveEffectiveAccountStatus({
+        status: account.status,
+        hasSnapshot: account.codexAuth?.hasSnapshot,
+        isActiveSnapshot: account.codexAuth?.isActiveSnapshot,
+        hasLiveSession: hasActiveCliSession,
+        hasRecentUsageSignal:
+          (account.codexAuth?.hasSnapshot ?? false) &&
+          hasRecentUsageSignal(account, nowMs),
+        allowDeactivatedOverride: false,
+      });
+      if (effectiveStatus === "deactivated") {
+        return false;
+      }
+      if (account.status === "rate_limited" || account.status === "quota_exceeded") {
+        return false;
+      }
 
-  for (const account of rankedByUsageLimit) {
-    if (!isUsageLimitAvailableAccount(account, nowMs)) {
-      continue;
-    }
-    suggestions.push(account);
-    includedAccountIds.add(account.accountId);
-    if (suggestions.length >= limit) {
-      return suggestions;
-    }
-  }
+      const primaryRemaining = resolveSortableRemainingPercent(
+        account,
+        "primary",
+        nowMs,
+      );
+      const secondaryRemaining = resolveSortableRemainingPercent(
+        account,
+        "secondary",
+        nowMs,
+      );
 
-  for (const account of rankedByUsageLimit) {
-    if (includedAccountIds.has(account.accountId)) {
-      continue;
-    }
-    suggestions.push(account);
-    if (suggestions.length >= limit) {
-      break;
-    }
-  }
+      const hasPrimaryWindow =
+        account.windowMinutesPrimary != null || primaryRemaining != null;
+      const hasSecondaryWindow =
+        account.windowMinutesSecondary != null || secondaryRemaining != null;
 
-  return suggestions;
+      const primaryAvailable =
+        !hasPrimaryWindow ||
+        (primaryRemaining != null &&
+          normalizeNearZeroQuotaPercent(primaryRemaining) > 0);
+      const secondaryAvailable =
+        !hasSecondaryWindow ||
+        (secondaryRemaining != null &&
+          normalizeNearZeroQuotaPercent(secondaryRemaining) > 0);
+
+      return primaryAvailable && secondaryAvailable;
+    })
+    .slice(0, limit);
 }
 
 function resolveMostRecentUsageRecordedAtMs(
@@ -855,6 +874,7 @@ export function AccountCards({
               )}
               showTokensRemaining
               showAccountId={duplicateAccountIds.has(account.accountId)}
+              showIdleCodexStatusPanel={keyPrefix !== "remaining"}
               useLocalBusy={
                 useLocalBusy &&
                 useLocalBusyAccountId != null &&
@@ -1113,7 +1133,7 @@ export function AccountCards({
             </DialogTitle>
             <DialogDescription className="text-zinc-400">
               Top {WORKING_ACCOUNT_SUGGESTION_LIMIT} accounts from Other accounts,
-              prioritized by usage-limit availability so you can pick one quickly.
+              showing only cards with available quota so you can switch quickly.
             </DialogDescription>
           </DialogHeader>
           {hasSuggestedAccounts ? (
@@ -1132,6 +1152,7 @@ export function AccountCards({
                     )}
                     showTokensRemaining
                     showAccountId={duplicateAccountIds.has(account.accountId)}
+                    showIdleCodexStatusPanel={false}
                     useLocalBusy={
                       useLocalBusy &&
                       useLocalBusyAccountId != null &&
