@@ -1,7 +1,7 @@
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import App from "@/App";
 import { server } from "@/test/mocks/server";
@@ -10,6 +10,11 @@ import { renderWithProviders } from "@/test/utils";
 describe("plans flow integration", () => {
   it("renders plan progress percent, checkpoint resume card, and designer role", async () => {
     const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
     window.history.pushState({}, "", "/projects/plans");
     renderWithProviders(<App />);
 
@@ -39,7 +44,14 @@ describe("plans flow integration", () => {
     expect(await screen.findByRole("button", { name: /copy prompt b/i })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: /copy prompt c/i })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: /copy prompt d/i })).toBeInTheDocument();
-    expect((await screen.findAllByText(/parallel execution context:/i)).length).toBeGreaterThan(0);
+    expect(await screen.findByTestId("plan-included-prompt-status-prompt-a-wave-7a-schedulers-jobs")).toHaveTextContent(
+      "Ready",
+    );
+    await user.click(await screen.findByRole("button", { name: /copy prompt a/i }));
+    expect(writeText).toHaveBeenCalled();
+    expect(await screen.findByTestId("plan-included-prompt-status-prompt-a-wave-7a-schedulers-jobs")).toHaveTextContent(
+      "Started",
+    );
     expect(screen.queryByTestId("plan-summary-content")).not.toBeInTheDocument();
     expect(screen.queryByTestId("plan-checkpoints-content")).not.toBeInTheDocument();
     expect(screen.queryByTestId("plan-runtime-observer")).not.toBeInTheDocument();

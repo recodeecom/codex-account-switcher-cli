@@ -7,15 +7,17 @@ import { Button } from "@/components/ui/button";
 export type CopyButtonProps = {
   value: string;
   label?: string;
+  onCopied?: () => void;
 };
 
-export function CopyButton({ value, label = "Copy" }: CopyButtonProps) {
+export function CopyButton({ value, label = "Copy", onCopied }: CopyButtonProps) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(value);
       setCopied(true);
+      onCopied?.();
       toast.success("Copied to clipboard");
       setTimeout(() => setCopied(false), 1200);
     } catch {

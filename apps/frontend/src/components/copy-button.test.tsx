@@ -28,18 +28,20 @@ describe("CopyButton", () => {
 
   it("writes to clipboard and shows success feedback", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
+    const onCopied = vi.fn();
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: { writeText },
     });
 
-    render(<CopyButton value="secret-value" />);
+    render(<CopyButton value="secret-value" onCopied={onCopied} />);
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Copy" }));
       await Promise.resolve();
     });
 
     expect(writeText).toHaveBeenCalledWith("secret-value");
+    expect(onCopied).toHaveBeenCalledTimes(1);
     expect(toastSuccess).toHaveBeenCalledWith("Copied to clipboard");
     expect(screen.getByRole("button", { name: "Copied" })).toBeInTheDocument();
 
