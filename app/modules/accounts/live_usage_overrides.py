@@ -452,28 +452,36 @@ def apply_local_live_usage_overrides(
             and live_usage_match.account_id != account_id
             and not has_shared_chatgpt_account_identity
         ):
-            matched_account_id = live_usage_match.account_id
-            # Strong fingerprint says this live sample belongs to another
-            # account identity. Keep this account disconnected for live-session
-            # grouping and transfer process/session presence to the matched
-            # account so "Working now" stays aligned with quota ownership.
-            force_clear_live_session_account_ids.add(account_id)
-            transferred_live_session_count = max(
-                0,
-                live_process_session_count,
-                effective_live_runtime_session_count,
-            )
-            if transferred_live_session_count > 0:
-                forced_live_session_counts_by_account[matched_account_id] = max(
-                    forced_live_session_counts_by_account.get(matched_account_id, 0),
-                    transferred_live_session_count,
+            # Process-level ownership is stronger than quota-fingerprint
+            # matching. If this account currently owns observable live
+            # processes, keep sessions on this account and only suppress quota
+            # window overrides.
+            if has_live_process_session:
+                override_reason = "live_usage_confident_match_other_account_process_guard"
+            else:
+                matched_account_id = live_usage_match.account_id
+                # Strong fingerprint says this live sample belongs to another
+                # account identity. Keep this account disconnected for
+                # live-session grouping and transfer inferred session presence
+                # to the matched account so "Working now" stays aligned with
+                # quota ownership.
+                force_clear_live_session_account_ids.add(account_id)
+                transferred_live_session_count = max(
+                    0,
+                    live_process_session_count,
+                    effective_live_runtime_session_count,
                 )
+                if transferred_live_session_count > 0:
+                    forced_live_session_counts_by_account[matched_account_id] = max(
+                        forced_live_session_counts_by_account.get(matched_account_id, 0),
+                        transferred_live_session_count,
+                    )
+                override_reason = "live_usage_confident_match_other_account"
 
             # Guardrail for multi-session mixed snapshot scopes:
             # when a live-usage sample strongly fingerprints another account,
             # keep this account on baseline quota windows instead of applying
             # a wrong cross-account override.
-            override_reason = "live_usage_confident_match_other_account"
             _set_live_quota_debug(
                 account_id=account_id,
                 snapshots_considered=snapshots_considered,
