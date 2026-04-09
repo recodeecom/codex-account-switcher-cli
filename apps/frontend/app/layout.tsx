@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import type { ReactNode } from "react";
 
 import "../src/index.css";
@@ -102,10 +103,12 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           id="theme-bootstrap-styles"
           dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP_STYLES }}
         />
-        <script
+        <Script
           id="theme-bootstrap-script"
-          dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP_SCRIPT }}
-        />
+          strategy="beforeInteractive"
+        >
+          {THEME_BOOTSTRAP_SCRIPT}
+        </Script>
       </head>
       <body suppressHydrationWarning>
         <AppProviders>{children}</AppProviders>
