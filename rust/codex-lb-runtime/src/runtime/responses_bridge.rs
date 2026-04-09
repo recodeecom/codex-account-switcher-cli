@@ -184,10 +184,10 @@ fn forward_websocket_headers(
     }
 
     let turn_state_header = HeaderName::from_static("x-codex-turn-state");
-    if !outgoing_headers.contains_key(&turn_state_header) {
-        if let Ok(value) = HeaderValue::from_str(turn_state) {
-            outgoing_headers.insert(turn_state_header, value);
-        }
+    if !outgoing_headers.contains_key(&turn_state_header)
+        && let Ok(value) = HeaderValue::from_str(turn_state)
+    {
+        outgoing_headers.insert(turn_state_header, value);
     }
 }
 
@@ -238,10 +238,10 @@ async fn relay_websocket_streams(
             };
 
             let is_close = matches!(message, AxumWsMessage::Close(_));
-            if let Some(upstream_message) = downstream_to_upstream_message(message) {
-                if upstream_tx.send(upstream_message).await.is_err() {
-                    break;
-                }
+            if let Some(upstream_message) = downstream_to_upstream_message(message)
+                && upstream_tx.send(upstream_message).await.is_err()
+            {
+                break;
             }
             if is_close {
                 break;
@@ -257,10 +257,10 @@ async fn relay_websocket_streams(
             };
 
             let is_close = matches!(message, UpstreamWsMessage::Close(_));
-            if let Some(downstream_message) = upstream_to_downstream_message(message) {
-                if downstream_tx.send(downstream_message).await.is_err() {
-                    break;
-                }
+            if let Some(downstream_message) = upstream_to_downstream_message(message)
+                && downstream_tx.send(downstream_message).await.is_err()
+            {
+                break;
             }
             if is_close {
                 break;
@@ -274,7 +274,7 @@ async fn relay_websocket_streams(
 
 fn downstream_to_upstream_message(message: AxumWsMessage) -> Option<UpstreamWsMessage> {
     match message {
-        AxumWsMessage::Text(text) => Some(UpstreamWsMessage::Text(text.to_string().into())),
+        AxumWsMessage::Text(text) => Some(UpstreamWsMessage::Text(text.to_string())),
         AxumWsMessage::Binary(binary) => Some(UpstreamWsMessage::Binary(binary.to_vec())),
         AxumWsMessage::Ping(ping) => Some(UpstreamWsMessage::Ping(ping.to_vec())),
         AxumWsMessage::Pong(pong) => Some(UpstreamWsMessage::Pong(pong.to_vec())),
