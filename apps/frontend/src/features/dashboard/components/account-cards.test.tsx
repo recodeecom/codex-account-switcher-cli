@@ -203,10 +203,10 @@ describe("AccountCards", () => {
       screen.getByText("Accounts with active CLI sessions are grouped first so you can switch faster."),
     ).toBeInTheDocument();
     expect(screen.getByText("2 live sessions")).toBeInTheDocument();
-    expect(screen.getByText("5h token spend")).toBeInTheDocument();
-    expect(screen.getByText("1.2M")).toBeInTheDocument();
+    expect(screen.getByText("5h price spend")).toBeInTheDocument();
+    expect(screen.getByText("€0.00")).toBeInTheDocument();
     expect(screen.queryByText(/weekly avg \d+%/i)).not.toBeInTheDocument();
-    expect(screen.queryByText("Weekly token spend")).not.toBeInTheDocument();
+    expect(screen.queryByText("Weekly price spend")).not.toBeInTheDocument();
 
     const cards = Array.from(container.querySelectorAll(".card-hover"));
     expect(cards).toHaveLength(2);
@@ -596,8 +596,8 @@ describe("AccountCards", () => {
       />,
     );
 
-    expect(screen.getByText("8h token spend")).toBeInTheDocument();
-    expect(screen.queryByText("5h token spend")).not.toBeInTheDocument();
+    expect(screen.getByText("8h price spend")).toBeInTheDocument();
+    expect(screen.queryByText("5h price spend")).not.toBeInTheDocument();
   });
 
   it("keeps accounts in working-now when primary rounds to 0% but sessions are active", () => {

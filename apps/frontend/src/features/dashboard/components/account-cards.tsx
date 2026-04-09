@@ -30,7 +30,7 @@ import {
   selectStableRemainingPercent,
 } from "@/utils/account-working";
 import { resolveEffectiveAccountStatus } from "@/utils/account-status";
-import { formatCompactNumber, formatWindowLabel } from "@/utils/formatters";
+import { formatEuro, formatWindowLabel } from "@/utils/formatters";
 import { normalizeRemainingPercentForDisplay } from "@/utils/quota-display";
 
 const RECENT_LAST_SEEN_SORT_WINDOW_MS = 30 * 60 * 1000;
@@ -508,11 +508,11 @@ export type AccountCardsProps = {
   onAction?: AccountCardProps["onAction"];
 };
 
-function formatConsumedTokens(value: number | null | undefined): string {
+function formatConsumedCostEur(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value)) {
     return "--";
   }
-  return formatCompactNumber(Math.max(0, value) * 1000);
+  return formatEuro(Math.max(0, value));
 }
 
 function buildRemainingByAccount(
@@ -689,10 +689,22 @@ export function AccountCards({
               }
               return sum + row.tokens;
             }, 0);
+    const primaryConsumedCostEur =
+      primaryUsageSummary == null
+        ? null
+        : primaryUsageSummary.accounts.length === 0
+          ? primaryUsageSummary.totalCostEur
+          : primaryUsageSummary.accounts.reduce((sum, row) => {
+              if (!row.accountId || !workingAccountIds.has(row.accountId)) {
+                return sum;
+              }
+              return sum + row.costEur;
+            }, 0);
 
     return {
       liveSessions,
       primaryConsumedTokens,
+      primaryConsumedCostEur,
     };
   }, [groupedAccounts.working, nowMs, primaryUsageSummary]);
   const otherAccountsEmailSuggestions = useMemo(() => {
@@ -850,10 +862,10 @@ export function AccountCards({
               {workingSummary.primaryConsumedTokens !== null ? (
                 <span className="flex min-h-16 flex-col justify-between rounded-lg border border-white/10 bg-[#060A13] px-3.5 py-3">
                   <span className="text-[11px] font-medium text-zinc-400">
-                    {primaryWindowLabel} token spend
+                    {primaryWindowLabel} price spend
                   </span>
                   <span className="text-base font-semibold text-zinc-100 tabular-nums">
-                    {formatConsumedTokens(workingSummary.primaryConsumedTokens)}
+                    {formatConsumedCostEur(workingSummary.primaryConsumedCostEur)}
                   </span>
                 </span>
               ) : null}
