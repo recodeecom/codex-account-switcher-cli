@@ -124,10 +124,6 @@ _last_successful_refresh: dict[str, datetime] = {}
 # short cooldown so dashboard polling does not hammer the same disconnected
 # account on every request.
 _last_failed_refresh: dict[str, datetime] = {}
-# Invalidated-token 401s may hit multiple sibling rows (same ChatGPT account
-# id, different local account ids). Track a short sibling cooldown to avoid
-# repeated fetch/deactivation log storms within dashboard polling loops.
-_last_invalidated_chatgpt_refresh: dict[str, datetime] = {}
 _FAILED_REFRESH_BACKOFF_SECONDS = 60
 _DEACTIVATING_REFRESH_ERROR_CODES = {"http_401", "invalid_grant", "invalid_token", "token_inactive"}
 _DEACTIVATION_FAILURE_THRESHOLD = 3
@@ -205,15 +201,7 @@ class UsageUpdater:
         refreshed = False
         now = utcnow()
         interval = settings.usage_refresh_interval_seconds
-        invalidated_chatgpt_ids_this_pass: set[str] = set()
         for account in accounts:
-            normalized_chatgpt_account_id = (account.chatgpt_account_id or "").strip() or None
-            if normalized_chatgpt_account_id in invalidated_chatgpt_ids_this_pass:
-                continue
-            if normalized_chatgpt_account_id:
-                invalidated_at = _last_invalidated_chatgpt_refresh.get(normalized_chatgpt_account_id)
-                if invalidated_at and (now - invalidated_at).total_seconds() < _FAILED_REFRESH_BACKOFF_SECONDS:
-                    continue
             if account.status == AccountStatus.DEACTIVATED:
                 recovered = await self._recover_deactivated_account_from_token_donor(account)
                 if not recovered:
@@ -256,9 +244,6 @@ class UsageUpdater:
                 )
                 await self._sync_account_from_repo(account)
                 refreshed = refreshed or result.usage_written
-                normalized_chatgpt_account_id = (
-                    (account.chatgpt_account_id or "").strip() or normalized_chatgpt_account_id
-                )
                 # Only cache when the upstream fetch actually succeeded.
                 # Transient errors (401 retry failure, 5xx, etc.) must not
                 # suppress retries within the interval.
@@ -266,13 +251,8 @@ class UsageUpdater:
                     _last_successful_refresh[account.id] = now
                     _last_failed_refresh.pop(account.id, None)
                     _deactivation_failure_streak.pop(account.id, None)
-                    if normalized_chatgpt_account_id:
-                        _last_invalidated_chatgpt_refresh.pop(normalized_chatgpt_account_id, None)
                 else:
                     _last_failed_refresh[account.id] = now
-                    if result.invalidated_token_error and normalized_chatgpt_account_id:
-                        invalidated_chatgpt_ids_this_pass.add(normalized_chatgpt_account_id)
-                        _last_invalidated_chatgpt_refresh[normalized_chatgpt_account_id] = now
             except Exception as exc:
                 logger.warning(
                     "Usage refresh failed account_id=%s request_id=%s error=%s",
