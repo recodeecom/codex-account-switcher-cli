@@ -98,6 +98,7 @@ Shared install flags:
 ```text
 scripts/agent-branch-start.sh
 scripts/agent-branch-finish.sh
+scripts/agent-worktree-prune.sh
 scripts/agent-file-locks.py
 scripts/install-agent-git-hooks.sh
 .githooks/pre-commit
@@ -108,6 +109,7 @@ And these scripts are added to `package.json` (if present):
 
 - `agent:branch:start`
 - `agent:branch:finish`
+- `agent:cleanup`
 - `agent:hooks:install`
 - `agent:locks:claim`
 - `agent:locks:release`
@@ -124,4 +126,7 @@ python3 scripts/agent-file-locks.py claim --branch "$(git rev-parse --abbrev-ref
 
 # merge branch safely back to dev
 bash scripts/agent-branch-finish.sh --branch "$(git rev-parse --abbrev-ref HEAD)"
+
+# optional: aggressively prune stale merged agent worktrees/branches
+bash scripts/agent-worktree-prune.sh --base dev
 ```

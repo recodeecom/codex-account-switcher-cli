@@ -40,6 +40,7 @@ function assertRepoInstalled(repoDir) {
   const requiredFiles = [
     'scripts/agent-branch-start.sh',
     'scripts/agent-branch-finish.sh',
+    'scripts/agent-worktree-prune.sh',
     'scripts/agent-file-locks.py',
     'scripts/install-agent-git-hooks.sh',
     '.githooks/pre-commit',
@@ -53,6 +54,7 @@ function assertRepoInstalled(repoDir) {
 
   const packageJson = JSON.parse(fs.readFileSync(path.join(repoDir, 'package.json'), 'utf8'));
   assert.equal(packageJson.scripts['agent:branch:start'], 'bash ./scripts/agent-branch-start.sh');
+  assert.equal(packageJson.scripts['agent:cleanup'], 'bash ./scripts/agent-worktree-prune.sh');
   assert.equal(packageJson.scripts['agent:locks:claim'], 'python3 ./scripts/agent-file-locks.py claim');
 
   const agentsContent = fs.readFileSync(path.join(repoDir, 'AGENTS.md'), 'utf8');
