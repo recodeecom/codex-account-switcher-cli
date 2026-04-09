@@ -392,6 +392,16 @@ type IncludedPromptCard = {
   sourcePath: string;
 };
 
+function buildPromptPreview(content: string): string {
+  const lines = content
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .slice(0, 3);
+  return lines.join(" · ");
+}
+
 function normalizePlanMarkdown(markdown: string): string {
   return markdown.replace(/\\n/g, "\n");
 }
@@ -585,6 +595,7 @@ export function buildPlanStarterPrompt(
 export function PlansPage() {
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [collapsedStepRows, setCollapsedStepRows] = useState<Record<string, boolean>>({});
+  const [startedPromptKeysByPlan, setStartedPromptKeysByPlan] = useState<Record<string, Record<string, boolean>>>({});
   const { plansQuery, planDetailQuery, effectiveSelectedSlug } = useOpenSpecPlans(selectedSlug);
 
   const entries = plansQuery.data?.entries ?? [];
@@ -667,6 +678,10 @@ export function PlansPage() {
         })),
       )
     : [];
+  const currentPlanPromptState = effectiveSelectedSlug
+    ? (startedPromptKeysByPlan[effectiveSelectedSlug] ?? {})
+    : {};
+  const startedPromptCount = includedPromptCards.filter((prompt) => currentPlanPromptState[prompt.key]).length;
 
   return (
     <section className="space-y-6">
@@ -884,36 +899,84 @@ export function PlansPage() {
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <p className="text-xs uppercase tracking-wide text-cyan-100/90">Included AI prompts</p>
                         <Badge variant="outline" className="text-[10px]">
-                          {includedPromptCards.length} prompt{includedPromptCards.length === 1 ? "" : "s"}
+                          {startedPromptCount}/{includedPromptCards.length} started
                         </Badge>
                       </div>
 
                       {includedPromptCards.length > 0 ? (
-                        <div className="grid gap-2 lg:grid-cols-2">
+                        <ul className="space-y-2">
                           {includedPromptCards.map((prompt) => (
-                            <div
+                            <li
                               key={prompt.key}
-                              className="space-y-2 rounded-md border border-cyan-500/20 bg-background/70 p-2.5"
+                              className="relative overflow-hidden rounded-md border border-border/50 bg-background/55"
                               data-testid={`plan-included-prompt-card-${prompt.id}`}
                             >
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="min-w-0 space-y-1">
-                                  <p className="truncate text-sm font-medium text-foreground/90">{prompt.title}</p>
-                                  <p className="truncate text-[11px] text-muted-foreground">
-                                    {prompt.bundleTitle} · {prompt.sourcePath}
-                                  </p>
+                              <span
+                                className={cn(
+                                  "absolute inset-y-0 left-0 w-1 transition-all",
+                                  currentPlanPromptState[prompt.key]
+                                    ? "bg-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.6)]"
+                                    : "bg-cyan-500/35",
+                                )}
+                              />
+                              <div className="space-y-2 px-3 py-2.5">
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="min-w-0 space-y-1">
+                                    <div className="flex min-w-0 items-center gap-2">
+                                      <StepStatusIcon
+                                        status={currentPlanPromptState[prompt.key] ? "completed" : "pending"}
+                                        className="h-3.5 w-3.5 shrink-0"
+                                      />
+                                      <p className="truncate text-sm font-medium text-foreground/90">{prompt.title}</p>
+                                    </div>
+                                    <p className="truncate text-[11px] text-muted-foreground">
+                                      {prompt.bundleTitle} · {prompt.sourcePath}
+                                    </p>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <Badge
+                                      variant="outline"
+                                      className={cn(
+                                        "text-[10px]",
+                                        currentPlanPromptState[prompt.key]
+                                          ? "border-emerald-500/40 bg-emerald-500/20 text-emerald-200"
+                                          : "border-slate-500/35 bg-slate-500/15 text-slate-300",
+                                      )}
+                                      data-testid={`plan-included-prompt-status-${prompt.id}`}
+                                    >
+                                      {currentPlanPromptState[prompt.key] ? "Started" : "Ready"}
+                                    </Badge>
+                                    <CopyButton
+                                      value={prompt.content}
+                                      label={`Copy ${prompt.title}`}
+                                      onCopied={() =>
+                                        setStartedPromptKeysByPlan((prev) => {
+                                          if (!effectiveSelectedSlug) {
+                                            return prev;
+                                          }
+                                          const nextPlanState = {
+                                            ...(prev[effectiveSelectedSlug] ?? {}),
+                                            [prompt.key]: true,
+                                          };
+                                          return {
+                                            ...prev,
+                                            [effectiveSelectedSlug]: nextPlanState,
+                                          };
+                                        })
+                                      }
+                                    />
+                                  </div>
                                 </div>
-                                <CopyButton
-                                  value={prompt.content}
-                                  label={`Copy ${prompt.title}`}
-                                />
+                                <p className="rounded-md border border-white/10 bg-background/45 px-2 py-1 text-[11px] text-cyan-100/85">
+                                  {buildPromptPreview(prompt.content)}
+                                </p>
                               </div>
-                              <pre className="max-h-36 overflow-auto rounded-md border border-white/10 bg-background/55 px-2 py-1.5 text-[11px] leading-relaxed text-cyan-100/85 whitespace-pre-wrap">
+                              <pre className="max-h-32 overflow-auto border-t border-white/10 bg-background/35 px-3 py-2 text-[11px] leading-relaxed text-cyan-100/75 whitespace-pre-wrap">
                                 {prompt.content}
                               </pre>
-                            </div>
+                            </li>
                           ))}
-                        </div>
+                        </ul>
                       ) : (
                         <p className="text-xs text-muted-foreground">
                           No bundled prompts found for this plan yet.
