@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import statistics
 import sys
 import time
@@ -22,6 +23,7 @@ class ProbeSample:
     body_sha256: str
     content_type: str
     json_canonical: str | None
+    xml_canonical: str | None
 
 
 @dataclass(slots=True)
@@ -35,6 +37,9 @@ class EndpointReport:
     content_type_match: bool
     body_hash_match: bool
     json_body_match: bool
+    xml_body_match: bool
+    payload_match_kind: str
+    payload_match: bool
     contract_match: bool
     mismatch_reasons: list[str]
     python_p50_ms: float
@@ -67,6 +72,21 @@ def _canonical_json(body: bytes) -> str | None:
     return json.dumps(parsed, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
+def _canonical_xml(body: bytes) -> str | None:
+    try:
+        text = body.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+
+    normalized = text.strip()
+    if not normalized.startswith("<"):
+        return None
+
+    normalized = re.sub(r'generated_at="[^"]*"', 'generated_at="__DYNAMIC__"', normalized)
+    normalized = re.sub(r">\s+<", "><", normalized)
+    return normalized
+
+
 def _fetch_once(base_url: str, endpoint: str, timeout_seconds: float) -> ProbeSample:
     url = f"{base_url.rstrip('/')}{endpoint}"
     req = urllib.request.Request(url, method="GET")
@@ -87,6 +107,7 @@ def _fetch_once(base_url: str, endpoint: str, timeout_seconds: float) -> ProbeSa
         body_sha256=hashlib.sha256(body).hexdigest(),
         content_type=content_type,
         json_canonical=_canonical_json(body),
+        xml_canonical=_canonical_xml(body),
     )
 
 
@@ -124,16 +145,26 @@ def _build_report(
     status_match = python_status == rust_status
     content_type_match = python_content_type == rust_content_type
     body_hash_match = python_body == rust_body
+    python_xml = statistics.mode(sample.xml_canonical for sample in python_samples)
+    rust_xml = statistics.mode(sample.xml_canonical for sample in rust_samples)
+
     json_body_match = python_json == rust_json
-    contract_match = status_match and content_type_match and json_body_match
+    xml_body_match = python_xml == rust_xml
+    payload_match_kind = "json" if python_json is not None and rust_json is not None else "xml"
+    payload_match = json_body_match if payload_match_kind == "json" else xml_body_match
+    if payload_match_kind == "xml" and python_xml is None and rust_xml is None:
+        payload_match_kind = "hash"
+        payload_match = body_hash_match
+
+    contract_match = status_match and content_type_match and payload_match
 
     mismatch_reasons: list[str] = []
     if not status_match:
         mismatch_reasons.append("status")
     if not content_type_match:
         mismatch_reasons.append("content_type")
-    if not json_body_match:
-        mismatch_reasons.append("json_body")
+    if not payload_match:
+        mismatch_reasons.append(f"{payload_match_kind}_body")
 
     python_latencies = [sample.elapsed_ms for sample in python_samples]
     rust_latencies = [sample.elapsed_ms for sample in rust_samples]
@@ -148,6 +179,9 @@ def _build_report(
         content_type_match=content_type_match,
         body_hash_match=body_hash_match,
         json_body_match=json_body_match,
+        xml_body_match=xml_body_match,
+        payload_match_kind=payload_match_kind,
+        payload_match=payload_match,
         contract_match=contract_match,
         mismatch_reasons=mismatch_reasons,
         python_p50_ms=round(_percentile(python_latencies, 50), 2),

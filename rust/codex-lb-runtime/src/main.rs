@@ -92,6 +92,7 @@ pub fn app() -> Router {
     app_with_state(runtime_state_from_env())
 }
 
+#[cfg(test)]
 fn app_with_flags(flags: RuntimeFlags) -> Router {
     app_with_state(runtime_state_with_flags(flags))
 }
