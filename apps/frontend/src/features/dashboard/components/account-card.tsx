@@ -520,19 +520,23 @@ function CodexActiveAgentCard({
   return (
     <div
       data-testid="codex-active-agent-card"
-      className="relative mx-auto w-full overflow-hidden rounded-xl border border-cyan-300/30 bg-[#060A13] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_10px_26px_rgba(2,6,23,0.42)]"
+      className="relative mx-auto w-full overflow-hidden rounded-xl border border-cyan-300/35 bg-[#040b18]/90 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_10px_26px_rgba(2,6,23,0.42)]"
     >
       <div
-        className="pointer-events-none absolute inset-0 opacity-55"
+        className="pointer-events-none absolute inset-x-3 inset-y-0.5 opacity-90"
         aria-hidden
       >
         <CpuArchitectureBackdrop
-          className="text-cyan-100/28"
+          className="text-cyan-100/55"
           dataTestId="cpu-architecture-backdrop-codex-active"
         />
       </div>
       <div
-        className="pointer-events-none absolute inset-0 bg-gradient-to-br from-cyan-500/[0.08] via-transparent to-indigo-500/[0.05]"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(34,211,238,0.22),rgba(6,10,19,0)_60%)]"
+        aria-hidden
+      />
+      <div
+        className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#040b18]/92 via-transparent to-[#040b18]/92"
         aria-hidden
       />
       <div className="relative flex items-center justify-between gap-3">
