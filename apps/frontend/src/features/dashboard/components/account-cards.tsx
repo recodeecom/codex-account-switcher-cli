@@ -782,10 +782,10 @@ export function AccountCards({
           >
             <article
               data-testid="working-now-placeholder-card"
-              className="flex h-full min-h-[22rem] flex-col justify-between rounded-3xl border border-dashed border-cyan-400/35 bg-[#050d18]/85 px-5 py-6"
+              className="flex h-full min-h-[22rem] flex-col items-center justify-center rounded-3xl border border-dashed border-cyan-400/35 bg-[#050d18]/85 px-5 py-6 text-center"
             >
               <div className="space-y-3">
-                <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-cyan-300/35 bg-cyan-300/10 text-cyan-200">
+                <span className="inline-flex h-14 w-14 items-center justify-center rounded-full border border-cyan-300/35 bg-cyan-300/10 text-cyan-200">
                   <Plus className="h-5 w-5" aria-hidden="true" />
                 </span>
                 <div className="space-y-1.5">
@@ -797,9 +797,6 @@ export function AccountCards({
                   </p>
                 </div>
               </div>
-              <p className="rounded-xl border border-cyan-300/25 bg-cyan-300/5 px-3 py-2 text-xs font-medium text-cyan-100/85">
-                iOS-style placeholder
-              </p>
             </article>
           </div>
         ))}
