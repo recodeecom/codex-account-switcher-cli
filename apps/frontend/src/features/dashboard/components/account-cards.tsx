@@ -22,9 +22,11 @@ import {
   getMergedQuotaRemainingPercent,
   getRawQuotaWindowFallback,
   hasActiveCliSessionSignal,
+  hasRecentWorkingNowSignal,
   hasRecentUsageSignal,
   hasFreshLiveTelemetry,
   isAccountWorkingNow,
+  noteWorkingNowSignal,
   selectStableRemainingPercent,
 } from "@/utils/account-working";
 import { resolveEffectiveAccountStatus } from "@/utils/account-status";
@@ -631,6 +633,14 @@ export function AccountCards({
           (account.codexAuth?.hasLiveSession ?? false) &&
           hasActiveCliSession);
       if (hasWorkingNowSignal) {
+        noteWorkingNowSignal(account, nowMs);
+        working.push(account);
+        continue;
+      }
+      if (
+        account.status !== "deactivated" &&
+        hasRecentWorkingNowSignal(account, nowMs)
+      ) {
         working.push(account);
         continue;
       }

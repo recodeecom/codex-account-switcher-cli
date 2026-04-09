@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AccountCards } from "@/features/dashboard/components/account-cards";
 import { createAccountSummary } from "@/test/mocks/factories";
@@ -28,6 +28,10 @@ function buildWindow(
 }
 
 describe("AccountCards", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("keeps card DOM nodes stable when account ordering changes", () => {
     const alpha = createAccountSummary({
       accountId: "acc_alpha",
@@ -208,6 +212,91 @@ describe("AccountCards", () => {
     expect(cards).toHaveLength(2);
     expect(within(cards[0] as HTMLElement).getByText("working@example.com")).toBeInTheDocument();
     expect(within(cards[1] as HTMLElement).getByText("idle@example.com")).toBeInTheDocument();
+  });
+
+  it("keeps a recently-working account in Working now during short telemetry dips", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-09T10:00:00.000Z"));
+
+    const idle = createAccountSummary({
+      accountId: "acc_idle",
+      email: "idle@example.com",
+      displayName: "idle@example.com",
+      codexSessionCount: 0,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "idle",
+        activeSnapshotName: "working",
+        isActiveSnapshot: false,
+        hasLiveSession: false,
+      },
+    });
+    const working = createAccountSummary({
+      accountId: "acc_working",
+      email: "working@example.com",
+      displayName: "working@example.com",
+      codexLiveSessionCount: 1,
+      codexTrackedSessionCount: 1,
+      codexSessionCount: 1,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "working",
+        activeSnapshotName: "working",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+      lastUsageRecordedAtPrimary: "2026-04-09T09:59:20.000Z",
+      lastUsageRecordedAtSecondary: "2026-04-09T09:59:20.000Z",
+    });
+
+    const { rerender } = render(
+      <AccountCards
+        accounts={[idle, working]}
+        primaryWindow={null}
+        secondaryWindow={null}
+      />,
+    );
+
+    const workingSectionHeading = screen.getByRole("heading", { name: "Working now" });
+    const workingSection = workingSectionHeading.closest("section");
+    expect(workingSection).not.toBeNull();
+    expect(within(workingSection as HTMLElement).getByText("working@example.com")).toBeInTheDocument();
+
+    const transientDrop = {
+      ...working,
+      codexLiveSessionCount: 0,
+      codexTrackedSessionCount: 0,
+      codexSessionCount: 0,
+      codexCurrentTaskPreview: null,
+      codexSessionTaskPreviews: [],
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "working",
+        activeSnapshotName: "working",
+        isActiveSnapshot: true,
+        hasLiveSession: false,
+      },
+      lastUsageRecordedAtPrimary: null,
+      lastUsageRecordedAtSecondary: null,
+    };
+
+    rerender(
+      <AccountCards
+        accounts={[idle, transientDrop]}
+        primaryWindow={null}
+        secondaryWindow={null}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: "Working now" })).toBeInTheDocument();
+    expect(screen.getByText("working@example.com")).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(95_000);
+    });
+
+    expect(screen.queryByRole("heading", { name: "Working now" })).not.toBeInTheDocument();
+    expect(screen.getByText("No account is working now currently.")).toBeInTheDocument();
   });
 
   it("keeps the Working now row at three cards by rendering add-card placeholders", () => {

@@ -2,6 +2,7 @@ import type { AccountSummary } from "@/features/accounts/schemas";
 
 const LIVE_TELEMETRY_STALE_AFTER_MS = 5 * 60 * 1000;
 const LIVE_TELEMETRY_WORKING_GRACE_AFTER_MS = 20 * 60 * 1000;
+const WORKING_NOW_TRANSIENT_SIGNAL_GRACE_MS = 90 * 1000;
 const WORKING_NOW_LIMIT_HIT_GRACE_MS = 60 * 1000;
 const WORKING_NOW_DEPLETED_QUOTA_THRESHOLD_PERCENT = 5;
 const WORKING_NOW_LOW_QUOTA_FALLBACK_THRESHOLD_PERCENT = 15;
@@ -18,6 +19,7 @@ type UsageLimitHitEntry = {
 };
 
 const usageLimitHitByAccount = new Map<string, UsageLimitHitEntry>();
+const workingNowTransientSignalByAccount = new Map<string, number>();
 
 function parseRecordedAtMs(value: string | null | undefined): number | null {
   if (!value) return null;
@@ -617,6 +619,40 @@ function buildWorkingNowLimitHitCacheKey(account: WorkingNowAccount): string {
   return `${account.accountId}::${targetSnapshot}`;
 }
 
+function buildWorkingNowTransientSignalCacheKey(
+  account: Pick<AccountSummary, "accountId" | "codexAuth">,
+): string {
+  const targetSnapshot =
+    normalizeSnapshotName(account.codexAuth?.expectedSnapshotName) ??
+    normalizeSnapshotName(account.codexAuth?.snapshotName) ??
+    "none";
+  return `${account.accountId}::${targetSnapshot}`;
+}
+
+export function noteWorkingNowSignal(
+  account: Pick<AccountSummary, "accountId" | "codexAuth">,
+  nowMs: number = Date.now(),
+): void {
+  const cacheKey = buildWorkingNowTransientSignalCacheKey(account);
+  workingNowTransientSignalByAccount.set(cacheKey, nowMs);
+}
+
+export function hasRecentWorkingNowSignal(
+  account: Pick<AccountSummary, "accountId" | "codexAuth">,
+  nowMs: number = Date.now(),
+): boolean {
+  const cacheKey = buildWorkingNowTransientSignalCacheKey(account);
+  const lastSignalAtMs = workingNowTransientSignalByAccount.get(cacheKey);
+  if (lastSignalAtMs == null) {
+    return false;
+  }
+  if (nowMs - lastSignalAtMs > WORKING_NOW_TRANSIENT_SIGNAL_GRACE_MS) {
+    workingNowTransientSignalByAccount.delete(cacheKey);
+    return false;
+  }
+  return true;
+}
+
 function isDepletedPrimaryQuota(value: number | null | undefined): boolean {
   if (typeof value !== "number" || Number.isNaN(value)) {
     return false;
@@ -882,4 +918,5 @@ export function isAccountWorkingNow(
 
 export function resetWorkingNowLimitHitStateForTests(): void {
   usageLimitHitByAccount.clear();
+  workingNowTransientSignalByAccount.clear();
 }
