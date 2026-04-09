@@ -1,5 +1,5 @@
 import { type CSSProperties, useEffect, useMemo, useState } from "react";
-import { Search, Users } from "lucide-react";
+import { Plus, Search, Users } from "lucide-react";
 
 import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
@@ -38,6 +38,9 @@ const ACCOUNT_CARDS_CLOCK_TICK_MS = 5_000;
 const EMAIL_AUTOCORRECT_MAX_DISTANCE = 3;
 const ACCOUNT_GRID_CLASSNAME =
   "grid auto-rows-fr items-stretch gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,21.5rem),1fr))] [&_.card-hover]:h-full";
+const WORKING_ACCOUNT_GRID_CLASSNAME =
+  "grid auto-rows-fr items-stretch gap-4 grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 [&_.card-hover]:h-full";
+const WORKING_ACCOUNT_PLACEHOLDER_TARGET = 3;
 
 type OtherAccountsSortMode =
   | "available-first"
@@ -716,49 +719,93 @@ export function AccountCards({
     );
   }
 
-  const renderGrid = (items: AccountSummary[], keyPrefix: string) => (
-    <div className={ACCOUNT_GRID_CLASSNAME}>
-      {items.map((account, index) => (
-        <div
-          key={`${keyPrefix}-${account.accountId}`}
-          className={
-            keyPrefix === "working"
-              ? "h-full min-w-0 animate-working-account-enter"
-              : "h-full min-w-0 animate-fade-in-up"
-          }
-          style={
-            keyPrefix === "working"
-              ? ({
-                  animationDelay: `${index * 85}ms`,
-                  animationDuration: `${Math.min(640, 520 + index * 35)}ms`,
-                } satisfies CSSProperties)
-              : ({
-                  animationDelay: `${index * 60}ms`,
-                } satisfies CSSProperties)
-          }
-        >
-          <AccountCard
-            account={account}
-            tokensRemaining={resolveCardTokensRemaining(
-              account,
-              primaryRemainingByAccount,
-              secondaryRemainingByAccount,
-            )}
-            showTokensRemaining
-            showAccountId={duplicateAccountIds.has(account.accountId)}
-            useLocalBusy={
-              useLocalBusy &&
-              useLocalBusyAccountId != null &&
-              useLocalBusyAccountId === account.accountId
+  const renderGrid = (
+    items: AccountSummary[],
+    keyPrefix: string,
+    options?: { className?: string; placeholderCount?: number },
+  ) => {
+    const placeholderCount = Math.max(0, options?.placeholderCount ?? 0);
+    return (
+      <div className={options?.className ?? ACCOUNT_GRID_CLASSNAME}>
+        {items.map((account, index) => (
+          <div
+            key={`${keyPrefix}-${account.accountId}`}
+            className={
+              keyPrefix === "working"
+                ? "h-full min-w-0 animate-working-account-enter"
+                : "h-full min-w-0 animate-fade-in-up"
             }
-            deleteBusy={deleteBusy}
-            initialSessionTasksCollapsed
-            onAction={onAction}
-          />
-        </div>
-      ))}
-    </div>
-  );
+            style={
+              keyPrefix === "working"
+                ? ({
+                    animationDelay: `${index * 85}ms`,
+                    animationDuration: `${Math.min(640, 520 + index * 35)}ms`,
+                  } satisfies CSSProperties)
+                : ({
+                    animationDelay: `${index * 60}ms`,
+                  } satisfies CSSProperties)
+            }
+          >
+            <AccountCard
+              account={account}
+              tokensRemaining={resolveCardTokensRemaining(
+                account,
+                primaryRemainingByAccount,
+                secondaryRemainingByAccount,
+              )}
+              showTokensRemaining
+              showAccountId={duplicateAccountIds.has(account.accountId)}
+              useLocalBusy={
+                useLocalBusy &&
+                useLocalBusyAccountId != null &&
+                useLocalBusyAccountId === account.accountId
+              }
+              deleteBusy={deleteBusy}
+              initialSessionTasksCollapsed
+              onAction={onAction}
+            />
+          </div>
+        ))}
+        {Array.from({ length: placeholderCount }).map((_, placeholderIndex) => (
+          <div
+            key={`${keyPrefix}-placeholder-${placeholderIndex}`}
+            className="h-full min-w-0 animate-working-account-enter"
+            style={
+              {
+                animationDelay: `${(items.length + placeholderIndex) * 85}ms`,
+                animationDuration: `${Math.min(
+                  640,
+                  520 + (items.length + placeholderIndex) * 35,
+                )}ms`,
+              } satisfies CSSProperties
+            }
+          >
+            <article
+              data-testid="working-now-placeholder-card"
+              className="flex h-full min-h-[22rem] flex-col justify-between rounded-3xl border border-dashed border-cyan-400/35 bg-[#050d18]/85 px-5 py-6"
+            >
+              <div className="space-y-3">
+                <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-cyan-300/35 bg-cyan-300/10 text-cyan-200">
+                  <Plus className="h-5 w-5" aria-hidden="true" />
+                </span>
+                <div className="space-y-1.5">
+                  <p className="text-sm font-semibold text-zinc-100">
+                    Add new card here
+                  </p>
+                  <p className="text-xs text-zinc-400">
+                    Connect another account and it will appear in Working now.
+                  </p>
+                </div>
+              </div>
+              <p className="rounded-xl border border-cyan-300/25 bg-cyan-300/5 px-3 py-2 text-xs font-medium text-cyan-100/85">
+                iOS-style placeholder
+              </p>
+            </article>
+          </div>
+        ))}
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-5">
@@ -805,7 +852,14 @@ export function AccountCards({
               ) : null}
             </div>
           </div>
-          {renderGrid(groupedAccounts.working, "working")}
+          {renderGrid(groupedAccounts.working, "working", {
+            className: WORKING_ACCOUNT_GRID_CLASSNAME,
+            placeholderCount: Math.max(
+              0,
+              WORKING_ACCOUNT_PLACEHOLDER_TARGET -
+                groupedAccounts.working.length,
+            ),
+          })}
         </section>
       ) : (
         <section className="rounded-xl border border-dashed border-border/70 bg-background/25 px-4 py-6 text-center md:px-5">

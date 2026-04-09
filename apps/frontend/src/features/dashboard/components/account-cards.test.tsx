@@ -210,6 +210,88 @@ describe("AccountCards", () => {
     expect(within(cards[1] as HTMLElement).getByText("idle@example.com")).toBeInTheDocument();
   });
 
+  it("keeps the Working now row at three cards by rendering add-card placeholders", () => {
+    const nowIso = new Date().toISOString();
+    const workingOne = createAccountSummary({
+      accountId: "acc_working_one",
+      email: "working-one@example.com",
+      displayName: "working-one@example.com",
+      codexLiveSessionCount: 1,
+      codexSessionCount: 1,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "working-one",
+        activeSnapshotName: "working-one",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+      lastUsageRecordedAtPrimary: nowIso,
+      lastUsageRecordedAtSecondary: nowIso,
+    });
+    const workingTwo = createAccountSummary({
+      accountId: "acc_working_two",
+      email: "working-two@example.com",
+      displayName: "working-two@example.com",
+      codexLiveSessionCount: 1,
+      codexSessionCount: 1,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "working-two",
+        activeSnapshotName: "working-two",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+      lastUsageRecordedAtPrimary: nowIso,
+      lastUsageRecordedAtSecondary: nowIso,
+    });
+    const workingThree = createAccountSummary({
+      accountId: "acc_working_three",
+      email: "working-three@example.com",
+      displayName: "working-three@example.com",
+      codexLiveSessionCount: 1,
+      codexSessionCount: 1,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "working-three",
+        activeSnapshotName: "working-three",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+      lastUsageRecordedAtPrimary: nowIso,
+      lastUsageRecordedAtSecondary: nowIso,
+    });
+
+    const { rerender } = render(
+      <AccountCards
+        accounts={[workingOne]}
+        primaryWindow={null}
+        secondaryWindow={null}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: "Working now" })).toBeInTheDocument();
+    expect(screen.getAllByTestId("working-now-placeholder-card")).toHaveLength(2);
+    expect(screen.getAllByText("Add new card here")).toHaveLength(2);
+
+    rerender(
+      <AccountCards
+        accounts={[workingOne, workingTwo]}
+        primaryWindow={null}
+        secondaryWindow={null}
+      />,
+    );
+    expect(screen.getAllByTestId("working-now-placeholder-card")).toHaveLength(1);
+
+    rerender(
+      <AccountCards
+        accounts={[workingOne, workingTwo, workingThree]}
+        primaryWindow={null}
+        secondaryWindow={null}
+      />,
+    );
+    expect(screen.queryByTestId("working-now-placeholder-card")).not.toBeInTheDocument();
+  });
+
   it("appends newly-live cards after the current working-now cards without reordering", () => {
     const nowIso = new Date().toISOString();
     const currentWorking = createAccountSummary({
