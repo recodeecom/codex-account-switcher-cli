@@ -1569,7 +1569,12 @@ describe("AccountCard", () => {
       within(codexActiveCard).getByTestId("cpu-architecture-backdrop-codex-active"),
     ).toBeInTheDocument();
     expect(within(codexActiveCard).getByText("Codex")).toBeInTheDocument();
-    expect(within(codexActiveCard).getByText("Working...")).toBeInTheDocument();
+    expect(within(codexActiveCard).getByTestId("codex-inline-status")).toHaveTextContent(
+      "Status: Thinking",
+    );
+    expect(
+      within(codexActiveCard).getByTestId("codex-inline-status-activity"),
+    ).toBeInTheDocument();
     expect(
       screen.queryAllByText(
         "Trace session-affinity fallback for codex websocket flow",
@@ -1971,13 +1976,15 @@ describe("AccountCard", () => {
 
     expect(screen.queryByText("Current task")).not.toBeInTheDocument();
     expect(screen.queryByTestId("omx-planning-prompt-graph")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("codex-active-agent-card")).not.toBeInTheDocument();
+    const codexActiveCard = screen.getByTestId("codex-active-agent-card");
+    expect(within(codexActiveCard).getByText("Codex")).toBeInTheDocument();
+    expect(within(codexActiveCard).getByTestId("codex-inline-status")).toHaveTextContent(
+      "Status: Waiting",
+    );
     expect(
       screen.queryByTestId("cpu-architecture-backdrop-planning"),
     ).not.toBeInTheDocument();
-    expect(
-      screen.queryByTestId("cpu-architecture-backdrop-codex-active"),
-    ).not.toBeInTheDocument();
+    expect(within(codexActiveCard).getByTestId("cpu-architecture-backdrop-codex-active")).toBeInTheDocument();
     expect(
       screen.queryByText("Review sticky session cleanup edge-cases"),
     ).not.toBeInTheDocument();
@@ -2013,7 +2020,9 @@ describe("AccountCard", () => {
     expect(within(codexActiveCard).getByTestId("codex-inline-status")).toHaveTextContent(
       "Status: Waiting",
     );
-    expect(within(codexActiveCard).getByText("Waiting")).toBeInTheDocument();
+    expect(
+      within(codexActiveCard).getByTestId("codex-inline-status-activity"),
+    ).toBeInTheDocument();
     expect(screen.getAllByText("Waiting for new task").length).toBeGreaterThanOrEqual(1);
   });
 

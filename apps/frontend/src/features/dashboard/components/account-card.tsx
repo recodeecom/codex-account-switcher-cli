@@ -517,7 +517,8 @@ function CodexActiveAgentCard({
 }) {
   const cliStateStyle =
     OMX_CLI_STATE_STYLES[cliRuntimeState] ?? OMX_CLI_STATE_STYLES.finished;
-  const showWorkingBadge = cliRuntimeState === "thinking";
+  const showThinkingActivity = cliRuntimeState === "thinking";
+  const showWaitingActivity = cliRuntimeState === "waiting";
   return (
     <div
       data-testid="codex-active-agent-card"
@@ -540,7 +541,7 @@ function CodexActiveAgentCard({
         className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#040b18]/92 via-transparent to-[#040b18]/92"
         aria-hidden
       />
-      <div className="relative flex items-center justify-between gap-3">
+      <div className="relative flex items-center gap-3">
         <div className="inline-flex items-start gap-2">
           <span className="relative mt-1 inline-flex h-2 w-2">
             <span
@@ -558,32 +559,37 @@ function CodexActiveAgentCard({
             </span>
             <span
               data-testid="codex-inline-status"
-              className="inline-flex w-fit h-5 items-center rounded-full border border-white/20 bg-white/5 px-2 text-[8px] font-semibold uppercase tracking-[0.1em] text-cyan-100/85"
+              className={cn(
+                "inline-flex h-6 w-fit items-center gap-1.5 rounded-full border px-2.5 text-[9px] font-semibold uppercase tracking-[0.11em] shadow-[0_6px_16px_rgba(2,6,23,0.35)] backdrop-blur-sm",
+                cliStateStyle.badgeClassName,
+              )}
             >
-              Status: {cliStateStyle.label}
+              <span className="opacity-90">Status: </span>
+              <span>{cliStateStyle.label}</span>
+              {showThinkingActivity ? (
+                <span
+                  data-testid="codex-inline-status-activity"
+                  className="ml-0.5 flex items-end gap-0.5"
+                  aria-hidden
+                >
+                  <span className="h-1.5 w-0.5 rounded-full bg-current animate-pulse [animation-duration:900ms]" />
+                  <span className="h-2.5 w-0.5 rounded-full bg-current animate-pulse [animation-delay:120ms] [animation-duration:900ms]" />
+                  <span className="h-3 w-0.5 rounded-full bg-current animate-pulse [animation-delay:240ms] [animation-duration:900ms]" />
+                  <span className="h-2 w-0.5 rounded-full bg-current animate-pulse [animation-delay:360ms] [animation-duration:900ms]" />
+                </span>
+              ) : showWaitingActivity ? (
+                <span
+                  data-testid="codex-inline-status-activity"
+                  className="relative ml-0.5 inline-flex h-1.5 w-1.5"
+                  aria-hidden
+                >
+                  <span className="absolute inset-0 rounded-full bg-current/80 motion-safe:animate-ping [animation-duration:1.4s]" />
+                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-current" />
+                </span>
+              ) : null}
             </span>
           </div>
         </div>
-        {showWorkingBadge ? (
-          <span className="inline-flex h-6 items-center gap-1.5 rounded-full border border-cyan-300/55 bg-cyan-500/18 px-2.5 text-[9px] font-semibold uppercase tracking-[0.11em] text-cyan-50 shadow-[0_6px_16px_rgba(2,6,23,0.35)] backdrop-blur-sm">
-            <span className="flex items-end gap-0.5" aria-hidden>
-              <span className="h-1.5 w-0.5 rounded-full bg-cyan-100/95 animate-pulse [animation-duration:900ms]" />
-              <span className="h-2.5 w-0.5 rounded-full bg-cyan-100/95 animate-pulse [animation-delay:120ms] [animation-duration:900ms]" />
-              <span className="h-3 w-0.5 rounded-full bg-cyan-100/95 animate-pulse [animation-delay:240ms] [animation-duration:900ms]" />
-              <span className="h-2 w-0.5 rounded-full bg-cyan-100/95 animate-pulse [animation-delay:360ms] [animation-duration:900ms]" />
-            </span>
-            Working...
-          </span>
-        ) : (
-          <span
-            className={cn(
-              "inline-flex h-6 items-center gap-1.5 rounded-full border bg-[#060A13] px-2.5 text-[9px] font-semibold uppercase tracking-[0.11em] shadow-[0_6px_16px_rgba(2,6,23,0.35)] backdrop-blur-sm",
-              cliStateStyle.badgeClassName,
-            )}
-          >
-            {cliStateStyle.label}
-          </span>
-        )}
       </div>
     </div>
   );
@@ -1794,8 +1800,11 @@ export function AccountCard(props: AccountCardProps) {
     isWorkingNow &&
     codexLiveSessionCount > 0 &&
     isRalplanTaskContext;
+  const canShowIdleCodexStatus = status !== "deactivated";
   const showCodexActiveAgentCard =
-    !hideCurrentTaskPreview && isWorkingNow && !showRalplanPlanningGraph;
+    !hideCurrentTaskPreview &&
+    canShowIdleCodexStatus &&
+    !showRalplanPlanningGraph;
   const promptDrivenOmxPlanningActiveNodeKey = resolveOmxPlanningActiveNodeKey(
     newestPromptForAgentPanel,
   );
@@ -1942,6 +1951,9 @@ export function AccountCard(props: AccountCardProps) {
     sessionTaskSummary.waitingCount,
     showWorkingIndicator,
   ]);
+  const codexActiveCardCliRuntimeState: OmxCliRuntimeState = isWorkingNow
+    ? omxPlanningCliRuntimeState
+    : "waiting";
   const omxPlanningActiveNodeKey: OmxPlanningNodeKey = useMemo(() => {
     if (omxPlanningCliRuntimeState === "waiting") {
       return "planner";
@@ -2233,7 +2245,7 @@ export function AccountCard(props: AccountCardProps) {
                           />
                         ) : showCodexActiveAgentCard ? (
                           <CodexActiveAgentCard
-                            cliRuntimeState={omxPlanningCliRuntimeState}
+                            cliRuntimeState={codexActiveCardCliRuntimeState}
                           />
                         ) : null
                       ) : null}
