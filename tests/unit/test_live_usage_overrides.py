@@ -927,7 +927,7 @@ def test_apply_local_live_usage_overrides_suppresses_stale_live_usage_after_rece
     assert codex_session_counts_by_account[account.id] == 0
 
 
-def test_apply_local_live_usage_overrides_ignores_runtime_session_count_with_process_visibility(
+def test_apply_local_live_usage_overrides_preserves_runtime_session_count_when_process_visibility_is_only_for_other_snapshots(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     account = _make_account("acc-a", "a@example.com")
@@ -973,8 +973,8 @@ def test_apply_local_live_usage_overrides_ignores_runtime_session_count_with_pro
     )
 
     assert candidates == []
-    assert codex_auth_by_account[account.id].has_live_session is False
-    assert codex_session_counts_by_account[account.id] == 0
+    assert codex_auth_by_account[account.id].has_live_session is True
+    assert codex_session_counts_by_account[account.id] == 2
 
 
 def test_apply_local_live_usage_overrides_skips_mixed_default_session_fallback_when_process_counts_exist(

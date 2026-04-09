@@ -180,6 +180,7 @@ def apply_local_live_usage_overrides(
         should_defer_active_snapshot_usage=should_defer_active_snapshot_usage,
     )
     live_process_session_counts_by_account: dict[str, int] = {}
+    live_runtime_session_counts_by_account: dict[str, int] = {}
     forced_live_session_counts_by_account: dict[str, int] = {}
     force_clear_live_session_account_ids: set[str] = set()
 
@@ -271,7 +272,10 @@ def apply_local_live_usage_overrides(
         live_process_session_counts_by_account[account.id] = max(0, live_process_session_count)
         has_live_process_session = live_process_session_count > 0
         effective_live_runtime_session_count = (
-            live_runtime_session_count if not has_process_session_visibility else 0
+            live_runtime_session_count if live_process_session_count <= 0 else 0
+        )
+        live_runtime_session_counts_by_account[account.id] = max(
+            0, effective_live_runtime_session_count
         )
         has_live_runtime_session = effective_live_runtime_session_count > 0
         has_recently_terminated_cli_session = has_recently_terminated_cli_session_snapshot(
@@ -695,6 +699,7 @@ def apply_local_live_usage_overrides(
         accounts=accounts,
         codex_live_session_counts_by_account=codex_live_session_counts_by_account,
         live_process_session_counts_by_account=live_process_session_counts_by_account,
+        live_runtime_session_counts_by_account=live_runtime_session_counts_by_account,
         codex_auth_by_account=codex_auth_by_account,
         has_process_session_visibility=has_process_session_visibility,
     )
@@ -706,6 +711,7 @@ def _normalize_live_session_counts_to_process_presence(
     accounts: list[Account],
     codex_live_session_counts_by_account: dict[str, int],
     live_process_session_counts_by_account: dict[str, int],
+    live_runtime_session_counts_by_account: dict[str, int],
     codex_auth_by_account: dict[str, AccountCodexAuthStatus],
     has_process_session_visibility: bool,
 ) -> None:
@@ -725,6 +731,14 @@ def _normalize_live_session_counts_to_process_presence(
         )
         if process_count > 0:
             codex_live_session_counts_by_account[account_id] = process_count
+            continue
+
+        runtime_count = max(
+            0,
+            live_runtime_session_counts_by_account.get(account_id, 0),
+        )
+        if runtime_count > 0:
+            codex_live_session_counts_by_account[account_id] = runtime_count
             continue
 
         if has_process_session_visibility:

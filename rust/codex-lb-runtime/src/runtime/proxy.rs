@@ -222,6 +222,16 @@ pub(crate) fn build_python_url(base_url: &str, endpoint: &str, raw_query: Option
     url
 }
 
+pub(crate) fn build_python_ws_url(base_url: &str, endpoint: &str, raw_query: Option<&str>) -> String {
+    let mut ws_base = base_url.trim_end_matches('/').to_string();
+    if let Some(rest) = ws_base.strip_prefix("https://") {
+        ws_base = format!("wss://{rest}");
+    } else if let Some(rest) = ws_base.strip_prefix("http://") {
+        ws_base = format!("ws://{rest}");
+    }
+    build_python_url(&ws_base, endpoint, raw_query)
+}
+
 pub(crate) fn query_param_true(raw_query: Option<&str>, param_name: &str) -> bool {
     raw_query
         .map(|query| {

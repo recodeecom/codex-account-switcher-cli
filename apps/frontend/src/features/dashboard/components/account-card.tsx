@@ -1509,10 +1509,16 @@ export function AccountCard(props: AccountCardProps) {
     primaryRemainingPercent: primaryRemaining,
   });
   const remainingTokensValue = tokensRemaining ?? 0;
+  const hasQuotaHeadroomSignal =
+    (typeof primaryRemaining === "number" &&
+      normalizeNearZeroQuotaPercent(primaryRemaining) >= 1) ||
+    (typeof secondaryRemaining === "number" &&
+      normalizeNearZeroQuotaPercent(secondaryRemaining) >= 1);
   const hasRemainingTokensExhausted =
     showTokensRemaining &&
     !hasExplicitUnknownTokensRemaining &&
-    remainingTokensValue <= 0;
+    remainingTokensValue <= 0 &&
+    !hasQuotaHeadroomSignal;
   const useLocalBlockedByWeeklyQuota =
     typeof secondaryRemaining === "number" &&
     normalizeNearZeroQuotaPercent(secondaryRemaining) < 1;

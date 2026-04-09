@@ -1,22 +1,27 @@
 use axum::{
     Json, Router,
-    body::{Body, Bytes},
-    extract::{Path, RawQuery, State},
-    http::{HeaderMap, StatusCode},
+    body::Bytes,
+    extract::{
+        Path, RawQuery, State,
+        ws::{Message as AxumWsMessage, WebSocket, WebSocketUpgrade},
+    },
+    http::{HeaderMap, HeaderName, HeaderValue, StatusCode, header},
     response::{Html, Response},
-    routing::{any, get},
+    routing::{any, delete, get, head, options, patch, post, put},
 };
+use futures_util::{SinkExt, StreamExt};
 use reqwest::Client;
 use serde_json::Value;
-use std::{
-    collections::BTreeMap,
-    env,
-    net::SocketAddr,
-    time::Duration,
+use std::{collections::BTreeMap, env, net::SocketAddr, time::Duration};
+use tokio_tungstenite::{
+    connect_async,
+    tungstenite::{Message as UpstreamWsMessage, client::IntoClientRequest},
 };
 use tracing::info;
 
 mod runtime;
+#[cfg(test)]
+use runtime::state::{RuntimeFlags, resolve_python_base_url, runtime_state_with_flags};
 use runtime::{
     contracts::{
         ErrorDetailResponse, HealthCheckResponse, PythonEndpointCheck, PythonLayerApisResponse,
@@ -25,9 +30,9 @@ use runtime::{
     proxy::{
         fallback_live_usage_mapping_xml, fallback_live_usage_xml, proxy_python_json_endpoint,
         proxy_python_live_usage_xml, proxy_python_raw_endpoint_with_method, query_param_true,
-        reqwest_method_from_axum,
+        build_python_ws_url,
     },
-    state::{RuntimeFlags, RuntimeState, resolve_python_base_url, runtime_state_from_env, runtime_state_with_flags},
+    state::{RuntimeState, runtime_state_from_env},
 };
 
 pub fn app() -> Router {
@@ -67,6 +72,26 @@ fn app_with_state(state: RuntimeState) -> Router {
         .route(
             "/api/projects/plans/{plan_slug}/runtime",
             get(project_plan_runtime),
+        )
+        .route(
+            "/backend-api/codex/responses",
+            get(proxy_backend_codex_responses_ws)
+                .post(proxy_backend_codex_responses_http)
+                .put(proxy_backend_codex_responses_http)
+                .patch(proxy_backend_codex_responses_http)
+                .delete(proxy_backend_codex_responses_http)
+                .options(proxy_backend_codex_responses_http)
+                .head(proxy_backend_codex_responses_http),
+        )
+        .route(
+            "/v1/responses",
+            get(proxy_v1_responses_ws)
+                .post(proxy_v1_responses_http)
+                .put(proxy_v1_responses_http)
+                .patch(proxy_v1_responses_http)
+                .delete(proxy_v1_responses_http)
+                .options(proxy_v1_responses_http)
+                .head(proxy_v1_responses_http),
         )
         // AGENT NOTE:
         // Keep /api, /backend-api, and /v1 on wildcard proxy routes by default.
@@ -354,13 +379,285 @@ async fn project_plan_runtime(
     proxy_python_json_endpoint(&state, &endpoint, raw_query.0.as_deref(), &headers).await
 }
 
+fn reqwest_method_from_axum(method: &axum::http::Method) -> reqwest::Method {
+    runtime::proxy::reqwest_method_from_axum(method)
+}
+
+async fn proxy_backend_codex_responses_entry(
+    ws_upgrade: Option<WebSocketUpgrade>,
+    State(state): State<RuntimeState>,
+    method: axum::http::Method,
+    raw_query: RawQuery,
+    headers: HeaderMap,
+    body: Body,
+) -> Response {
+    proxy_responses_entry(
+        ws_upgrade,
+        state,
+        method,
+        raw_query.0,
+        headers,
+        body,
+        "/backend-api/codex/responses",
+    )
+    .await
+}
+
+async fn proxy_v1_responses_entry(
+    ws_upgrade: Option<WebSocketUpgrade>,
+    State(state): State<RuntimeState>,
+    method: axum::http::Method,
+    raw_query: RawQuery,
+    headers: HeaderMap,
+    body: Body,
+) -> Response {
+    proxy_responses_entry(
+        ws_upgrade,
+        state,
+        method,
+        raw_query.0,
+        headers,
+        body,
+        "/v1/responses",
+    )
+    .await
+}
+
+async fn proxy_responses_entry(
+    ws_upgrade: Option<WebSocketUpgrade>,
+    state: RuntimeState,
+    method: axum::http::Method,
+    raw_query: Option<String>,
+    headers: HeaderMap,
+    body: Body,
+    endpoint: &'static str,
+) -> Response {
+    if should_upgrade_websocket(&method, &headers, ws_upgrade.is_some()) {
+        if let Some(ws_upgrade) = ws_upgrade {
+            return proxy_websocket_response(ws_upgrade, state, endpoint, raw_query, headers);
+        }
+    }
+
+    proxy_python_raw_endpoint_with_method(
+        &state,
+        reqwest_method_from_axum(&method),
+        endpoint,
+        raw_query.as_deref(),
+        &headers,
+        Some(body),
+    )
+    .await
+}
+
+fn proxy_websocket_response(
+    ws_upgrade: WebSocketUpgrade,
+    state: RuntimeState,
+    endpoint: &'static str,
+    raw_query: Option<String>,
+    headers: HeaderMap,
+) -> Response {
+    let turn_state = downstream_turn_state(&headers);
+    let turn_state_header_value = HeaderValue::from_str(&turn_state).ok();
+    let on_upgrade_turn_state = turn_state.clone();
+    let mut response = ws_upgrade.on_upgrade(move |downstream| {
+        proxy_websocket_bridge(
+            downstream,
+            state,
+            endpoint,
+            raw_query,
+            headers,
+            on_upgrade_turn_state,
+        )
+    });
+    if let Some(value) = turn_state_header_value {
+        response.headers_mut().insert(
+            HeaderName::from_static("x-codex-turn-state"),
+            value,
+        );
+    }
+    response
+}
+
+async fn proxy_websocket_bridge(
+    downstream: WebSocket,
+    state: RuntimeState,
+    endpoint: &'static str,
+    raw_query: Option<String>,
+    incoming_headers: HeaderMap,
+    turn_state: String,
+) {
+    let upstream_url = build_python_ws_url(&state.python_base_url, endpoint, raw_query.as_deref());
+    let Ok(mut upstream_request) = upstream_url.into_client_request() else {
+        let _ = close_websocket_silent(downstream).await;
+        return;
+    };
+
+    forward_websocket_headers(upstream_request.headers_mut(), &incoming_headers, &turn_state);
+
+    let Ok((upstream, _)) = connect_async(upstream_request).await else {
+        let _ = close_websocket_silent(downstream).await;
+        return;
+    };
+
+    relay_websocket_streams(downstream, upstream).await;
+}
+
+fn forward_websocket_headers(
+    outgoing_headers: &mut HeaderMap,
+    incoming_headers: &HeaderMap,
+    turn_state: &str,
+) {
+    for (name, value) in incoming_headers {
+        if is_disallowed_websocket_handshake_header(name) {
+            continue;
+        }
+        outgoing_headers.insert(name.clone(), value.clone());
+    }
+
+    let turn_state_header = HeaderName::from_static("x-codex-turn-state");
+    if !outgoing_headers.contains_key(&turn_state_header) {
+        if let Ok(value) = HeaderValue::from_str(turn_state) {
+            outgoing_headers.insert(turn_state_header, value);
+        }
+    }
+}
+
+fn is_disallowed_websocket_handshake_header(name: &HeaderName) -> bool {
+    matches!(
+        name.as_str().to_ascii_lowercase().as_str(),
+        "host"
+            | "connection"
+            | "upgrade"
+            | "sec-websocket-version"
+            | "sec-websocket-key"
+            | "sec-websocket-extensions"
+            | "content-length"
+    )
+}
+
+fn downstream_turn_state(headers: &HeaderMap) -> String {
+    if let Some(value) = headers
+        .get("x-codex-turn-state")
+        .and_then(|raw| raw.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return value.to_string();
+    }
+    format!(
+        "turn_{:x}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0)
+    )
+}
+
+fn should_upgrade_websocket(
+    method: &axum::http::Method,
+    headers: &HeaderMap,
+    upgrade_extractor_available: bool,
+) -> bool {
+    upgrade_extractor_available
+        && method == axum::http::Method::GET
+        && header_has_token(headers, &header::CONNECTION, "upgrade")
+        && header_has_token(headers, &header::UPGRADE, "websocket")
+}
+
+fn header_has_token(headers: &HeaderMap, name: &HeaderName, token: &str) -> bool {
+    headers
+        .get(name)
+        .and_then(|value| value.to_str().ok())
+        .map(|value| {
+            value
+                .split(',')
+                .any(|part| part.trim().eq_ignore_ascii_case(token))
+        })
+        .unwrap_or(false)
+}
+
+async fn relay_websocket_streams(
+    downstream: WebSocket,
+    upstream: tokio_tungstenite::WebSocketStream<
+        tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+    >,
+) {
+    let (mut downstream_tx, mut downstream_rx) = downstream.split();
+    let (mut upstream_tx, mut upstream_rx) = upstream.split();
+
+    let downstream_to_upstream = async {
+        while let Some(message_result) = downstream_rx.next().await {
+            let Ok(message) = message_result else {
+                break;
+            };
+
+            let is_close = matches!(message, AxumWsMessage::Close(_));
+            if let Some(upstream_message) = downstream_to_upstream_message(message) {
+                if upstream_tx.send(upstream_message).await.is_err() {
+                    break;
+                }
+            }
+            if is_close {
+                break;
+            }
+        }
+        let _ = upstream_tx.close().await;
+    };
+
+    let upstream_to_downstream = async {
+        while let Some(message_result) = upstream_rx.next().await {
+            let Ok(message) = message_result else {
+                break;
+            };
+
+            let is_close = matches!(message, UpstreamWsMessage::Close(_));
+            if let Some(downstream_message) = upstream_to_downstream_message(message) {
+                if downstream_tx.send(downstream_message).await.is_err() {
+                    break;
+                }
+            }
+            if is_close {
+                break;
+            }
+        }
+        let _ = downstream_tx.send(AxumWsMessage::Close(None)).await;
+    };
+
+    tokio::join!(downstream_to_upstream, upstream_to_downstream);
+}
+
+fn downstream_to_upstream_message(message: AxumWsMessage) -> Option<UpstreamWsMessage> {
+    match message {
+        AxumWsMessage::Text(text) => Some(UpstreamWsMessage::Text(text.to_string().into())),
+        AxumWsMessage::Binary(binary) => Some(UpstreamWsMessage::Binary(binary)),
+        AxumWsMessage::Ping(ping) => Some(UpstreamWsMessage::Ping(ping)),
+        AxumWsMessage::Pong(pong) => Some(UpstreamWsMessage::Pong(pong)),
+        AxumWsMessage::Close(_) => Some(UpstreamWsMessage::Close(None)),
+    }
+}
+
+fn upstream_to_downstream_message(message: UpstreamWsMessage) -> Option<AxumWsMessage> {
+    match message {
+        UpstreamWsMessage::Text(text) => Some(AxumWsMessage::Text(text.to_string().into())),
+        UpstreamWsMessage::Binary(binary) => Some(AxumWsMessage::Binary(binary)),
+        UpstreamWsMessage::Ping(ping) => Some(AxumWsMessage::Ping(ping)),
+        UpstreamWsMessage::Pong(pong) => Some(AxumWsMessage::Pong(pong)),
+        UpstreamWsMessage::Close(_) => Some(AxumWsMessage::Close(None)),
+        _ => None,
+    }
+}
+
+async fn close_websocket_silent(mut socket: WebSocket) -> Result<(), axum::Error> {
+    socket.send(AxumWsMessage::Close(None)).await
+}
+
 async fn proxy_api_wildcard(
     State(state): State<RuntimeState>,
     method: axum::http::Method,
     Path(path): Path<String>,
     raw_query: RawQuery,
     headers: HeaderMap,
-    body: Bytes,
+    body: Body,
 ) -> Response {
     let endpoint = format!("/api/{path}");
     proxy_python_raw_endpoint_with_method(
@@ -380,7 +677,7 @@ async fn proxy_backend_api_wildcard(
     Path(path): Path<String>,
     raw_query: RawQuery,
     headers: HeaderMap,
-    body: Bytes,
+    body: Body,
 ) -> Response {
     let endpoint = format!("/backend-api/{path}");
     proxy_python_raw_endpoint_with_method(
@@ -400,7 +697,7 @@ async fn proxy_v1_wildcard(
     Path(path): Path<String>,
     raw_query: RawQuery,
     headers: HeaderMap,
-    body: Bytes,
+    body: Body,
 ) -> Response {
     let endpoint = format!("/v1/{path}");
     proxy_python_raw_endpoint_with_method(
@@ -724,363 +1021,6 @@ async fn root_panel(State(state): State<RuntimeState>) -> Html<String> {
         profile = state.flags.profile,
         python_base_url = state.python_base_url
     ))
-}
-
-fn runtime_state_from_env() -> RuntimeState {
-    runtime_state_with_flags(runtime_flags_from_env())
-}
-
-fn runtime_state_with_flags(flags: RuntimeFlags) -> RuntimeState {
-    let python_runtime_base_url = env::var("PYTHON_RUNTIME_BASE_URL").ok();
-    let app_backend_port = env::var("APP_BACKEND_PORT").ok();
-    let python_base_url = resolve_python_base_url(
-        python_runtime_base_url.as_deref(),
-        app_backend_port.as_deref(),
-    );
-
-    let timeout_ms = env::var("RUST_RUNTIME_PYTHON_TIMEOUT_MS")
-        .ok()
-        .and_then(|raw| raw.trim().parse::<u64>().ok())
-        .filter(|value| *value > 0)
-        .unwrap_or(1_500);
-
-    let python_client = Client::builder()
-        .timeout(Duration::from_millis(timeout_ms))
-        .build()
-        .expect("build python layer HTTP client");
-
-    RuntimeState {
-        flags,
-        python_base_url,
-        python_client,
-    }
-}
-
-fn resolve_python_base_url(
-    python_runtime_base_url: Option<&str>,
-    app_backend_port: Option<&str>,
-) -> String {
-    if let Some(base_url) = python_runtime_base_url
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        return base_url.to_string();
-    }
-
-    let app_backend_port = app_backend_port
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .and_then(|raw| raw.parse::<u16>().ok())
-        .filter(|port| *port > 0)
-        .unwrap_or(2455);
-
-    format!("http://127.0.0.1:{app_backend_port}")
-}
-
-fn runtime_flags_from_env() -> RuntimeFlags {
-    RuntimeFlags {
-        profile: env::var("RUST_RUNTIME_PROFILE").unwrap_or_else(|_| "phase0".to_string()),
-        draining: env_flag_true("RUST_RUNTIME_DRAINING"),
-        startup_pending: env_flag_true("RUST_RUNTIME_STARTUP_PENDING"),
-    }
-}
-
-fn env_flag_true(name: &str) -> bool {
-    env::var(name)
-        .map(|value| {
-            matches!(
-                value.trim().to_ascii_lowercase().as_str(),
-                "1" | "true" | "yes" | "on"
-            )
-        })
-        .unwrap_or(false)
-}
-
-fn generated_at_epoch_seconds() -> String {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_secs().to_string())
-        .unwrap_or_else(|_| "0".to_string())
-}
-
-fn reqwest_method_from_axum(method: &axum::http::Method) -> reqwest::Method {
-    reqwest::Method::from_bytes(method.as_str().as_bytes()).unwrap_or(reqwest::Method::GET)
-}
-
-async fn proxy_python_live_usage_xml(
-    state: &RuntimeState,
-    endpoint: &str,
-    raw_query: Option<&str>,
-    fallback_xml: String,
-) -> Response {
-    let url = build_python_url(&state.python_base_url, endpoint, raw_query);
-    match state.python_client.get(url).send().await {
-        Ok(upstream_response) => {
-            let status = upstream_response.status();
-            let content_type = upstream_response
-                .headers()
-                .get(header::CONTENT_TYPE)
-                .and_then(|value| value.to_str().ok())
-                .unwrap_or("application/xml")
-                .to_string();
-            let cache_control = upstream_response
-                .headers()
-                .get(header::CACHE_CONTROL)
-                .and_then(|value| value.to_str().ok())
-                .unwrap_or("no-store")
-                .to_string();
-
-            match upstream_response.text().await {
-                Ok(body) => xml_response(status, &content_type, &cache_control, body),
-                Err(_) => xml_fallback_response(fallback_xml),
-            }
-        }
-        Err(_) => xml_fallback_response(fallback_xml),
-    }
-}
-
-fn build_python_url(base_url: &str, endpoint: &str, raw_query: Option<&str>) -> String {
-    let mut url = format!("{}{}", base_url.trim_end_matches('/'), endpoint);
-    if let Some(query) = raw_query.filter(|query| !query.trim().is_empty()) {
-        url.push('?');
-        url.push_str(query);
-    }
-    url
-}
-
-fn query_param_true(raw_query: Option<&str>, param_name: &str) -> bool {
-    raw_query
-        .map(|query| {
-            query.split('&').any(|pair| {
-                let mut parts = pair.splitn(2, '=');
-                let key = parts.next().unwrap_or("").trim();
-                let value = parts.next().unwrap_or("").trim();
-                key == param_name
-                    && matches!(
-                        value.to_ascii_lowercase().as_str(),
-                        "1" | "true" | "yes" | "on"
-                    )
-            })
-        })
-        .unwrap_or(false)
-}
-
-fn fallback_live_usage_xml() -> String {
-    let generated_at = generated_at_epoch_seconds();
-    format!(
-        r#"<?xml version="1.0" encoding="UTF-8"?>
-<live_usage generated_at="{generated_at}" total_sessions="0" mapped_sessions="0" unattributed_sessions="0" total_task_previews="0" account_task_previews="0" session_task_previews="0">
-</live_usage>
-"#
-    )
-}
-
-fn fallback_live_usage_mapping_xml(minimal: bool) -> String {
-    let generated_at = generated_at_epoch_seconds();
-    let minimal = if minimal { "true" } else { "false" };
-    format!(
-        r#"<?xml version="1.0" encoding="UTF-8"?>
-<live_usage_mapping generated_at="{generated_at}" active_snapshot="" total_process_sessions="0" total_runtime_sessions="0" account_count="0" working_now_count="0" minimal="{minimal}">
-  <accounts count="0">
-  </accounts>
-  <unmapped_cli_snapshots count="0">
-  </unmapped_cli_snapshots>
-</live_usage_mapping>
-"#
-    )
-}
-
-fn xml_fallback_response(body: String) -> Response {
-    xml_response(StatusCode::OK, "application/xml", "no-store", body)
-}
-
-fn xml_response(
-    status: StatusCode,
-    content_type: &str,
-    cache_control: &str,
-    body: String,
-) -> Response {
-    Response::builder()
-        .status(status)
-        .header(header::CONTENT_TYPE, content_type)
-        .header(header::CACHE_CONTROL, cache_control)
-        .body(Body::from(body))
-        .unwrap_or_else(|_| {
-            Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .header(header::CONTENT_TYPE, "application/xml")
-                .header(header::CACHE_CONTROL, "no-store")
-                .body(Body::from(
-                    r#"<?xml version="1.0" encoding="UTF-8"?>
-<error detail="invalid response build state" />
-"#,
-                ))
-                .expect("build static XML error response")
-        })
-}
-
-async fn proxy_python_json_endpoint(
-    state: &RuntimeState,
-    endpoint: &str,
-    raw_query: Option<&str>,
-    incoming_headers: &HeaderMap,
-) -> Response {
-    proxy_python_json_endpoint_with_method(
-        state,
-        reqwest::Method::GET,
-        endpoint,
-        raw_query,
-        incoming_headers,
-        None,
-    )
-    .await
-}
-
-async fn proxy_python_json_endpoint_with_method(
-    state: &RuntimeState,
-    method: reqwest::Method,
-    endpoint: &str,
-    raw_query: Option<&str>,
-    incoming_headers: &HeaderMap,
-    body: Option<Bytes>,
-) -> Response {
-    proxy_python_endpoint_with_method(
-        state,
-        method,
-        endpoint,
-        raw_query,
-        incoming_headers,
-        body,
-        "application/json",
-    )
-    .await
-}
-
-async fn proxy_python_raw_endpoint_with_method(
-    state: &RuntimeState,
-    method: reqwest::Method,
-    endpoint: &str,
-    raw_query: Option<&str>,
-    incoming_headers: &HeaderMap,
-    body: Option<Bytes>,
-) -> Response {
-    proxy_python_endpoint_with_method(
-        state,
-        method,
-        endpoint,
-        raw_query,
-        incoming_headers,
-        body,
-        "application/octet-stream",
-    )
-    .await
-}
-
-async fn proxy_python_endpoint_with_method(
-    state: &RuntimeState,
-    method: reqwest::Method,
-    endpoint: &str,
-    raw_query: Option<&str>,
-    incoming_headers: &HeaderMap,
-    body: Option<Bytes>,
-    default_content_type: &str,
-) -> Response {
-    let url = build_python_url(&state.python_base_url, endpoint, raw_query);
-    let mut request =
-        forward_proxy_headers(state.python_client.request(method, url), incoming_headers);
-
-    if let Some(body) = body {
-        request = request.body(body);
-    }
-
-    match request.send().await {
-        Ok(upstream_response) => {
-            let status = upstream_response.status();
-            let set_cookie_headers: Vec<HeaderValue> = upstream_response
-                .headers()
-                .get_all(header::SET_COOKIE)
-                .iter()
-                .cloned()
-                .collect();
-            let content_type = upstream_response
-                .headers()
-                .get(header::CONTENT_TYPE)
-                .and_then(|value| value.to_str().ok())
-                .unwrap_or(default_content_type)
-                .to_string();
-            let cache_control = upstream_response
-                .headers()
-                .get(header::CACHE_CONTROL)
-                .and_then(|value| value.to_str().ok())
-                .unwrap_or("no-store")
-                .to_string();
-            let upstream_stream = upstream_response.bytes_stream();
-            raw_response(
-                status,
-                &content_type,
-                &cache_control,
-                &set_cookie_headers,
-                Body::from_stream(upstream_stream),
-            )
-        }
-        Err(error) => json_fallback_response(format!(
-            r#"{{"detail":"upstream request failed: {error}"}}"#
-        )),
-    }
-}
-
-fn forward_proxy_headers(
-    mut request: reqwest::RequestBuilder,
-    incoming_headers: &HeaderMap,
-) -> reqwest::RequestBuilder {
-    for header_name in [
-        header::COOKIE,
-        header::AUTHORIZATION,
-        header::USER_AGENT,
-        header::ACCEPT,
-        header::CONTENT_TYPE,
-    ] {
-        if let Some(value) = incoming_headers.get(&header_name) {
-            request = request.header(header_name.as_str(), value.clone());
-        }
-    }
-    request
-}
-
-fn raw_response(
-    status: StatusCode,
-    content_type: &str,
-    cache_control: &str,
-    set_cookie_headers: &[HeaderValue],
-    body: Body,
-) -> Response {
-    let mut builder = Response::builder()
-        .status(status)
-        .header(header::CONTENT_TYPE, content_type)
-        .header(header::CACHE_CONTROL, cache_control);
-
-    for set_cookie in set_cookie_headers {
-        builder = builder.header(header::SET_COOKIE, set_cookie.clone());
-    }
-
-    builder.body(body).unwrap_or_else(|_| {
-        Response::builder()
-            .status(StatusCode::INTERNAL_SERVER_ERROR)
-            .header(header::CONTENT_TYPE, "application/json")
-            .header(header::CACHE_CONTROL, "no-store")
-            .body(Body::from(r#"{"detail":"invalid response build state"}"#))
-            .expect("build static JSON error response")
-    })
-}
-
-fn json_fallback_response(body: String) -> Response {
-    raw_response(
-        StatusCode::SERVICE_UNAVAILABLE,
-        "application/json",
-        "no-store",
-        &[],
-        Body::from(body),
-    )
 }
 
 #[cfg(test)]

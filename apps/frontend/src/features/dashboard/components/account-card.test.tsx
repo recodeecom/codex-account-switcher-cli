@@ -984,6 +984,33 @@ describe("AccountCard", () => {
     expect(within(tokensSection as HTMLElement).getByText("0")).toBeInTheDocument();
   });
 
+  it("does not show usage-limit badge from zero tokens when live quota still has headroom", () => {
+    const nowIso = new Date().toISOString();
+    const account = createAccountSummary({
+      status: "active",
+      usage: {
+        primaryRemainingPercent: 68,
+        secondaryRemainingPercent: 43,
+      },
+      codexLiveSessionCount: 1,
+      codexSessionCount: 1,
+      codexTrackedSessionCount: 1,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "odin",
+        activeSnapshotName: "odin",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+      lastUsageRecordedAtPrimary: nowIso,
+      lastUsageRecordedAtSecondary: nowIso,
+    });
+
+    render(<AccountCard account={account} showTokensRemaining tokensRemaining={0} />);
+
+    expect(screen.queryByText(/^Usage limit hit$/)).not.toBeInTheDocument();
+  });
+
   it("shows usage-limit badge when 5h is depleted even without a live session", () => {
     const account = createAccountSummary({
       status: "active",
