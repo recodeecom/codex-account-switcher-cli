@@ -5,9 +5,9 @@ use axum::{
         Path, RawQuery, State,
         ws::{Message as AxumWsMessage, WebSocket, WebSocketUpgrade},
     },
-    http::{HeaderMap, HeaderName, HeaderValue, StatusCode, header},
+    http::{HeaderMap, HeaderName, HeaderValue, StatusCode},
     response::{Html, Response},
-    routing::{any, delete, get, head, options, patch, post, put},
+    routing::{any, get},
 };
 use futures_util::{SinkExt, StreamExt};
 use reqwest::Client;
@@ -28,9 +28,9 @@ use runtime::{
         PythonLayerHealthResponse, RuntimeInfoResponse, StatusResponse,
     },
     proxy::{
-        fallback_live_usage_mapping_xml, fallback_live_usage_xml, proxy_python_json_endpoint,
-        proxy_python_live_usage_xml, proxy_python_raw_endpoint_with_method, query_param_true,
-        build_python_ws_url,
+        build_python_ws_url, fallback_live_usage_mapping_xml, fallback_live_usage_xml,
+        proxy_python_json_endpoint, proxy_python_live_usage_xml,
+        proxy_python_raw_endpoint_with_method, query_param_true,
     },
     state::{RuntimeState, runtime_state_from_env},
 };
@@ -404,13 +404,7 @@ async fn proxy_v1_responses_ws(
     raw_query: RawQuery,
     headers: HeaderMap,
 ) -> Response {
-    proxy_websocket_response(
-        ws_upgrade,
-        state,
-        "/v1/responses",
-        raw_query.0,
-        headers,
-    )
+    proxy_websocket_response(ws_upgrade, state, "/v1/responses", raw_query.0, headers)
 }
 
 async fn proxy_backend_codex_responses_http(
@@ -481,10 +475,9 @@ fn proxy_websocket_response(
         )
     });
     if let Some(value) = turn_state_header_value {
-        response.headers_mut().insert(
-            HeaderName::from_static("x-codex-turn-state"),
-            value,
-        );
+        response
+            .headers_mut()
+            .insert(HeaderName::from_static("x-codex-turn-state"), value);
     }
     response
 }
@@ -503,7 +496,11 @@ async fn proxy_websocket_bridge(
         return;
     };
 
-    forward_websocket_headers(upstream_request.headers_mut(), &incoming_headers, &turn_state);
+    forward_websocket_headers(
+        upstream_request.headers_mut(),
+        &incoming_headers,
+        &turn_state,
+    );
 
     let Ok((upstream, _)) = connect_async(upstream_request).await else {
         let _ = close_websocket_silent(downstream).await;
@@ -564,29 +561,6 @@ fn downstream_turn_state(headers: &HeaderMap) -> String {
     )
 }
 
-fn should_upgrade_websocket(
-    method: &axum::http::Method,
-    headers: &HeaderMap,
-    upgrade_extractor_available: bool,
-) -> bool {
-    upgrade_extractor_available
-        && method == axum::http::Method::GET
-        && header_has_token(headers, &header::CONNECTION, "upgrade")
-        && header_has_token(headers, &header::UPGRADE, "websocket")
-}
-
-fn header_has_token(headers: &HeaderMap, name: &HeaderName, token: &str) -> bool {
-    headers
-        .get(name)
-        .and_then(|value| value.to_str().ok())
-        .map(|value| {
-            value
-                .split(',')
-                .any(|part| part.trim().eq_ignore_ascii_case(token))
-        })
-        .unwrap_or(false)
-}
-
 async fn relay_websocket_streams(
     downstream: WebSocket,
     upstream: tokio_tungstenite::WebSocketStream<
@@ -640,9 +614,9 @@ async fn relay_websocket_streams(
 fn downstream_to_upstream_message(message: AxumWsMessage) -> Option<UpstreamWsMessage> {
     match message {
         AxumWsMessage::Text(text) => Some(UpstreamWsMessage::Text(text.to_string().into())),
-        AxumWsMessage::Binary(binary) => Some(UpstreamWsMessage::Binary(binary)),
-        AxumWsMessage::Ping(ping) => Some(UpstreamWsMessage::Ping(ping)),
-        AxumWsMessage::Pong(pong) => Some(UpstreamWsMessage::Pong(pong)),
+        AxumWsMessage::Binary(binary) => Some(UpstreamWsMessage::Binary(binary.to_vec())),
+        AxumWsMessage::Ping(ping) => Some(UpstreamWsMessage::Ping(ping.to_vec())),
+        AxumWsMessage::Pong(pong) => Some(UpstreamWsMessage::Pong(pong.to_vec())),
         AxumWsMessage::Close(_) => Some(UpstreamWsMessage::Close(None)),
     }
 }
@@ -650,9 +624,9 @@ fn downstream_to_upstream_message(message: AxumWsMessage) -> Option<UpstreamWsMe
 fn upstream_to_downstream_message(message: UpstreamWsMessage) -> Option<AxumWsMessage> {
     match message {
         UpstreamWsMessage::Text(text) => Some(AxumWsMessage::Text(text.to_string().into())),
-        UpstreamWsMessage::Binary(binary) => Some(AxumWsMessage::Binary(binary)),
-        UpstreamWsMessage::Ping(ping) => Some(AxumWsMessage::Ping(ping)),
-        UpstreamWsMessage::Pong(pong) => Some(AxumWsMessage::Pong(pong)),
+        UpstreamWsMessage::Binary(binary) => Some(AxumWsMessage::Binary(binary.into())),
+        UpstreamWsMessage::Ping(ping) => Some(AxumWsMessage::Ping(ping.into())),
+        UpstreamWsMessage::Pong(pong) => Some(AxumWsMessage::Pong(pong.into())),
         UpstreamWsMessage::Close(_) => Some(AxumWsMessage::Close(None)),
         _ => None,
     }
