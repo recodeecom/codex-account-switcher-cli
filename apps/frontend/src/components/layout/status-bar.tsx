@@ -8,6 +8,7 @@ import { getSettings } from "@/features/settings/api";
 import { formatTimeLong } from "@/utils/formatters";
 
 const LAST_SYNC_STALE_WARNING_MS = 60_000;
+const LAST_SYNC_CHECK_INTERVAL_MS = 10_000;
 
 function isRequestTimeoutError(error: unknown): boolean {
   if (!error || typeof error !== "object") {
@@ -63,35 +64,28 @@ export function StatusBar() {
     refetchIntervalInBackground: false,
   });
   const lastSync = formatTimeLong(lastSyncAt);
-  const [isLive, setIsLive] = useState(false);
-  const [hasStaleLastSync, setHasStaleLastSync] = useState(false);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const parsedLastSyncAtMs = (() => {
+    if (!lastSyncAt) {
+      return null;
+    }
+    const value = Date.parse(lastSyncAt);
+    return Number.isFinite(value) ? value : null;
+  })();
+  const syncAgeMs = parsedLastSyncAtMs == null ? null : nowMs - parsedLastSyncAtMs;
+  const isLive = syncAgeMs != null && syncAgeMs < LAST_SYNC_STALE_WARNING_MS;
+  const hasStaleLastSync = syncAgeMs != null && syncAgeMs > LAST_SYNC_STALE_WARNING_MS;
   const hasRequestTimeoutError = isRequestTimeoutError(lastSyncError);
-  const showLastSyncTimeoutWarning = hasRequestTimeoutError || hasStaleLastSync;
+  const showRequestTimeoutWarning = hasRequestTimeoutError && !isLive;
+  const showLastSyncTimeoutWarning = showRequestTimeoutWarning || hasStaleLastSync;
   const lastSyncTimeoutWarningLabel = hasRequestTimeoutError
     ? "request timeout"
     : "timeout > 1m";
 
   useEffect(() => {
-    function check() {
-      if (!lastSyncAt) {
-        setIsLive(false);
-        setHasStaleLastSync(false);
-        return;
-      }
-      const recordedAtMs = Date.parse(lastSyncAt);
-      if (!Number.isFinite(recordedAtMs)) {
-        setIsLive(false);
-        setHasStaleLastSync(false);
-        return;
-      }
-      const ageMs = Date.now() - recordedAtMs;
-      setIsLive(ageMs < LAST_SYNC_STALE_WARNING_MS);
-      setHasStaleLastSync(ageMs > LAST_SYNC_STALE_WARNING_MS);
-    }
-    check();
-    const id = setInterval(check, 10_000);
+    const id = setInterval(() => setNowMs(Date.now()), LAST_SYNC_CHECK_INTERVAL_MS);
     return () => clearInterval(id);
-  }, [lastSyncAt]);
+  }, []);
 
   const routingLabel = settings
     ? getRoutingLabel(settings.routingStrategy, settings.stickyThreadsEnabled, settings.preferEarlierResetAccounts)

@@ -18,6 +18,15 @@ Default bind address is `127.0.0.1:8099`.
 
 Open `http://localhost:8099/` to view the runtime health panel.
 
+Rust also exposes a Python-bridge probe endpoint:
+
+- `GET /_python_layer/health` — probes Python `/health*` endpoints and returns `200 ok` or `503 degraded`.
+
+Optional environment variables:
+
+- `PYTHON_RUNTIME_BASE_URL` (default: `http://127.0.0.1:8000`)
+- `RUST_RUNTIME_PYTHON_TIMEOUT_MS` (default: `1500`)
+
 ## 3) Compare parity and latency
 
 ```bash

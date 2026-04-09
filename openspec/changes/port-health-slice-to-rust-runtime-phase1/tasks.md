@@ -1,14 +1,14 @@
 ## 1. Specification
 
-- [x] 1.1 Add OpenSpec change `port-health-slice-to-rust-runtime-phase1` with phase-1 health-slice parity requirements.
-- [x] 1.2 Define strict comparison-harness acceptance scenarios for contract mismatch detection.
+- [x] 1.1 Add OpenSpec change `port-health-slice-to-rust-runtime-phase1` for Python-bridge health rollup in Rust.
+- [x] 1.2 Define fail-closed and configuration scenarios for bridge probing.
 
 ## 2. Implementation
 
-- [x] 2.1 Extend Rust runtime health surface with `/health/ready` and `/health/startup` plus fail-closed runtime flags.
-- [x] 2.2 Align `/health/live` response shape with Python health contract (`checks` + `bridge_ring` nullable fields).
-- [x] 2.3 Upgrade `scripts/rust_runtime/compare_runtime.py` to include content-type and canonical JSON parity with `--strict` exit behavior.
-- [x] 2.4 Update phase migration usage notes in `scripts/rust_runtime/README.md`.
+- [x] 2.1 Add Rust endpoint `GET /_python_layer/health` with per-endpoint probe details.
+- [x] 2.2 Add runtime configuration support for `PYTHON_RUNTIME_BASE_URL` and `RUST_RUNTIME_PYTHON_TIMEOUT_MS`.
+- [x] 2.3 Extend Rust unit tests for healthy and degraded bridge outcomes.
+- [x] 2.4 Update rust runtime README usage notes for the Python bridge probe endpoint.
 
 ## 3. Verification
 

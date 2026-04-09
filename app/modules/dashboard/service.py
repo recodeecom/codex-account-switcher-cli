@@ -38,6 +38,9 @@ from app.modules.usage.depletion_service import (
     compute_depletion_for_account,
 )
 
+_DASHBOARD_ACTIVE_CLI_SESSION_WINDOW = timedelta(hours=12)
+
+
 class DashboardService:
     def __init__(self, repo: DashboardRepository) -> None:
         self._repo = repo
@@ -50,6 +53,7 @@ class DashboardService:
         primary_usage = await self._repo.latest_usage_by_account("primary")
         secondary_usage = await self._repo.latest_usage_by_account("secondary")
         account_ids = [account.id for account in accounts]
+        active_cli_session_since = now - _DASHBOARD_ACTIVE_CLI_SESSION_WINDOW
         request_usage_rows = await self._repo.list_request_usage_summary_by_account(account_ids)
         request_usage_by_account = {
             account_id: AccountRequestUsage(
@@ -62,16 +66,16 @@ class DashboardService:
         }
         codex_tracked_session_counts_by_account = await self._repo.list_codex_session_counts_by_account(
             account_ids,
-            active_since=None,
+            active_since=active_cli_session_since,
         )
         codex_live_session_counts_by_account = {account_id: 0 for account_id in account_ids}
         codex_current_task_preview_by_account = await self._repo.list_codex_current_task_preview_by_account(
             account_ids,
-            active_since=None,
+            active_since=active_cli_session_since,
         )
         raw_codex_session_task_previews_by_account = await self._repo.list_codex_session_task_previews_by_account(
             account_ids,
-            active_since=None,
+            active_since=active_cli_session_since,
             limit_per_account=None,
         )
         codex_session_task_previews_by_account: dict[str, list[AccountSessionTaskPreview]] = {

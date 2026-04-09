@@ -1,15 +1,18 @@
 ## Why
 
-Phase-0 proved the Rust scaffold and basic `/health` parity. To keep the Python-to-Rust migration moving safely, we need a concrete phase-1 slice that ports more of the Python health contract and strengthens parity evidence.
+We already have Rust health endpoints and parity tooling, but the Rust layer still lacks a runtime-aware bridge signal for Python-backed health semantics. During strangler migration, operators need one Rust endpoint that explicitly reports whether the underlying Python layer is healthy before cutover decisions.
 
 ## What Changes
 
-- Extend the Rust runtime health surface with `/health/ready` and `/health/startup` while preserving existing `/health` and `/health/live` behavior.
-- Add fail-closed runtime flags for startup/draining states (`RUST_RUNTIME_STARTUP_PENDING`, `RUST_RUNTIME_DRAINING`) so readiness/startup semantics can be exercised without production cutover.
-- Upgrade `scripts/rust_runtime/compare_runtime.py` from hash-only checks to contract parity checks (status, content-type, canonical JSON body) with optional strict exit behavior.
+- Add a Rust endpoint `GET /_python_layer/health` that probes Python `/health`, `/health/live`, `/health/ready`, and `/health/startup`.
+- Return fail-closed status from Rust: HTTP `200` when all probes succeed, HTTP `503` when any probe fails.
+- Add configurable Python bridge settings via environment:
+  - `PYTHON_RUNTIME_BASE_URL`
+  - `RUST_RUNTIME_PYTHON_TIMEOUT_MS`
+- Extend Rust runtime tests to cover healthy and degraded Python-bridge behavior.
 
 ## Impact
 
-- Provides a real migration slice from Python health semantics into the Rust layer.
-- Increases confidence in parity before larger API slices are migrated.
-- Keeps rollout reversible because traffic routing is still unchanged.
+- Makes the Rust layer explicitly aware of Python-layer health without changing traffic routing.
+- Improves operational readiness for staged migration/canary decisions.
+- Keeps rollback trivial because the change is additive and probe-only.
