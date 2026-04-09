@@ -204,7 +204,7 @@ describe("AccountCards", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("2 live sessions")).toBeInTheDocument();
     expect(screen.getByText("5h price spend")).toBeInTheDocument();
-    expect(screen.getByText("€0.00")).toBeInTheDocument();
+    expect(screen.getByText("€0.00 · 1.2M")).toBeInTheDocument();
     expect(screen.queryByText(/weekly avg \d+%/i)).not.toBeInTheDocument();
     expect(screen.queryByText("Weekly price spend")).not.toBeInTheDocument();
 

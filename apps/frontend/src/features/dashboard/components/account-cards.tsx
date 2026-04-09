@@ -30,7 +30,7 @@ import {
   selectStableRemainingPercent,
 } from "@/utils/account-working";
 import { resolveEffectiveAccountStatus } from "@/utils/account-status";
-import { formatEuro, formatWindowLabel } from "@/utils/formatters";
+import { formatCompactNumber, formatEuro, formatWindowLabel } from "@/utils/formatters";
 import { normalizeRemainingPercentForDisplay } from "@/utils/quota-display";
 
 const RECENT_LAST_SEEN_SORT_WINDOW_MS = 30 * 60 * 1000;
@@ -515,6 +515,13 @@ function formatConsumedCostEur(value: number | null | undefined): string {
   return formatEuro(Math.max(0, value));
 }
 
+function formatConsumedTokens(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) {
+    return "--";
+  }
+  return formatCompactNumber(Math.max(0, value) * 1000);
+}
+
 function buildRemainingByAccount(
   window: UsageWindow | null,
 ): Map<string, number> {
@@ -865,7 +872,9 @@ export function AccountCards({
                     {primaryWindowLabel} price spend
                   </span>
                   <span className="text-base font-semibold text-zinc-100 tabular-nums">
-                    {formatConsumedCostEur(workingSummary.primaryConsumedCostEur)}
+                    {`${formatConsumedCostEur(workingSummary.primaryConsumedCostEur)} · ${formatConsumedTokens(
+                      workingSummary.primaryConsumedTokens,
+                    )}`}
                   </span>
                 </span>
               ) : null}
