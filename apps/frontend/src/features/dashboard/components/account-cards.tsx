@@ -3,6 +3,14 @@ import { Plus, Search, Users } from "lucide-react";
 
 import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
   AccountCard,
@@ -43,6 +51,7 @@ const ACCOUNT_GRID_CLASSNAME =
 const WORKING_ACCOUNT_GRID_CLASSNAME =
   "grid auto-rows-fr items-stretch gap-4 grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 [&_.card-hover]:h-full";
 const WORKING_ACCOUNT_PLACEHOLDER_TARGET = 3;
+const WORKING_ACCOUNT_SUGGESTION_LIMIT = 3;
 
 type OtherAccountsSortMode =
   | "available-first"
@@ -417,6 +426,46 @@ function sortAccountsByUsageLimitAvailableFirst(
   return [...usageLimitAvailable, ...otherAccounts];
 }
 
+function resolveTopSuggestedAccounts(
+  accounts: AccountSummary[],
+  nowMs: number,
+  limit: number,
+): AccountSummary[] {
+  if (limit <= 0 || accounts.length === 0) {
+    return [];
+  }
+
+  const rankedByUsageLimit = sortAccountsByUsageLimitAvailableFirst(
+    accounts,
+    nowMs,
+  );
+  const suggestions: AccountSummary[] = [];
+  const includedAccountIds = new Set<string>();
+
+  for (const account of rankedByUsageLimit) {
+    if (!isUsageLimitAvailableAccount(account, nowMs)) {
+      continue;
+    }
+    suggestions.push(account);
+    includedAccountIds.add(account.accountId);
+    if (suggestions.length >= limit) {
+      return suggestions;
+    }
+  }
+
+  for (const account of rankedByUsageLimit) {
+    if (includedAccountIds.has(account.accountId)) {
+      continue;
+    }
+    suggestions.push(account);
+    if (suggestions.length >= limit) {
+      break;
+    }
+  }
+
+  return suggestions;
+}
+
 function resolveMostRecentUsageRecordedAtMs(
   account: AccountSummary,
 ): number | null {
@@ -582,6 +631,7 @@ export function AccountCards({
   const [otherAccountsSortMode, setOtherAccountsSortMode] =
     useState<OtherAccountsSortMode>("available-first");
   const [otherAccountsEmailSearch, setOtherAccountsEmailSearch] = useState("");
+  const [isSuggestionDialogOpen, setIsSuggestionDialogOpen] = useState(false);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -735,8 +785,29 @@ export function AccountCards({
       matchesOtherAccountEmailQuery(account, normalizedQuery),
     );
   }, [groupedAccounts.remaining, otherAccountsEmailSearch]);
+  const suggestedAccounts = useMemo(
+    () =>
+      resolveTopSuggestedAccounts(
+        groupedAccounts.remaining,
+        nowMs,
+        WORKING_ACCOUNT_SUGGESTION_LIMIT,
+      ),
+    [groupedAccounts.remaining, nowMs],
+  );
   const hasOtherAccountsEmailSearch =
     normalizeEmailSearchValue(otherAccountsEmailSearch).length > 0;
+  const hasSuggestedAccounts = suggestedAccounts.length > 0;
+
+  const handleSuggestedAccountAction: AccountCardProps["onAction"] = (
+    account,
+    action,
+    context,
+  ) => {
+    if (action === "useLocal") {
+      setIsSuggestionDialogOpen(false);
+    }
+    onAction?.(account, action, context);
+  };
 
   if (accounts.length === 0) {
     return (
@@ -809,9 +880,14 @@ export function AccountCards({
               } satisfies CSSProperties
             }
           >
-            <article
+            <button
+              type="button"
               data-testid="working-now-placeholder-card"
-              className="flex h-full min-h-[22rem] flex-col items-center justify-center rounded-3xl border border-dashed border-cyan-400/35 bg-[#050d18]/85 px-5 py-6 text-center"
+              className="flex h-full min-h-[22rem] w-full cursor-pointer flex-col items-center justify-center rounded-3xl border border-dashed border-cyan-400/35 bg-[#050d18]/85 px-5 py-6 text-center transition-colors hover:border-cyan-300/55 hover:bg-[#071120]/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/45"
+              aria-label="Suggest top three accounts for Working now"
+              onClick={() => {
+                setIsSuggestionDialogOpen(true);
+              }}
             >
               <div className="space-y-3">
                 <span className="mx-auto inline-flex h-16 w-16 items-center justify-center rounded-full bg-cyan-300/[0.10] text-cyan-100">
@@ -826,7 +902,7 @@ export function AccountCards({
                   </p>
                 </div>
               </div>
-            </article>
+            </button>
           </div>
         ))}
       </div>
@@ -1029,6 +1105,54 @@ export function AccountCards({
           )}
         </section>
       ) : null}
+      <Dialog open={isSuggestionDialogOpen} onOpenChange={setIsSuggestionDialogOpen}>
+        <DialogContent className="max-h-[88vh] overflow-y-auto border-cyan-400/35 bg-[#050d18] p-4 sm:max-w-[72rem] sm:p-5">
+          <DialogHeader>
+            <DialogTitle className="text-zinc-100">
+              Suggested cards for Working now
+            </DialogTitle>
+            <DialogDescription className="text-zinc-400">
+              Top {WORKING_ACCOUNT_SUGGESTION_LIMIT} accounts from Other accounts,
+              prioritized by usage-limit availability so you can pick one quickly.
+            </DialogDescription>
+          </DialogHeader>
+          {hasSuggestedAccounts ? (
+            <div
+              className="grid auto-rows-fr items-stretch gap-4 md:grid-cols-2 xl:grid-cols-3 [&_.card-hover]:h-full"
+              data-testid="working-now-suggestion-grid"
+            >
+              {suggestedAccounts.map((account) => (
+                <div key={`suggested-${account.accountId}`} className="h-full min-w-0">
+                  <AccountCard
+                    account={account}
+                    tokensRemaining={resolveCardTokensRemaining(
+                      account,
+                      primaryRemainingByAccount,
+                      secondaryRemainingByAccount,
+                    )}
+                    showTokensRemaining
+                    showAccountId={duplicateAccountIds.has(account.accountId)}
+                    useLocalBusy={
+                      useLocalBusy &&
+                      useLocalBusyAccountId != null &&
+                      useLocalBusyAccountId === account.accountId
+                    }
+                    deleteBusy={deleteBusy}
+                    initialSessionTasksCollapsed
+                    onAction={handleSuggestedAccountAction}
+                  />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-lg border border-dashed border-cyan-400/35 bg-[#061020] px-4 py-5 text-sm text-zinc-300">
+              No suggestion is available yet. Add or refresh accounts and try
+              again.
+            </div>
+          )}
+          <DialogFooter showCloseButton />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

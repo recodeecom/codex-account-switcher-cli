@@ -381,6 +381,196 @@ describe("AccountCards", () => {
     expect(screen.queryByTestId("working-now-placeholder-card")).not.toBeInTheDocument();
   });
 
+  it("opens a popup with top three suggested accounts when clicking the add-card placeholder", () => {
+    const nowIso = new Date().toISOString();
+    const working = createAccountSummary({
+      accountId: "acc_working_popup",
+      email: "working-popup@example.com",
+      displayName: "working-popup@example.com",
+      codexLiveSessionCount: 1,
+      codexSessionCount: 1,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "working-popup",
+        activeSnapshotName: "working-popup",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+      lastUsageRecordedAtPrimary: nowIso,
+      lastUsageRecordedAtSecondary: nowIso,
+    });
+    const usageLimitSoonA = createAccountSummary({
+      accountId: "acc_usage_limit_a",
+      email: "usage-limit-a@example.com",
+      displayName: "usage-limit-a@example.com",
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "usage-limit-a",
+        activeSnapshotName: "working-popup",
+        isActiveSnapshot: false,
+        hasLiveSession: false,
+      },
+      usage: {
+        primaryRemainingPercent: 0,
+        secondaryRemainingPercent: 83,
+      },
+    });
+    const usageLimitSoonB = createAccountSummary({
+      accountId: "acc_usage_limit_b",
+      email: "usage-limit-b@example.com",
+      displayName: "usage-limit-b@example.com",
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "usage-limit-b",
+        activeSnapshotName: "working-popup",
+        isActiveSnapshot: false,
+        hasLiveSession: false,
+      },
+      usage: {
+        primaryRemainingPercent: 0,
+        secondaryRemainingPercent: 62,
+      },
+    });
+    const availableHigh = createAccountSummary({
+      accountId: "acc_available_high",
+      email: "available-high@example.com",
+      displayName: "available-high@example.com",
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "available-high",
+        activeSnapshotName: "working-popup",
+        isActiveSnapshot: false,
+        hasLiveSession: false,
+      },
+      usage: {
+        primaryRemainingPercent: 91,
+        secondaryRemainingPercent: 71,
+      },
+    });
+    const availableLow = createAccountSummary({
+      accountId: "acc_available_low",
+      email: "available-low@example.com",
+      displayName: "available-low@example.com",
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "available-low",
+        activeSnapshotName: "working-popup",
+        isActiveSnapshot: false,
+        hasLiveSession: false,
+      },
+      usage: {
+        primaryRemainingPercent: 35,
+        secondaryRemainingPercent: 92,
+      },
+    });
+
+    render(
+      <AccountCards
+        accounts={[
+          working,
+          usageLimitSoonA,
+          usageLimitSoonB,
+          availableHigh,
+          availableLow,
+        ]}
+        primaryWindow={null}
+        secondaryWindow={null}
+      />,
+    );
+
+    const placeholderButtons = screen.getAllByRole("button", {
+      name: "Suggest top three accounts for Working now",
+    });
+    fireEvent.click(placeholderButtons[0] as HTMLElement);
+
+    expect(
+      screen.getByRole("heading", {
+        name: "Suggested cards for Working now",
+      }),
+    ).toBeInTheDocument();
+    const suggestionGrid = screen.getByTestId("working-now-suggestion-grid");
+    const suggestionCards = Array.from(
+      suggestionGrid.querySelectorAll(".card-hover"),
+    );
+    const suggestionTitles = suggestionCards.map((card) =>
+      card.querySelector("p.truncate.text-sm.font-semibold.leading-tight")
+        ?.textContent,
+    );
+    expect(suggestionTitles).toEqual([
+      "usage-limit-a@example.com",
+      "usage-limit-b@example.com",
+      "available-high@example.com",
+    ]);
+    expect(suggestionTitles).not.toContain("available-low@example.com");
+  });
+
+  it("forwards account selection from the suggestion popup and closes it after choosing use this account", () => {
+    const nowIso = new Date().toISOString();
+    const onAction = vi.fn();
+    const working = createAccountSummary({
+      accountId: "acc_working_popup_action",
+      email: "working-popup-action@example.com",
+      displayName: "working-popup-action@example.com",
+      codexLiveSessionCount: 1,
+      codexSessionCount: 1,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "working-popup-action",
+        activeSnapshotName: "working-popup-action",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+      lastUsageRecordedAtPrimary: nowIso,
+      lastUsageRecordedAtSecondary: nowIso,
+    });
+    const candidate = createAccountSummary({
+      accountId: "acc_popup_candidate",
+      email: "popup-candidate@example.com",
+      displayName: "popup-candidate@example.com",
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "popup-candidate",
+        activeSnapshotName: "working-popup-action",
+        isActiveSnapshot: false,
+        hasLiveSession: false,
+      },
+      usage: {
+        primaryRemainingPercent: 88,
+        secondaryRemainingPercent: 64,
+      },
+    });
+
+    render(
+      <AccountCards
+        accounts={[working, candidate]}
+        primaryWindow={null}
+        secondaryWindow={null}
+        onAction={onAction}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getAllByRole("button", {
+        name: "Suggest top three accounts for Working now",
+      })[0] as HTMLElement,
+    );
+
+    const suggestionGrid = screen.getByTestId("working-now-suggestion-grid");
+    const useThisAccountButton = within(suggestionGrid).getAllByRole("button", {
+      name: "Use this account",
+    })[0];
+    fireEvent.click(useThisAccountButton as HTMLElement);
+
+    expect(onAction).toHaveBeenCalled();
+    expect(onAction.mock.calls[0]?.[0]?.accountId).toBe("acc_popup_candidate");
+    expect(onAction.mock.calls[0]?.[1]).toBe("useLocal");
+    expect(
+      screen.queryByRole("heading", {
+        name: "Suggested cards for Working now",
+      }),
+    ).not.toBeInTheDocument();
+  });
+
   it("appends newly-live cards after the current working-now cards without reordering", () => {
     const nowIso = new Date().toISOString();
     const currentWorking = createAccountSummary({
