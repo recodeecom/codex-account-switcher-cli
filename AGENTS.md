@@ -1,5 +1,9 @@
 # AGENTS
 
+# ExecPlans
+
+When writing complex features or significant refactors, use an ExecPlan (as described in .agent/PLANS.md) from design to implementation.
+
 ## Environment
 
 - Python: .venv/bin/python (uv, CPython 3.13.3)
@@ -31,21 +35,25 @@ The `/project-conventions` skill is auto-activated on code edits (PreToolUse gua
 The current CLI session detection behavior is intentionally frozen and must stay order-sensitive.
 
 Canonical implementation:
+
 - `frontend/src/utils/account-working.ts`
   - `hasActiveCliSessionSignal(...)`
   - `hasFreshLiveTelemetry(...)`
   - `getFreshDebugRawSampleCount(...)`
 
 Locked detection cascade (do not reorder):
+
 1. `codexAuth.hasLiveSession`
 2. Fresh live telemetry / live session count
 3. Tracked session counters (`codexTrackedSessionCount` / `codexSessionCount`)
 4. Fresh debug raw samples
 
 Regression lock:
+
 - `frontend/src/utils/account-working.test.ts` (`hasActiveCliSessionSignal` + `isAccountWorkingNow` suites)
 
 Rule for future edits:
+
 - Do not change this cascade unless explicitly requested by the user and accompanied by updated regression tests proving the new behavior.
 
 ## Rust Runtime Proxy Lock (`rust/codex-lb-runtime/src/main.rs`)
@@ -53,6 +61,7 @@ Rule for future edits:
 The Rust runtime should stay a **thin proxy** for app APIs unless explicitly requested otherwise.
 
 Canonical routing posture:
+
 - Keep wildcard pass-through routes enabled:
   - `/api/{*path}`
   - `/backend-api/{*path}`
@@ -60,10 +69,12 @@ Canonical routing posture:
 - Prefer generic proxy handlers over large explicit per-endpoint Rust route lists.
 
 Auth/session rule:
+
 - Treat Python as the source of truth for dashboard auth/session enforcement (`validate_dashboard_session` and related dependencies).
 - Do not duplicate or drift auth/session logic in Rust endpoint copies unless the user explicitly requests moving that logic into Rust and corresponding tests are updated.
 
 Parallel-work safety:
+
 - When editing `main.rs`, assume other agents may be changing Python API surfaces at the same time.
 - Prefer compatibility-preserving proxy behavior over endpoint-specific Rust implementations that can break on concurrent backend changes.
 - `main.rs` is now lock-protected for parallel agent sessions. Before **any** edit to
@@ -74,6 +85,7 @@ Parallel-work safety:
 - If the lock is held by another agent, do not edit `main.rs`; continue in owned module files or hand off to the integrator.
 
 Required verification before claiming Rust runtime changes are complete:
+
 - Confirm wildcard proxy routes still exist in `app_with_state(...)`.
 - Confirm proxy helpers are still present and used by wildcard routes.
 - Run:
@@ -85,7 +97,8 @@ Required verification before claiming Rust runtime changes are complete:
 
 Use this contract whenever multiple agents are active in parallel.
 
-0) Session plan comment + read gate (required)
+0. Session plan comment + read gate (required)
+
 - Before editing, each agent must post a short session comment/handoff note that includes:
   - plan/change name (or checkpoint id),
   - owned files/scope,
@@ -94,23 +107,27 @@ Use this contract whenever multiple agents are active in parallel.
 - If ownership is unclear or overlaps, stop that edit, post a blocker comment, and let the leader/integrator reassign scope.
 - For git isolation, each agent must start on a dedicated branch via `scripts/agent-branch-start.sh "<task-or-plan>" "<agent-name>"`.
 - Agent completion must use `scripts/agent-branch-finish.sh` (merge into `dev`, push, delete agent branch).
-- `agent-branch-start.sh` and `agent-branch-finish.sh` must fast-forward local `dev` from `origin/dev` before create/merge steps.
+- `agent-branch-start` and `agent-branch-finish` must fast-forward local `dev` from `origin/dev` before branch creation/merge, so `dev` always pulls latest remote changes first.
 
-1) Explicit ownership before edits
+1. Explicit ownership before edits
+
 - Assign each agent clear file/module ownership.
 - Do not edit files outside your assigned scope unless the leader reassigns ownership.
 
-2) No destructive rewrites of shared behavior
+2. No destructive rewrites of shared behavior
+
 - Do not delete, replace, or “simplify away” critical paths (auth/session, proxy routes, production API wiring) without:
   - explicit user request or approved plan checkpoint, and
   - updated regression tests proving intended behavior.
 
-3) Preserve parallel safety
+3. Preserve parallel safety
+
 - Assume other agents are editing nearby code concurrently.
 - Never revert unrelated changes authored by others.
 - If another change conflicts with your approach, adapt and report the conflict in handoff.
 
-4) Verify before completion
+4. Verify before completion
+
 - Run required local checks for the area you changed.
 - For Rust runtime changes, minimum gate:
   - `bun run verify:rust-runtime-guardrails`
@@ -118,13 +135,15 @@ Use this contract whenever multiple agents are active in parallel.
   - `cargo test -p codex-lb-runtime --no-run`
 - Do not mark work complete without command output evidence.
 
-5) Required handoff format (every agent)
+5. Required handoff format (every agent)
+
 - Files changed
 - Behavior touched
 - Verification commands + results
 - Risks / follow-ups
 
-6) Integration-first finalization
+6. Integration-first finalization
+
 - Use one integrator pass before final completion to confirm:
   - no critical behavior was removed unintentionally,
   - ownership boundaries were respected,

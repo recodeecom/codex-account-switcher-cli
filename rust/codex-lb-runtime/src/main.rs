@@ -3,7 +3,7 @@ use axum::{
     body::{Body, Bytes},
     extract::{Path, RawQuery, State},
     http::{HeaderMap, HeaderValue, StatusCode, header},
-    response::{Html, IntoResponse, Response},
+    response::{Html, Response},
     routing::{any, get},
 };
 use reqwest::Client;
@@ -12,10 +12,7 @@ use serde_json::Value;
 use std::{
     collections::BTreeMap,
     env,
-    fs,
     net::SocketAddr,
-    process::Command,
-    sync::{Mutex, OnceLock},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tracing::info;
