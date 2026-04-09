@@ -383,61 +383,64 @@ fn reqwest_method_from_axum(method: &axum::http::Method) -> reqwest::Method {
     runtime::proxy::reqwest_method_from_axum(method)
 }
 
-async fn proxy_backend_codex_responses_entry(
-    ws_upgrade: Option<WebSocketUpgrade>,
+async fn proxy_backend_codex_responses_ws(
+    ws_upgrade: WebSocketUpgrade,
     State(state): State<RuntimeState>,
-    method: axum::http::Method,
     raw_query: RawQuery,
     headers: HeaderMap,
-    body: Body,
 ) -> Response {
-    proxy_responses_entry(
+    proxy_websocket_response(
         ws_upgrade,
         state,
-        method,
         raw_query.0,
         headers,
-        body,
         "/backend-api/codex/responses",
     )
-    .await
 }
 
-async fn proxy_v1_responses_entry(
-    ws_upgrade: Option<WebSocketUpgrade>,
+async fn proxy_v1_responses_ws(
+    ws_upgrade: WebSocketUpgrade,
+    State(state): State<RuntimeState>,
+    raw_query: RawQuery,
+    headers: HeaderMap,
+) -> Response {
+    proxy_websocket_response(
+        ws_upgrade,
+        state,
+        raw_query.0,
+        headers,
+        "/v1/responses",
+    )
+}
+
+async fn proxy_backend_codex_responses_http(
+    state: RuntimeState,
+    method: axum::http::Method,
+    raw_query: RawQuery,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    proxy_responses_http_entry(state, method, raw_query.0, headers, body, "/backend-api/codex/responses").await
+}
+
+async fn proxy_v1_responses_http(
     State(state): State<RuntimeState>,
     method: axum::http::Method,
     raw_query: RawQuery,
     headers: HeaderMap,
-    body: Body,
+    body: Bytes,
 ) -> Response {
-    proxy_responses_entry(
-        ws_upgrade,
-        state,
-        method,
-        raw_query.0,
-        headers,
-        body,
-        "/v1/responses",
-    )
-    .await
+    proxy_responses_http_entry(state, method, raw_query.0, headers, body, "/v1/responses").await
 }
 
-async fn proxy_responses_entry(
-    ws_upgrade: Option<WebSocketUpgrade>,
+async fn proxy_responses_http_entry(
     state: RuntimeState,
     method: axum::http::Method,
     raw_query: Option<String>,
     headers: HeaderMap,
-    body: Body,
+    body: Bytes,
     endpoint: &'static str,
 ) -> Response {
-    if should_upgrade_websocket(&method, &headers, ws_upgrade.is_some()) {
-        if let Some(ws_upgrade) = ws_upgrade {
-            return proxy_websocket_response(ws_upgrade, state, endpoint, raw_query, headers);
-        }
-    }
-
     proxy_python_raw_endpoint_with_method(
         &state,
         reqwest_method_from_axum(&method),
