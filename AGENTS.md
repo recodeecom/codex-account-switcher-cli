@@ -48,6 +48,33 @@ Regression lock:
 Rule for future edits:
 - Do not change this cascade unless explicitly requested by the user and accompanied by updated regression tests proving the new behavior.
 
+## Rust Runtime Proxy Lock (`rust/codex-lb-runtime/src/main.rs`)
+
+The Rust runtime should stay a **thin proxy** for app APIs unless explicitly requested otherwise.
+
+Canonical routing posture:
+- Keep wildcard pass-through routes enabled:
+  - `/api/{*path}`
+  - `/backend-api/{*path}`
+  - `/v1/{*path}`
+- Prefer generic proxy handlers over large explicit per-endpoint Rust route lists.
+
+Auth/session rule:
+- Treat Python as the source of truth for dashboard auth/session enforcement (`validate_dashboard_session` and related dependencies).
+- Do not duplicate or drift auth/session logic in Rust endpoint copies unless the user explicitly requests moving that logic into Rust and corresponding tests are updated.
+
+Parallel-work safety:
+- When editing `main.rs`, assume other agents may be changing Python API surfaces at the same time.
+- Prefer compatibility-preserving proxy behavior over endpoint-specific Rust implementations that can break on concurrent backend changes.
+
+Required verification before claiming Rust runtime changes are complete:
+- Confirm wildcard proxy routes still exist in `app_with_state(...)`.
+- Confirm proxy helpers are still present and used by wildcard routes.
+- Run:
+  - `cargo check -p codex-lb-runtime`
+  - `cargo test -p codex-lb-runtime --no-run`
+- If route/auth behavior changed, add/adjust Rust runtime tests in `rust/codex-lb-runtime/src/main.rs` test module.
+
 ## Versioning Rule
 
 ## Workflow (OpenSpec-first)

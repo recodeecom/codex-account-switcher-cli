@@ -148,6 +148,8 @@ echo "[stub] App URL -> http://localhost:${port}"
 exec python3 -m http.server "${port}" --bind 127.0.0.1
 """,
     )
+    _write_rust_runtime_dev_stub(project)
+    _write_rust_runtime_dev_stub(project)
 
     _write_executable(
         project / "apps" / "backend" / "dev-stub.sh",
@@ -191,6 +193,7 @@ exit 1
     env["APP_BACKEND_PORT"] = "32455"
     env["MEDUSA_BACKEND_PORT"] = "39000"
     env["FRONTEND_PORT"] = "35174"
+    env["RUST_RUNTIME_PORT"] = "38090"
 
     proc = subprocess.Popen(
         ["bash", "./scripts/dev-all.sh"],
@@ -239,6 +242,7 @@ echo "[stub] App URL -> http://localhost:${port}"
 exec python3 -m http.server "${port}" --bind 127.0.0.1
 """,
     )
+    _write_rust_runtime_dev_stub(project)
 
     _write_executable(
         project / "scripts" / "run-rust-runtime-dev.sh",
@@ -338,6 +342,7 @@ echo "[stub] App URL -> http://localhost:${port}"
 exec python3 -m http.server "${port}" --bind 127.0.0.1
 """,
     )
+    _write_rust_runtime_dev_stub(project)
 
     _write_executable(
         project / "apps" / "backend" / "dev-stub.sh",
@@ -390,6 +395,7 @@ exit 1
     env["APP_BACKEND_PORT"] = "32456"
     env["MEDUSA_BACKEND_PORT"] = "39000"
     env["FRONTEND_PORT"] = "35175"
+    env["RUST_RUNTIME_PORT"] = "38091"
 
     blocker = subprocess.Popen(
         ["python3", "-m", "http.server", "39000", "--bind", "127.0.0.1"],
@@ -442,6 +448,7 @@ echo "app should have been reused instead of restarted" >&2
 exit 99
 """,
     )
+    _write_rust_runtime_dev_stub(project)
 
     _write_executable(
         project / "apps" / "backend" / "dev-stub.sh",
@@ -493,6 +500,7 @@ exit 1
     env["APP_BACKEND_PORT"] = "32457"
     env["MEDUSA_BACKEND_PORT"] = "39010"
     env["FRONTEND_PORT"] = "35176"
+    env["RUST_RUNTIME_PORT"] = "38092"
 
     app_blocker = _start_health_stub(32457, project)
     _wait_for_listening_port(32457)
@@ -542,6 +550,7 @@ echo "app should have been reused instead of restarted" >&2
 exit 99
 """,
     )
+    _write_rust_runtime_dev_stub(project)
 
     _write_executable(
         project / "apps" / "backend" / "dev-stub.sh",
@@ -587,6 +596,7 @@ exit 1
     env["APP_BACKEND_PORT"] = "32459"
     env["MEDUSA_BACKEND_PORT"] = "39012"
     env["FRONTEND_PORT"] = "35178"
+    env["RUST_RUNTIME_PORT"] = "38093"
 
     app_blocker = _start_health_stub(32459, project)
     _wait_for_listening_port(32459)
@@ -636,6 +646,7 @@ echo "app should not start when a non-codex blocker owns the port" >&2
 exit 99
 """,
     )
+    _write_rust_runtime_dev_stub(project)
 
     _write_executable(
         project / "apps" / "backend" / "dev-stub.sh",
@@ -671,6 +682,7 @@ exit 96
     env["APP_BACKEND_PORT"] = "32458"
     env["MEDUSA_BACKEND_PORT"] = "39011"
     env["FRONTEND_PORT"] = "35177"
+    env["RUST_RUNTIME_PORT"] = "38094"
 
     app_blocker = subprocess.Popen(
         ["python3", "-m", "http.server", "32458", "--bind", "127.0.0.1"],

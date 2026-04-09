@@ -1,31 +1,24 @@
 ## ADDED Requirements
 
-### Requirement: Phase-6 full-cutover task ledger is explicit and executable
-The migration plan SHALL keep an explicit task ledger for all remaining Python-owned API families required for full cutover.
+### Requirement: Rust wildcard API cutover bridge
+The Rust runtime SHALL expose wildcard API proxy routes so frontend traffic can traverse Rust while Python remains the business-logic backend.
 
-#### Scenario: Cutover ledger includes all blocking API families
-- **WHEN** engineers review the Phase-6 change tasks
-- **THEN** the plan lists migration ownership work for:
-  - `/api/dashboard/*`
-  - `/api/accounts/*`
-  - `/api/dashboard-auth/*`
-  - `/api/medusa-admin-auth/*`
-  - `/api/usage*` and `/api/request-logs*`.
+#### Scenario: `/api/*` wildcard forwards authenticated dashboard request
+- **WHEN** `GET /api/dashboard-auth/session` is called through Rust with a valid dashboard cookie
+- **THEN** Rust forwards method/path/query/auth headers to Python
+- **AND** returns upstream status and JSON payload.
 
-### Requirement: Rust serves native dashboard system-monitor response
-The Rust runtime SHALL serve `GET /api/dashboard/system-monitor` using native metric sampling while preserving dashboard-session safety.
+#### Scenario: `/backend-api/*` wildcard forwards query parameters
+- **WHEN** `GET /backend-api/ping?scope=ops` is called through Rust
+- **THEN** Rust forwards the query parameters upstream
+- **AND** returns the upstream JSON payload.
 
-#### Scenario: Native monitor sample is returned for authenticated session
-- **WHEN** `GET /api/dashboard/system-monitor` is called with valid dashboard session context
-- **THEN** Rust returns HTTP `200`
-- **AND** the JSON payload includes `sampledAt`, `cpuPercent`, `memoryPercent`, `networkMbS`, and `spike` fields.
+#### Scenario: `/v1/*` wildcard forwards POST body and preserves set-cookie
+- **WHEN** `POST /v1/echo` is called through Rust with JSON body and content-type header
+- **THEN** Rust forwards method/body/content-type upstream
+- **AND** forwards upstream `Set-Cookie` response headers.
 
-#### Scenario: Native monitor endpoint fails closed on missing/invalid session
-- **WHEN** `GET /api/dashboard/system-monitor` is called without valid dashboard session context
-- **THEN** Rust returns upstream auth failure status/details (for example HTTP `401`).
-
-#### Scenario: Native monitor endpoint fails closed when session check upstream is unavailable
-- **WHEN** the Python dashboard-session check endpoint is unavailable
-- **AND** `GET /api/dashboard/system-monitor` is called
+#### Scenario: Wildcard bridge fails closed on upstream outage
+- **WHEN** Python upstream is unavailable for wildcard-proxied routes
 - **THEN** Rust returns HTTP `503`
-- **AND** response payload includes explicit session-check failure detail.
+- **AND** response payload includes explicit upstream failure detail.
