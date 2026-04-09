@@ -169,6 +169,10 @@ if [[ -n "$base_worktree" ]] && is_clean_worktree "$base_worktree" && [[ "$PUSH_
   git -C "$base_worktree" pull --ff-only origin "$BASE_BRANCH" >/dev/null 2>&1 || true
 fi
 
+if [[ -x "${repo_root}/scripts/agent-worktree-prune.sh" ]]; then
+  "${repo_root}/scripts/agent-worktree-prune.sh" --base "$BASE_BRANCH" --skip-path "$current_worktree" --quiet >/dev/null 2>&1 || true
+fi
+
 echo "[agent-branch-finish] Merged '${SOURCE_BRANCH}' into '${BASE_BRANCH}' and removed branch."
 if [[ "$source_worktree" == "$current_worktree" && "$source_worktree" == "${repo_root}/.omx/agent-worktrees"/* ]]; then
   echo "[agent-branch-finish] Current worktree '${source_worktree}' still exists because it is the active shell cwd." >&2
