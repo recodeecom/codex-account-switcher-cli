@@ -52,4 +52,6 @@
    bash scripts/agent-branch-finish.sh
    ```
 
+   Both scripts refresh `dev` from `origin/dev` with fast-forward pulls before creating/merging branches.
+
 8. **Best Practices**: Commit often in small units. Do not commit directly to `main`. Always check `git diff` before pushing.
