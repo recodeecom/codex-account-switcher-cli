@@ -197,7 +197,7 @@ def test_overlay_includes_live_process_session_task_previews(monkeypatch) -> Non
     assert session_previews[1].task_preview is None
 
 
-def test_overlay_reattributes_fallback_mapped_session_to_matching_snapshot_preview(
+def test_overlay_keeps_fallback_mapped_session_on_original_snapshot(
     monkeypatch,
 ) -> None:
     now = datetime(2026, 4, 8, tzinfo=timezone.utc)
@@ -269,15 +269,14 @@ def test_overlay_reattributes_fallback_mapped_session_to_matching_snapshot_previ
         now=now,
     )
 
-    assert codex_current_task_preview_by_account[old_account.id] == "old dashboard cleanup"
-    assert codex_current_task_preview_by_account[new_account.id] == "new billing attribution fix"
-    new_session_previews = codex_session_task_previews_by_account[new_account.id]
-    assert [preview.session_key for preview in new_session_previews] == [
-        "pid:61001",
-        "pid:62001",
-    ]
-    assert new_session_previews[0].task_preview == "new billing attribution fix"
-    assert new_session_previews[1].task_preview is None
+    assert (
+        codex_current_task_preview_by_account[old_account.id]
+        == "new billing attribution fix"
+    )
+    assert codex_current_task_preview_by_account[new_account.id] == "Waiting for new task"
+    old_session_previews = codex_session_task_previews_by_account[old_account.id]
+    assert [preview.session_key for preview in old_session_previews] == ["pid:61001"]
+    assert old_session_previews[0].task_preview == "new billing attribution fix"
 
 
 def test_overlay_uses_expected_live_snapshot_when_snapshot_index_is_missing(monkeypatch) -> None:

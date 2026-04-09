@@ -282,10 +282,6 @@ def _read_live_process_task_preview_state_by_snapshot(
         snapshot_name: sorted(set(session_pids))
         for snapshot_name, session_pids in attribution.mapped_session_pids_by_snapshot.items()
     }
-    fallback_mapped_session_pids_by_snapshot = {
-        snapshot_name: sorted(set(session_pids))
-        for snapshot_name, session_pids in attribution.fallback_mapped_session_pids_by_snapshot.items()
-    }
     task_previews_by_pid = (
         attribution.task_previews_by_pid
         if attribution.task_previews_by_pid
@@ -318,39 +314,13 @@ def _read_live_process_task_preview_state_by_snapshot(
                     continue
                 mapped_session_pids_by_snapshot.setdefault(inferred_snapshot_name, []).append(pid)
 
-            fallback_snapshot_name_by_pid = {
-                pid: snapshot_name
-                for snapshot_name, session_pids in fallback_mapped_session_pids_by_snapshot.items()
-                for pid in session_pids
-            }
-            for pid, current_snapshot_name in fallback_snapshot_name_by_pid.items():
-                session_previews = [
-                    normalized_preview
-                    for normalized_preview in (
-                        _normalize_task_preview_match_text(preview)
-                        for preview in task_previews_by_pid.get(pid, [])
-                    )
-                    if normalized_preview
-                ]
-                inferred_snapshot_name = _infer_snapshot_name_from_session_task_previews(
-                    session_previews=session_previews,
-                    snapshot_names_by_task_preview=snapshot_names_by_task_preview,
-                )
-                if (
-                    inferred_snapshot_name is None
-                    or _normalize_snapshot_name(inferred_snapshot_name)
-                    == _normalize_snapshot_name(current_snapshot_name)
-                ):
-                    continue
-
-                mapped_session_pids_by_snapshot[current_snapshot_name] = [
-                    candidate_pid
-                    for candidate_pid in mapped_session_pids_by_snapshot.get(
-                        current_snapshot_name, []
-                    )
-                    if candidate_pid != pid
-                ]
-                mapped_session_pids_by_snapshot.setdefault(inferred_snapshot_name, []).append(pid)
+            # Keep fallback-mapped sessions pinned to their backend owner.
+            # Backend attribution already applies pre-switch ownership guardrails
+            # (registry previous-active snapshot, rollout/session caches, and
+            # start-time checks). Reassigning those sessions here based on task
+            # preview text can remap long-running old-account sessions into a
+            # newly selected account when users send similar prompts after
+            # clicking "Use this account".
 
     for snapshot_name, session_pids in mapped_session_pids_by_snapshot.items():
         mapped_session_pids_by_snapshot[snapshot_name] = sorted(set(session_pids))
