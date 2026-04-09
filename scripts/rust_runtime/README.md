@@ -44,3 +44,11 @@ Default compared endpoints are:
 - `/health/startup`
 
 This is phase-0 evidence only. No production traffic cutover is included.
+
+## 4) Rust-only live usage observability endpoints (phase-2)
+
+- `GET /live_usage` returns XML with no-store cache headers
+- `GET /live_usage/mapping` returns XML with no-store cache headers
+
+These are currently safe baseline skeletons in Rust (zero-session shape) and
+will be expanded toward full Python parity in later slices.
