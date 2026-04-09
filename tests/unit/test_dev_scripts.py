@@ -22,6 +22,18 @@ def _write_executable(path: Path, content: str) -> None:
     path.chmod(path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
 
+def _write_rust_runtime_dev_stub(project: Path) -> None:
+    _write_executable(
+        project / "scripts" / "run-rust-runtime-dev.sh",
+        """#!/bin/sh
+set -eu
+bind="${RUST_RUNTIME_BIND:-127.0.0.1:8099}"
+port="${bind##*:}"
+exec python3 -m http.server "${port}" --bind 127.0.0.1
+""",
+    )
+
+
 def _read_until(process: subprocess.Popen[str], needle: str, timeout: float = 20.0) -> str:
     deadline = time.time() + timeout
     chunks: list[str] = []

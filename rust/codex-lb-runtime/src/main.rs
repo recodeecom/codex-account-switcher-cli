@@ -2,7 +2,7 @@ use axum::{
     Json, Router,
     body::{Body, Bytes},
     extract::{Path, RawQuery, State},
-    http::{HeaderMap, StatusCode, header},
+    http::{HeaderMap, HeaderValue, StatusCode, header},
     response::{Html, Response},
     routing::{any, get},
 };
@@ -11,10 +11,8 @@ use serde::Serialize;
 use serde_json::Value;
 use std::{
     collections::BTreeMap,
-    env, fs,
+    env,
     net::SocketAddr,
-    process::Command,
-    sync::{Mutex, OnceLock},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tracing::info;
@@ -75,27 +73,6 @@ struct PythonLayerApisResponse {
     paths: Vec<String>,
     detail: Option<String>,
 }
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct DashboardSystemMonitorSampleResponse {
-    sampled_at: String,
-    cpu_percent: f64,
-    gpu_percent: Option<f64>,
-    vram_percent: Option<f64>,
-    network_mb_s: f64,
-    memory_percent: f64,
-    spike: bool,
-}
-
-#[derive(Debug, Clone, Copy)]
-struct CpuTotals {
-    idle: u64,
-    total: u64,
-}
-
-static PREVIOUS_CPU_TOTALS: OnceLock<Mutex<Option<CpuTotals>>> = OnceLock::new();
-static PREVIOUS_NETWORK_SAMPLE: OnceLock<Mutex<Option<(u64, f64)>>> = OnceLock::new();
 
 #[derive(Debug, Clone)]
 struct RuntimeFlags {
@@ -384,24 +361,16 @@ async fn dashboard_overview(
 
 async fn dashboard_system_monitor(
     State(state): State<RuntimeState>,
-    _raw_query: RawQuery,
+    raw_query: RawQuery,
     headers: HeaderMap,
 ) -> Response {
-    if let Some(auth_failure) = ensure_dashboard_session(&state, &headers).await {
-        return auth_failure;
-    }
-
-    match serde_json::to_vec(&collect_dashboard_system_monitor_sample()) {
-        Ok(body) => raw_response(
-            StatusCode::OK,
-            "application/json",
-            "no-store",
-            Body::from(body),
-        ),
-        Err(error) => json_fallback_response(format!(
-            r#"{{"detail":"system monitor encode failed: {error}"}}"#
-        )),
-    }
+    proxy_python_json_endpoint(
+        &state,
+        "/api/dashboard/system-monitor",
+        raw_query.0.as_deref(),
+        &headers,
+    )
+    .await
 }
 
 async fn projects_plans(
@@ -891,218 +860,6 @@ fn reqwest_method_from_axum(method: &axum::http::Method) -> reqwest::Method {
     reqwest::Method::from_bytes(method.as_str().as_bytes()).unwrap_or(reqwest::Method::GET)
 }
 
-async fn ensure_dashboard_session(
-    state: &RuntimeState,
-    incoming_headers: &HeaderMap,
-) -> Option<Response> {
-    let url = build_python_url(&state.python_base_url, "/api/dashboard-auth/session", None);
-    let request = forward_proxy_headers(state.python_client.get(url), incoming_headers);
-
-    match request.send().await {
-        Ok(upstream_response) => {
-            if upstream_response.status().is_success() {
-                return None;
-            }
-
-            let status = upstream_response.status();
-            let content_type = upstream_response
-                .headers()
-                .get(header::CONTENT_TYPE)
-                .and_then(|value| value.to_str().ok())
-                .unwrap_or("application/json")
-                .to_string();
-            let cache_control = upstream_response
-                .headers()
-                .get(header::CACHE_CONTROL)
-                .and_then(|value| value.to_str().ok())
-                .unwrap_or("no-store")
-                .to_string();
-
-            Some(match upstream_response.bytes().await {
-                Ok(body) => raw_response(status, &content_type, &cache_control, Body::from(body)),
-                Err(error) => json_fallback_response(format!(
-                    r#"{{"detail":"dashboard session check body read failed: {error}"}}"#
-                )),
-            })
-        }
-        Err(error) => Some(json_fallback_response(format!(
-            r#"{{"detail":"dashboard session check failed: {error}"}}"#
-        ))),
-    }
-}
-
-fn collect_dashboard_system_monitor_sample() -> DashboardSystemMonitorSampleResponse {
-    let cpu_percent = sample_cpu_percent();
-    let memory_percent = read_memory_percent();
-    let network_mb_s = sample_network_mb_s();
-    let gpu_percent = None;
-    let vram_percent = None;
-    let spike = cpu_percent >= 85.0 || memory_percent >= 90.0 || network_mb_s >= 25.0;
-
-    DashboardSystemMonitorSampleResponse {
-        sampled_at: utc_iso8601_now(),
-        cpu_percent,
-        gpu_percent,
-        vram_percent,
-        network_mb_s,
-        memory_percent,
-        spike,
-    }
-}
-
-fn sample_cpu_percent() -> f64 {
-    let Some((idle, total)) = read_proc_cpu_totals() else {
-        return 0.0;
-    };
-
-    let lock = PREVIOUS_CPU_TOTALS.get_or_init(|| Mutex::new(None));
-    let mut previous = lock.lock().expect("cpu totals mutex poisoned");
-    let result = match *previous {
-        Some(prev) if total > prev.total => {
-            let total_delta = total.saturating_sub(prev.total);
-            let idle_delta = idle.saturating_sub(prev.idle);
-            if total_delta == 0 {
-                0.0
-            } else {
-                clamp_percent(100.0 * (1.0 - (idle_delta as f64 / total_delta as f64)))
-            }
-        }
-        _ => 0.0,
-    };
-    *previous = Some(CpuTotals { idle, total });
-    round_metric(result)
-}
-
-fn read_proc_cpu_totals() -> Option<(u64, u64)> {
-    let first_line = fs::read_to_string("/proc/stat")
-        .ok()?
-        .lines()
-        .next()
-        .map(str::to_string)?;
-    if !first_line.starts_with("cpu ") {
-        return None;
-    }
-    let values: Vec<u64> = first_line
-        .split_whitespace()
-        .skip(1)
-        .filter_map(|part| part.parse::<u64>().ok())
-        .collect();
-    if values.len() < 4 {
-        return None;
-    }
-    let idle = values[3] + values.get(4).copied().unwrap_or(0);
-    let total = values.iter().sum();
-    Some((idle, total))
-}
-
-fn read_memory_percent() -> f64 {
-    let content = match fs::read_to_string("/proc/meminfo") {
-        Ok(value) => value,
-        Err(_) => return 0.0,
-    };
-
-    let mut total_kib = 0_u64;
-    let mut available_kib = None::<u64>;
-    let mut free_kib = 0_u64;
-    let mut buffers_kib = 0_u64;
-    let mut cached_kib = 0_u64;
-
-    for line in content.lines() {
-        let mut parts = line.split(':');
-        let key = parts.next().unwrap_or_default().trim();
-        let value_part = parts
-            .next()
-            .unwrap_or_default()
-            .split_whitespace()
-            .next()
-            .unwrap_or_default();
-        let Ok(value) = value_part.parse::<u64>() else {
-            continue;
-        };
-        match key {
-            "MemTotal" => total_kib = value,
-            "MemAvailable" => available_kib = Some(value),
-            "MemFree" => free_kib = value,
-            "Buffers" => buffers_kib = value,
-            "Cached" => cached_kib = value,
-            _ => {}
-        }
-    }
-
-    if total_kib == 0 {
-        return 0.0;
-    }
-    let available = available_kib.unwrap_or(free_kib + buffers_kib + cached_kib);
-    let used = total_kib.saturating_sub(available);
-    round_metric(clamp_percent((used as f64 / total_kib as f64) * 100.0))
-}
-
-fn sample_network_mb_s() -> f64 {
-    let current_bytes = read_network_total_bytes();
-    let now_seconds = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_secs_f64())
-        .unwrap_or(0.0);
-    let lock = PREVIOUS_NETWORK_SAMPLE.get_or_init(|| Mutex::new(None));
-    let mut previous = lock.lock().expect("network sample mutex poisoned");
-    let result = match *previous {
-        Some((prev_bytes, prev_ts)) if now_seconds > prev_ts => {
-            let elapsed = now_seconds - prev_ts;
-            let bytes_per_second = current_bytes.saturating_sub(prev_bytes) as f64 / elapsed;
-            bytes_per_second / (1024.0 * 1024.0)
-        }
-        _ => 0.0,
-    };
-    *previous = Some((current_bytes, now_seconds));
-    round_metric(result)
-}
-
-fn read_network_total_bytes() -> u64 {
-    let content = match fs::read_to_string("/proc/net/dev") {
-        Ok(value) => value,
-        Err(_) => return 0,
-    };
-    content
-        .lines()
-        .skip(2)
-        .filter_map(|line| {
-            let (interface, payload) = line.split_once(':')?;
-            if interface.trim() == "lo" {
-                return Some(0_u64);
-            }
-            let mut fields = payload.split_whitespace();
-            let rx = fields.next()?.parse::<u64>().ok()?;
-            let tx = fields.nth(7)?.parse::<u64>().ok()?;
-            Some(rx + tx)
-        })
-        .sum()
-}
-
-fn utc_iso8601_now() -> String {
-    let output = Command::new("date")
-        .args(["-u", "+%Y-%m-%dT%H:%M:%SZ"])
-        .output();
-    if let Ok(result) = output {
-        if result.status.success() {
-            if let Ok(value) = String::from_utf8(result.stdout) {
-                let trimmed = value.trim();
-                if !trimmed.is_empty() {
-                    return trimmed.to_string();
-                }
-            }
-        }
-    }
-    "1970-01-01T00:00:00Z".to_string()
-}
-
-fn clamp_percent(value: f64) -> f64 {
-    value.clamp(0.0, 100.0)
-}
-
-fn round_metric(value: f64) -> f64 {
-    (value * 10.0).round() / 10.0
-}
-
 async fn proxy_python_live_usage_xml(
     state: &RuntimeState,
     endpoint: &str,
@@ -1221,35 +978,15 @@ async fn proxy_python_json_endpoint(
     raw_query: Option<&str>,
     incoming_headers: &HeaderMap,
 ) -> Response {
-    let url = build_python_url(&state.python_base_url, endpoint, raw_query);
-    let request = forward_proxy_headers(state.python_client.get(url), incoming_headers);
-    match request.send().await {
-        Ok(upstream_response) => {
-            let status = upstream_response.status();
-            let content_type = upstream_response
-                .headers()
-                .get(header::CONTENT_TYPE)
-                .and_then(|value| value.to_str().ok())
-                .unwrap_or("application/json")
-                .to_string();
-            let cache_control = upstream_response
-                .headers()
-                .get(header::CACHE_CONTROL)
-                .and_then(|value| value.to_str().ok())
-                .unwrap_or("no-store")
-                .to_string();
-
-            match upstream_response.bytes().await {
-                Ok(body) => raw_response(status, &content_type, &cache_control, Body::from(body)),
-                Err(error) => json_fallback_response(format!(
-                    r#"{{"detail":"upstream body read failed: {error}"}}"#
-                )),
-            }
-        }
-        Err(error) => json_fallback_response(format!(
-            r#"{{"detail":"upstream request failed: {error}"}}"#
-        )),
-    }
+    proxy_python_json_endpoint_with_method(
+        state,
+        reqwest::Method::GET,
+        endpoint,
+        raw_query,
+        incoming_headers,
+        None,
+    )
+    .await
 }
 
 async fn proxy_python_json_endpoint_with_method(
@@ -1271,6 +1008,12 @@ async fn proxy_python_json_endpoint_with_method(
     match request.send().await {
         Ok(upstream_response) => {
             let status = upstream_response.status();
+            let set_cookie_headers: Vec<HeaderValue> = upstream_response
+                .headers()
+                .get_all(header::SET_COOKIE)
+                .iter()
+                .cloned()
+                .collect();
             let content_type = upstream_response
                 .headers()
                 .get(header::CONTENT_TYPE)
@@ -1285,7 +1028,13 @@ async fn proxy_python_json_endpoint_with_method(
                 .to_string();
 
             match upstream_response.bytes().await {
-                Ok(body) => raw_response(status, &content_type, &cache_control, Body::from(body)),
+                Ok(body) => raw_response(
+                    status,
+                    &content_type,
+                    &cache_control,
+                    &set_cookie_headers,
+                    Body::from(body),
+                ),
                 Err(error) => json_fallback_response(format!(
                     r#"{{"detail":"upstream body read failed: {error}"}}"#
                 )),
@@ -1306,6 +1055,7 @@ fn forward_proxy_headers(
         header::AUTHORIZATION,
         header::USER_AGENT,
         header::ACCEPT,
+        header::CONTENT_TYPE,
     ] {
         if let Some(value) = incoming_headers.get(&header_name) {
             request = request.header(header_name.as_str(), value.clone());
@@ -1318,21 +1068,26 @@ fn raw_response(
     status: StatusCode,
     content_type: &str,
     cache_control: &str,
+    set_cookie_headers: &[HeaderValue],
     body: Body,
 ) -> Response {
-    Response::builder()
+    let mut builder = Response::builder()
         .status(status)
         .header(header::CONTENT_TYPE, content_type)
-        .header(header::CACHE_CONTROL, cache_control)
-        .body(body)
-        .unwrap_or_else(|_| {
-            Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .header(header::CONTENT_TYPE, "application/json")
-                .header(header::CACHE_CONTROL, "no-store")
-                .body(Body::from(r#"{"detail":"invalid response build state"}"#))
-                .expect("build static JSON error response")
-        })
+        .header(header::CACHE_CONTROL, cache_control);
+
+    for set_cookie in set_cookie_headers {
+        builder = builder.header(header::SET_COOKIE, set_cookie.clone());
+    }
+
+    builder.body(body).unwrap_or_else(|_| {
+        Response::builder()
+            .status(StatusCode::INTERNAL_SERVER_ERROR)
+            .header(header::CONTENT_TYPE, "application/json")
+            .header(header::CACHE_CONTROL, "no-store")
+            .body(Body::from(r#"{"detail":"invalid response build state"}"#))
+            .expect("build static JSON error response")
+    })
 }
 
 fn json_fallback_response(body: String) -> Response {
@@ -1340,6 +1095,7 @@ fn json_fallback_response(body: String) -> Response {
         StatusCode::SERVICE_UNAVAILABLE,
         "application/json",
         "no-store",
+        &[],
         Body::from(body),
     )
 }
@@ -1353,7 +1109,7 @@ mod tests {
         Json, Router,
         body::Body,
         http::{Request, StatusCode},
-        routing::get,
+        routing::{get, post},
     };
     use serde_json::{Value, json};
     use std::time::Duration;
@@ -1752,14 +1508,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn dashboard_system_monitor_returns_native_sample_shape() {
+    async fn dashboard_system_monitor_proxies_upstream_shape() {
         let (python_base_url, server_handle) = spawn_python_dashboard_api_stub().await;
         let app = app_with_state(state_for_python_base_url(python_base_url));
 
         let response = app
             .oneshot(
                 Request::builder()
-                    .uri("/api/dashboard/system-monitor")
+                    .uri("/api/dashboard/system-monitor?include_processes=true")
                     .header("cookie", "dashboard_session=test")
                     .body(Body::empty())
                     .unwrap(),
@@ -1774,17 +1530,8 @@ mod tests {
             .unwrap()
             .to_bytes();
         let payload: Value = serde_json::from_slice(&body).unwrap();
-        assert!(payload.get("status").is_none());
-        assert!(
-            payload["sampledAt"]
-                .as_str()
-                .unwrap_or_default()
-                .contains('T')
-        );
-        assert!(payload["cpuPercent"].is_number());
-        assert!(payload["memoryPercent"].is_number());
-        assert!(payload["networkMbS"].is_number());
-        assert!(payload["spike"].is_boolean());
+        assert_eq!(payload["status"], "ok");
+        assert_eq!(payload["include_processes"], true);
 
         server_handle.abort();
     }
