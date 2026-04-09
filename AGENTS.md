@@ -75,6 +75,44 @@ Required verification before claiming Rust runtime changes are complete:
   - `cargo test -p codex-lb-runtime --no-run`
 - If route/auth behavior changed, add/adjust Rust runtime tests in `rust/codex-lb-runtime/src/main.rs` test module.
 
+## Multi-Agent Execution Contract (Default)
+
+Use this contract whenever multiple agents are active in parallel.
+
+1) Explicit ownership before edits
+- Assign each agent clear file/module ownership.
+- Do not edit files outside your assigned scope unless the leader reassigns ownership.
+
+2) No destructive rewrites of shared behavior
+- Do not delete, replace, or “simplify away” critical paths (auth/session, proxy routes, production API wiring) without:
+  - explicit user request or approved plan checkpoint, and
+  - updated regression tests proving intended behavior.
+
+3) Preserve parallel safety
+- Assume other agents are editing nearby code concurrently.
+- Never revert unrelated changes authored by others.
+- If another change conflicts with your approach, adapt and report the conflict in handoff.
+
+4) Verify before completion
+- Run required local checks for the area you changed.
+- For Rust runtime changes, minimum gate:
+  - `bun run verify:rust-runtime-guardrails`
+  - `cargo check -p codex-lb-runtime`
+  - `cargo test -p codex-lb-runtime --no-run`
+- Do not mark work complete without command output evidence.
+
+5) Required handoff format (every agent)
+- Files changed
+- Behavior touched
+- Verification commands + results
+- Risks / follow-ups
+
+6) Integration-first finalization
+- Use one integrator pass before final completion to confirm:
+  - no critical behavior was removed unintentionally,
+  - ownership boundaries were respected,
+  - verification gates passed.
+
 ## Versioning Rule
 
 ## Workflow (OpenSpec-first)

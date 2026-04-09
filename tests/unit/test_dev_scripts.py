@@ -211,6 +211,8 @@ exit 1
         assert "http://localhost:32455" in output
         assert "http://localhost:39000/app" in output
         assert "http://localhost:35174" in output
+        assert "runtime  http://localhost:32455 (python)" in output
+        assert "bun run logs -watch rust" not in output
         assert "APP NOISY LINE" not in output
         assert "BACKEND NOISY LINE" not in output
         assert "FRONTEND NOISY LINE" not in output
@@ -303,6 +305,7 @@ echo "cargo stub"
     env["MEDUSA_BACKEND_PORT"] = "39065"
     env["FRONTEND_PORT"] = "35165"
     env["RUST_RUNTIME_PORT"] = "38099"
+    env["RUNTIME_LAYER"] = "rust"
 
     proc = subprocess.Popen(
         ["bash", "./scripts/dev-all.sh"],
@@ -314,8 +317,10 @@ echo "cargo stub"
     )
 
     try:
-        _read_until(proc, "[dev] Ready")
-        _read_until(proc, "bun run logs -watch frontend")
+        output = _read_until(proc, "[dev] Ready")
+        output += _read_until(proc, "bun run logs -watch frontend")
+        assert "runtime  http://localhost:38099 (rust)" in output
+        assert "bun run logs -watch rust" in output
         rust_log = (project / "logs" / "rust-runtime.log").read_text(encoding="utf-8")
         assert "RUST APP PORT 32465" in rust_log
     finally:
