@@ -1301,6 +1301,51 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn backend_api_wildcard_forwards_transcribe_multipart_payload() {
+        let (python_base_url, server_handle) = spawn_python_dashboard_api_stub().await;
+        let app = app_with_state(state_for_python_base_url(python_base_url));
+
+        let boundary = "----codex-lb-test-boundary";
+        let multipart_body = format!(
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"clip.wav\"\r\nContent-Type: audio/wav\r\n\r\nFAKEAUDIO\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\nhello from rust proxy\r\n--{boundary}--\r\n"
+        );
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/backend-api/transcribe")
+                    .header(
+                        "content-type",
+                        format!("multipart/form-data; boundary={boundary}"),
+                    )
+                    .body(Body::from(multipart_body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = http_body_util::BodyExt::collect(response.into_body())
+            .await
+            .unwrap()
+            .to_bytes();
+        let payload: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(payload["status"], "ok");
+        assert!(
+            payload["content_type"]
+                .as_str()
+                .unwrap_or_default()
+                .starts_with("multipart/form-data")
+        );
+        assert_eq!(payload["has_file_part"], true);
+        assert!(payload["size_bytes"].as_u64().unwrap_or_default() > 0);
+
+        server_handle.abort();
+    }
+
+    #[tokio::test]
     async fn v1_wildcard_forwards_post_body_content_type_and_set_cookie() {
         let (python_base_url, server_handle) = spawn_python_dashboard_api_stub().await;
         let app = app_with_state(state_for_python_base_url(python_base_url));
@@ -1328,6 +1373,51 @@ mod tests {
         assert_eq!(payload["status"], "ok");
         assert_eq!(payload["content_type"], "application/json");
         assert_eq!(payload["payload"]["task"], "quota-sync");
+
+        server_handle.abort();
+    }
+
+    #[tokio::test]
+    async fn v1_wildcard_forwards_audio_transcriptions_multipart_payload() {
+        let (python_base_url, server_handle) = spawn_python_dashboard_api_stub().await;
+        let app = app_with_state(state_for_python_base_url(python_base_url));
+
+        let boundary = "----codex-lb-v1-boundary";
+        let multipart_body = format!(
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\ngpt-4o-transcribe\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"sample.wav\"\r\nContent-Type: audio/wav\r\n\r\nAUDIOPAYLOAD\r\n--{boundary}--\r\n"
+        );
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/audio/transcriptions")
+                    .header(
+                        "content-type",
+                        format!("multipart/form-data; boundary={boundary}"),
+                    )
+                    .body(Body::from(multipart_body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = http_body_util::BodyExt::collect(response.into_body())
+            .await
+            .unwrap()
+            .to_bytes();
+        let payload: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(payload["status"], "ok");
+        assert!(
+            payload["content_type"]
+                .as_str()
+                .unwrap_or_default()
+                .starts_with("multipart/form-data")
+        );
+        assert_eq!(payload["has_model_part"], true);
+        assert_eq!(payload["has_file_part"], true);
 
         server_handle.abort();
     }
@@ -1896,6 +1986,27 @@ mod tests {
                 }),
             )
             .route(
+                "/backend-api/transcribe",
+                post(|headers: axum::http::HeaderMap, body: axum::body::Bytes| async move {
+                    let content_type = headers
+                        .get("content-type")
+                        .and_then(|value| value.to_str().ok())
+                        .unwrap_or_default()
+                        .to_string();
+                    let body_text = String::from_utf8_lossy(&body);
+
+                    (
+                        StatusCode::OK,
+                        Json(json!({
+                            "status": "ok",
+                            "content_type": content_type,
+                            "size_bytes": body.len(),
+                            "has_file_part": body_text.contains("filename=\"clip.wav\"")
+                        })),
+                    )
+                }),
+            )
+            .route(
                 "/v1/echo",
                 post(|headers: axum::http::HeaderMap, body: axum::body::Bytes| async move {
                     let content_type = headers
@@ -1913,6 +2024,28 @@ mod tests {
                             "status": "ok",
                             "content_type": content_type,
                             "payload": payload
+                        })),
+                    )
+                }),
+            )
+            .route(
+                "/v1/audio/transcriptions",
+                post(|headers: axum::http::HeaderMap, body: axum::body::Bytes| async move {
+                    let content_type = headers
+                        .get("content-type")
+                        .and_then(|value| value.to_str().ok())
+                        .unwrap_or_default()
+                        .to_string();
+                    let body_text = String::from_utf8_lossy(&body);
+
+                    (
+                        StatusCode::OK,
+                        Json(json!({
+                            "status": "ok",
+                            "content_type": content_type,
+                            "has_model_part": body_text.contains("name=\"model\"")
+                                && body_text.contains("gpt-4o-transcribe"),
+                            "has_file_part": body_text.contains("filename=\"sample.wav\"")
                         })),
                     )
                 }),
