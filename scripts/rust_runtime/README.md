@@ -26,12 +26,15 @@ python scripts/rust_runtime/compare_runtime.py \
   --python-base-url http://127.0.0.1:8000 \
   --rust-base-url http://127.0.0.1:8099 \
   --iterations 20 \
-  --endpoints /health /health/live
+  --endpoints /health /health/live /health/ready /health/startup \
+  --strict
 ```
 
 The script prints JSON with:
 - dominant status code match
-- dominant body hash match
+- content-type match
+- canonical JSON body parity and raw body hash match
+- endpoint-level mismatch reasons
 - p50/p95 latency for both runtimes
 
 Default compared endpoints are:

@@ -26,3 +26,8 @@ The repository SHALL provide a comparison utility to benchmark and compare respo
 - **WHEN** `scripts/rust_runtime/compare_runtime.py` is run with Python and Rust base URLs
 - **THEN** the script outputs per-endpoint status and latency summaries for each runtime
 - **AND** the output includes response body hash comparisons for parity checks
+
+#### Scenario: Strict comparison mode fails on contract mismatch
+- **WHEN** `scripts/rust_runtime/compare_runtime.py --strict` detects any endpoint mismatch
+- **THEN** the script exits with a non-zero status code
+- **AND** the JSON output includes mismatch reasons for each failing endpoint

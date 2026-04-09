@@ -10,6 +10,7 @@
 - [x] 2.3 Add usage notes under `scripts/rust_runtime/README.md`.
 - [x] 2.4 Add `GET /` runtime health panel for quick browser verification.
 - [x] 2.5 Expand Rust health slice with `GET /health/ready` and `GET /health/startup`.
+- [x] 2.6 Upgrade comparison utility with strict contract-mode mismatch detection.
 
 ## 3. Verification
 
