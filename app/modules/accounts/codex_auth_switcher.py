@@ -173,6 +173,10 @@ def resolve_snapshot_name_candidates_for_account(
         snapshot_names=resolved,
         email=email,
     )
+    resolved = _prefer_email_aligned_snapshot_names(
+        snapshot_names=resolved,
+        email=email,
+    )
     return resolved
 
 
@@ -304,6 +308,49 @@ def _email_owned_snapshot_name_candidates(email: str | None) -> list[str]:
         if snapshot_email == normalized_email:
             matches.append(snapshot_path.stem)
     return matches
+
+
+def _prefer_email_aligned_snapshot_names(
+    *,
+    snapshot_names: list[str],
+    email: str | None,
+) -> list[str]:
+    if not snapshot_names:
+        return snapshot_names
+
+    aligned = [
+        snapshot_name
+        for snapshot_name in snapshot_names
+        if _is_email_aligned_snapshot_name(snapshot_name, email=email)
+    ]
+    if aligned:
+        return aligned
+    return snapshot_names
+
+
+def _is_email_aligned_snapshot_name(snapshot_name: str, *, email: str | None) -> bool:
+    normalized_email = build_email_snapshot_name(email)
+    if not normalized_email:
+        return False
+
+    candidate = snapshot_name.strip().lower()
+    if not candidate:
+        return False
+    if candidate == normalized_email:
+        return True
+    if candidate.startswith(f"{normalized_email}--"):
+        return True
+
+    canonical_local_part = _canonical_snapshot_name_from_email(email)
+    if not canonical_local_part:
+        return False
+    if candidate == canonical_local_part:
+        return True
+
+    for delimiter in ("-", "_", ".", "@"):
+        if candidate.startswith(f"{canonical_local_part}{delimiter}"):
+            return True
+    return False
 
 
 def _resolve_accounts_dir() -> Path:
@@ -583,7 +630,7 @@ def _email_prefix_snapshot_name_candidates(
     if not local_part:
         return []
 
-    delimiters = ("-", "_", ".")
+    delimiters = ("-", "_", ".", "@")
     candidates = [
         name
         for name in sorted(snapshot_names, key=lambda value: (len(value), value))
