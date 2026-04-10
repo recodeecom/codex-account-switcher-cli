@@ -16,6 +16,7 @@ DEFAULT_MEDUSA_PORT="${MEDUSA_BACKEND_PORT:-9000}"
 DEFAULT_FRONTEND_PORT="${FRONTEND_PORT:-5174}"
 DEFAULT_RUST_RUNTIME_PORT="${RUST_RUNTIME_PORT:-8099}"
 RUNTIME_LAYER_RAW="${RUNTIME_LAYER:-python}"
+START_RUST_RUNTIME_RAW="${START_RUST_RUNTIME:-}"
 
 app_pid=""
 backend_pid=""
@@ -35,6 +36,17 @@ case "$RUNTIME_LAYER" in
     exit 1
     ;;
 esac
+
+bool_from_env() {
+  local raw_value="$1"
+  local value
+  value="$(printf "%s" "$raw_value" | tr "[:upper:]" "[:lower:]")"
+  case "$value" in
+    1|true|yes|on) printf 'true\n' ;;
+    0|false|no|off) printf 'false\n' ;;
+    *) return 1 ;;
+  esac
+}
 
 require_cmd() {
   local cmd="$1"
@@ -440,7 +452,21 @@ fi
 
 rust_runtime_port="$DEFAULT_RUST_RUNTIME_PORT"
 rust_runtime_needs_wait=false
+rust_runtime_requested="false"
+rust_runtime_started="false"
 if [[ "$RUNTIME_LAYER" == "rust" ]]; then
+  rust_runtime_requested="true"
+elif [[ -z "$START_RUST_RUNTIME_RAW" ]]; then
+  rust_runtime_requested="true"
+else
+  rust_runtime_requested="$(bool_from_env "$START_RUST_RUNTIME_RAW" || true)"
+  if [[ -z "$rust_runtime_requested" ]]; then
+    echo "[dev] Unsupported START_RUST_RUNTIME='${START_RUST_RUNTIME_RAW}'. Use true/false." >&2
+    exit 1
+  fi
+fi
+
+if [[ "$rust_runtime_requested" == "true" ]]; then
   mark_log_session "rust-runtime" "$RUST_RUNTIME_LOG_FILE"
   if port_in_use "$rust_runtime_port"; then
     existing_rust_pid="$(find_pid_on_port "$rust_runtime_port" || true)"
@@ -450,21 +476,31 @@ if [[ "$RUNTIME_LAYER" == "rust" ]]; then
     fi
 
     echo "[dev] Reusing rust runtime on http://localhost:${rust_runtime_port}"
+    rust_runtime_started="true"
     if [[ -n "$existing_rust_pid" ]] && is_pid_alive "$existing_rust_pid"; then
       spawn_pid_watcher "$existing_rust_pid" rust_pid
     fi
   else
-    require_cmd cargo
-    echo "[dev] Starting rust runtime on http://localhost:${rust_runtime_port}"
-    (
-      cd "$ROOT_DIR"
-      APP_BACKEND_PORT="$APP_PORT" RUST_RUNTIME_BIND="127.0.0.1:${rust_runtime_port}" sh ./scripts/run-rust-runtime-dev.sh
-    ) >>"$RUST_RUNTIME_LOG_FILE" 2>&1 &
-    rust_pid="$!"
-    rust_runtime_needs_wait=true
+    if ! command -v cargo >/dev/null 2>&1; then
+      if [[ "$RUNTIME_LAYER" == "rust" ]]; then
+        echo "[dev] Missing required command: cargo" >&2
+        exit 1
+      fi
+      echo "[dev] Skipping rust runtime sidecar because cargo is not installed (set START_RUST_RUNTIME=false to disable)." >&2
+      rust_runtime_requested="false"
+    else
+      echo "[dev] Starting rust runtime on http://localhost:${rust_runtime_port}"
+      (
+        cd "$ROOT_DIR"
+        APP_BACKEND_PORT="$APP_PORT" RUST_RUNTIME_BIND="127.0.0.1:${rust_runtime_port}" sh ./scripts/run-rust-runtime-dev.sh
+      ) >>"$RUST_RUNTIME_LOG_FILE" 2>&1 &
+      rust_pid="$!"
+      rust_runtime_needs_wait=true
+      rust_runtime_started="true"
+    fi
   fi
 else
-  echo "[dev] Using python runtime on http://localhost:${APP_PORT} (set RUNTIME_LAYER=rust to enable rust runtime)"
+  echo "[dev] Using python runtime on http://localhost:${APP_PORT} (set START_RUST_RUNTIME=false to skip rust sidecar)"
 fi
 
 medusa_port="$DEFAULT_MEDUSA_PORT"
@@ -531,12 +567,15 @@ echo
 echo "$ready_label"
 echo "  app      ${app_url}"
 echo "  runtime  ${runtime_url} (${runtime_label})"
+if [[ "$RUNTIME_LAYER" == "python" ]] && [[ "$rust_runtime_started" == "true" ]]; then
+  echo "  rust     ${rust_runtime_url} (sidecar)"
+fi
 echo "  backend  ${backend_url}"
 echo "  frontend ${frontend_url}"
 echo
 echo "[dev] Watch logs with:"
 echo "  bun run logs -watch app"
-if [[ "$RUNTIME_LAYER" == "rust" ]]; then
+if [[ "$rust_runtime_started" == "true" ]]; then
   echo "  bun run logs -watch rust"
 fi
 echo "  bun run logs -watch server"
