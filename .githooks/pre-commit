@@ -10,6 +10,14 @@ if [[ "${ALLOW_COMMIT_ON_PROTECTED_BRANCH:-0}" == "1" ]]; then
   exit 0
 fi
 
+is_agent_context=0
+if [[ "${CODEX_CI:-0}" == "1" ]] || [[ -n "${OMX_SESSION_ID:-}" ]] || [[ -n "${CODEX_THREAD_ID:-}" ]]; then
+  is_agent_context=1
+fi
+if [[ "${MUSAFETY_FORCE_AGENT_CONTEXT:-0}" == "1" ]]; then
+  is_agent_context=1
+fi
+
 protected_branches_raw="$(git config --get multiagent.protectedBranches || true)"
 if [[ -z "$protected_branches_raw" ]]; then
   protected_branches_raw="dev main master"
@@ -25,6 +33,14 @@ for protected_branch in "${protected_branches[@]}"; do
 done
 
 if [[ "$is_protected_branch" == "1" ]]; then
+  if [[ "$is_agent_context" != "1" ]]; then
+    # Human/manual commits are allowed on protected branches.
+    # Remote branch protection still enforces PR-only pushes where configured.
+    is_protected_branch=0
+  fi
+fi
+
+if [[ "$is_protected_branch" == "1" ]]; then
   git_dir="$(git rev-parse --git-dir)"
   if [[ -f "$git_dir/MERGE_HEAD" ]]; then
     exit 0
@@ -36,6 +52,19 @@ Use an agent branch first:
   bash scripts/agent-branch-start.sh "<task-or-plan>" "<agent-name>"
 After finishing work:
   bash scripts/agent-branch-finish.sh
+
+Temporary bypass (not recommended):
+  ALLOW_COMMIT_ON_PROTECTED_BRANCH=1 git commit ...
+MSG
+  exit 1
+fi
+
+if [[ "$is_agent_context" == "1" && "$branch" != agent/* ]]; then
+  cat >&2 <<'MSG'
+[agent-branch-guard] Agent commits must run on dedicated agent/* branches.
+Start an agent branch first:
+  bash scripts/agent-branch-start.sh "<task-or-plan>" "<agent-name>"
+Then commit on that branch.
 
 Temporary bypass (not recommended):
   ALLOW_COMMIT_ON_PROTECTED_BRANCH=1 git commit ...

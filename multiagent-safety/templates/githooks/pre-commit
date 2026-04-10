@@ -10,13 +10,16 @@ if [[ "${ALLOW_COMMIT_ON_PROTECTED_BRANCH:-0}" == "1" ]]; then
   exit 0
 fi
 
-is_vscode_source_control_commit=0
-if [[ -n "${VSCODE_GIT_IPC_HANDLE:-}" ]] || [[ -n "${VSCODE_GIT_ASKPASS_NODE:-}" ]] || [[ -n "${VSCODE_IPC_HOOK_CLI:-}" ]]; then
-  is_vscode_source_control_commit=1
+is_agent_context=0
+if [[ "${CODEX_CI:-0}" == "1" ]] || [[ -n "${OMX_SESSION_ID:-}" ]] || [[ -n "${CODEX_THREAD_ID:-}" ]]; then
+  is_agent_context=1
+fi
+if [[ "${MUSAFETY_FORCE_AGENT_CONTEXT:-0}" == "1" ]]; then
+  is_agent_context=1
 fi
 
 if [[ "$branch" == "dev" || "$branch" == "main" || "$branch" == "master" ]]; then
-  if [[ "$is_vscode_source_control_commit" == "1" ]]; then
+  if [[ "$is_agent_context" != "1" ]]; then
     exit 0
   fi
 
@@ -31,6 +34,19 @@ Use an agent branch first:
   bash scripts/agent-branch-start.sh "<task-or-plan>" "<agent-name>"
 After finishing work:
   bash scripts/agent-branch-finish.sh
+
+Temporary bypass (not recommended):
+  ALLOW_COMMIT_ON_PROTECTED_BRANCH=1 git commit ...
+MSG
+  exit 1
+fi
+
+if [[ "$is_agent_context" == "1" && "$branch" != agent/* ]]; then
+  cat >&2 <<'MSG'
+[agent-branch-guard] Agent commits must run on dedicated agent/* branches.
+Start an agent branch first:
+  bash scripts/agent-branch-start.sh "<task-or-plan>" "<agent-name>"
+Then commit on that branch.
 
 Temporary bypass (not recommended):
   ALLOW_COMMIT_ON_PROTECTED_BRANCH=1 git commit ...
