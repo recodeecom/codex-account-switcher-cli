@@ -64,6 +64,7 @@ class RequestLogUsageSummaryWindow:
 class RequestLogUsageSummary:
     last_5h: RequestLogUsageSummaryWindow
     last_7d: RequestLogUsageSummaryWindow
+    last_30d: RequestLogUsageSummaryWindow
     fx_rate_usd_to_eur: float
 
 
@@ -155,11 +156,17 @@ class RequestLogsService:
         effective_now = now or utcnow()
         since_5h = effective_now - timedelta(hours=5)
         since_7d = effective_now - timedelta(days=7)
-        rows = await self._repo.aggregate_token_usage_by_account(since_7d=since_7d, since_5h=since_5h)
+        since_30d = effective_now - timedelta(days=30)
+        rows = await self._repo.aggregate_token_usage_by_account(
+            since_30d=since_30d,
+            since_7d=since_7d,
+            since_5h=since_5h,
+        )
 
         return RequestLogUsageSummary(
             last_5h=_build_usage_window(rows, window="5h", fx_rate_usd_to_eur=self._fx_rate_usd_to_eur),
             last_7d=_build_usage_window(rows, window="7d", fx_rate_usd_to_eur=self._fx_rate_usd_to_eur),
+            last_30d=_build_usage_window(rows, window="30d", fx_rate_usd_to_eur=self._fx_rate_usd_to_eur),
             fx_rate_usd_to_eur=self._fx_rate_usd_to_eur,
         )
 
@@ -212,12 +219,13 @@ def _build_usage_window(
     window: str,
     fx_rate_usd_to_eur: float,
 ) -> RequestLogUsageSummaryWindow:
-    cost_attr = "cost_usd_5h" if window == "5h" else "cost_usd_7d"
+    token_attr = "tokens_5h" if window == "5h" else "tokens_7d" if window == "7d" else "tokens_30d"
+    cost_attr = "cost_usd_5h" if window == "5h" else "cost_usd_7d" if window == "7d" else "cost_usd_30d"
     accounts = [
         RequestLogUsageAccountTokens(
             account_id=row.account_id,
             account_email=row.account_email,
-            tokens=max(0, row.tokens_5h if window == "5h" else row.tokens_7d),
+            tokens=max(0, getattr(row, token_attr)),
             cost_usd=max(0.0, getattr(row, cost_attr)),
             cost_eur=max(0.0, getattr(row, cost_attr) * fx_rate_usd_to_eur),
         )

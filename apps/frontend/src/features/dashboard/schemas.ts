@@ -146,6 +146,7 @@ export const RequestLogUsageSummaryWindowSchema = z.object({
 export const RequestLogUsageSummarySchema = z.object({
   last5h: RequestLogUsageSummaryWindowSchema,
   last7d: RequestLogUsageSummaryWindowSchema,
+  last30d: RequestLogUsageSummaryWindowSchema,
   fxRateUsdToEur: z.number().positive(),
 });
 
