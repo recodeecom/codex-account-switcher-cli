@@ -1000,6 +1000,7 @@ export const handlers = [
 		const now = new Date();
 		const since5h = now.getTime() - 5 * 60 * 60 * 1000;
 		const since7d = now.getTime() - 7 * 24 * 60 * 60 * 1000;
+		const since30d = now.getTime() - 30 * 24 * 60 * 60 * 1000;
 		const filtered = filterRequestLogs(url, { includeStatuses: false });
 
 		const sumByAccount = (
@@ -1044,11 +1045,13 @@ export const handlers = [
 
 		const last5hEntries = filtered.filter((entry) => new Date(entry.requestedAt).getTime() >= since5h);
 		const last7dEntries = filtered.filter((entry) => new Date(entry.requestedAt).getTime() >= since7d);
+		const last30dEntries = filtered.filter((entry) => new Date(entry.requestedAt).getTime() >= since30d);
 
 		return HttpResponse.json(
 			createRequestLogUsageSummary({
 				last5h: sumByAccount(last5hEntries),
 				last7d: sumByAccount(last7dEntries),
+				last30d: sumByAccount(last30dEntries),
 				fxRateUsdToEur: 0.92,
 			}),
 		);
