@@ -28,8 +28,10 @@ class RequestLogTokenUsageRow:
     account_email: str | None
     tokens_5h: int
     tokens_7d: int
+    tokens_30d: int
     cost_usd_5h: float
     cost_usd_7d: float
+    cost_usd_30d: float
 
 
 class RequestLogsRepository:
@@ -43,6 +45,7 @@ class RequestLogsRepository:
     async def aggregate_token_usage_by_account(
         self,
         *,
+        since_30d: datetime,
         since_7d: datetime,
         since_5h: datetime,
     ) -> list[RequestLogTokenUsageRow]:
@@ -58,16 +61,24 @@ class RequestLogsRepository:
                     func.sum(case((RequestLog.requested_at >= since_5h, token_expr), else_=0)),
                     0,
                 ).label("tokens_5h"),
-                func.coalesce(func.sum(token_expr), 0).label("tokens_7d"),
+                func.coalesce(
+                    func.sum(case((RequestLog.requested_at >= since_7d, token_expr), else_=0)),
+                    0,
+                ).label("tokens_7d"),
+                func.coalesce(func.sum(token_expr), 0).label("tokens_30d"),
                 func.coalesce(
                     func.sum(case((RequestLog.requested_at >= since_5h, cost_usd_expr), else_=0.0)),
                     0.0,
                 ).label("cost_usd_5h"),
-                func.coalesce(func.sum(cost_usd_expr), 0.0).label("cost_usd_7d"),
+                func.coalesce(
+                    func.sum(case((RequestLog.requested_at >= since_7d, cost_usd_expr), else_=0.0)),
+                    0.0,
+                ).label("cost_usd_7d"),
+                func.coalesce(func.sum(cost_usd_expr), 0.0).label("cost_usd_30d"),
             )
             .select_from(RequestLog)
             .join(Account, Account.id == RequestLog.account_id, isouter=True)
-            .where(RequestLog.requested_at >= since_7d)
+            .where(RequestLog.requested_at >= since_30d)
             .group_by(RequestLog.account_id, Account.email)
             .order_by(RequestLog.account_id.asc())
         )
@@ -78,10 +89,21 @@ class RequestLogsRepository:
                 account_email=account_email,
                 tokens_5h=int(tokens_5h or 0),
                 tokens_7d=int(tokens_7d or 0),
+                tokens_30d=int(tokens_30d or 0),
                 cost_usd_5h=float(cost_usd_5h or 0.0),
                 cost_usd_7d=float(cost_usd_7d or 0.0),
+                cost_usd_30d=float(cost_usd_30d or 0.0),
             )
-            for account_id, account_email, tokens_5h, tokens_7d, cost_usd_5h, cost_usd_7d in result.all()
+            for (
+                account_id,
+                account_email,
+                tokens_5h,
+                tokens_7d,
+                tokens_30d,
+                cost_usd_5h,
+                cost_usd_7d,
+                cost_usd_30d,
+            ) in result.all()
         ]
 
     async def aggregate_by_bucket(

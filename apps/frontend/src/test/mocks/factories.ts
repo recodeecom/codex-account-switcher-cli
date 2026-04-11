@@ -331,6 +331,15 @@ export function createRequestLogUsageSummary(
 				{ accountId: "acc_secondary", tokens: 17_000, costUsd: 3.09, costEur: 2.84 },
 			],
 		},
+		last30d: {
+			totalTokens: 120_000,
+			totalCostUsd: 20.5,
+			totalCostEur: 18.86,
+			accounts: [
+				{ accountId: "acc_primary", tokens: 70_000, costUsd: 11.96, costEur: 11.0 },
+				{ accountId: "acc_secondary", tokens: 50_000, costUsd: 8.54, costEur: 7.86 },
+			],
+		},
 		fxRateUsdToEur: 0.92,
 		...overrides,
 	});

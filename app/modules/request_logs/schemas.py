@@ -63,4 +63,5 @@ class RequestLogUsageSummaryWindow(DashboardModel):
 class RequestLogUsageSummaryResponse(DashboardModel):
     last_5h: RequestLogUsageSummaryWindow = Field(alias="last5h")
     last_7d: RequestLogUsageSummaryWindow = Field(alias="last7d")
+    last_30d: RequestLogUsageSummaryWindow = Field(alias="last30d")
     fx_rate_usd_to_eur: float = Field(alias="fxRateUsdToEur")

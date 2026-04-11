@@ -32,6 +32,15 @@ describe("RequestLogUsageDonuts", () => {
               { accountId: "acc-2", tokens: 800, costUsd: 1.29, costEur: 1.19 },
             ],
           },
+          last30d: {
+            totalTokens: 3200,
+            totalCostUsd: 4.9,
+            totalCostEur: 4.51,
+            accounts: [
+              { accountId: "acc-1", tokens: 1500, costUsd: 2.3, costEur: 2.12 },
+              { accountId: "acc-2", tokens: 1700, costUsd: 2.6, costEur: 2.39 },
+            ],
+          },
           fxRateUsdToEur: 0.92,
         }}
         fallback={{ last5h: false, last7d: false, active: false }}
@@ -44,6 +53,7 @@ describe("RequestLogUsageDonuts", () => {
     expect(screen.getByText("7d Tokens")).toBeInTheDocument();
     expect(screen.getByText("5h EUR")).toBeInTheDocument();
     expect(screen.getByText("7d EUR")).toBeInTheDocument();
+    expect(screen.getByText("30d EUR")).toBeInTheDocument();
     expect(screen.getByText("Recent intensity")).toBeInTheDocument();
     expect(screen.getAllByText("300K").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("1.5M").length).toBeGreaterThanOrEqual(1);
@@ -72,6 +82,12 @@ describe("RequestLogUsageDonuts", () => {
             totalCostEur: 0.46,
             accounts: [{ accountId: null, tokens: 100, costUsd: 0.5, costEur: 0.46 }],
           },
+          last30d: {
+            totalTokens: 100,
+            totalCostUsd: 0.5,
+            totalCostEur: 0.46,
+            accounts: [{ accountId: null, tokens: 100, costUsd: 0.5, costEur: 0.46 }],
+          },
           fxRateUsdToEur: 0.92,
         }}
         fallback={{ last5h: false, last7d: false, active: false }}
@@ -93,6 +109,12 @@ describe("RequestLogUsageDonuts", () => {
             accounts: [{ accountId: "acc-deleted", accountEmail: "deleted@example.com", tokens: 120, costUsd: 0.3, costEur: 0.28 }],
           },
           last7d: {
+            totalTokens: 120,
+            totalCostUsd: 0.3,
+            totalCostEur: 0.28,
+            accounts: [{ accountId: "acc-deleted", accountEmail: "deleted@example.com", tokens: 120, costUsd: 0.3, costEur: 0.28 }],
+          },
+          last30d: {
             totalTokens: 120,
             totalCostUsd: 0.3,
             totalCostEur: 0.28,
@@ -142,6 +164,15 @@ describe("RequestLogUsageDonuts", () => {
               { accountId: "acc-dup-2", tokens: 300, costUsd: 0.4, costEur: 0.36 },
             ],
           },
+          last30d: {
+            totalTokens: 1200,
+            totalCostUsd: 1.6,
+            totalCostEur: 1.44,
+            accounts: [
+              { accountId: "acc-dup-1", tokens: 600, costUsd: 0.8, costEur: 0.72 },
+              { accountId: "acc-dup-2", tokens: 600, costUsd: 0.8, costEur: 0.72 },
+            ],
+          },
           fxRateUsdToEur: 0.92,
         }}
         fallback={{ last5h: false, last7d: false, active: false }}
@@ -175,6 +206,12 @@ describe("RequestLogUsageDonuts", () => {
             totalCostEur: 2.12,
             accounts: [{ accountId: "acc-1", tokens: 1200, costUsd: 2.3, costEur: 2.12 }],
           },
+          last30d: {
+            totalTokens: 2400,
+            totalCostUsd: 4.6,
+            totalCostEur: 4.23,
+            accounts: [{ accountId: "acc-1", tokens: 2400, costUsd: 4.6, costEur: 4.23 }],
+          },
           fxRateUsdToEur: 0.92,
         }}
         fallback={{ last5h: true, last7d: false, active: true }}
@@ -198,6 +235,12 @@ describe("RequestLogUsageDonuts", () => {
       {
         last5h: { totalTokens: 0, totalCostUsd: 0, totalCostEur: 0, accounts: [] },
         last7d: {
+          totalTokens: 1_000_000,
+          totalCostUsd: 1,
+          totalCostEur: 0.92,
+          accounts: [{ accountId: "acc-1", tokens: 1_000_000, costUsd: 1, costEur: 0.92 }],
+        },
+        last30d: {
           totalTokens: 1_000_000,
           totalCostUsd: 1,
           totalCostEur: 0.92,
@@ -264,6 +307,12 @@ describe("RequestLogUsageDonuts", () => {
             totalCostUsd: 0.7,
             totalCostEur: 0.64,
             accounts: [{ accountId: "acc-1", tokens: 300, costUsd: 0.7, costEur: 0.64 }],
+          },
+          last30d: {
+            totalTokens: 600,
+            totalCostUsd: 1.4,
+            totalCostEur: 1.29,
+            accounts: [{ accountId: "acc-1", tokens: 600, costUsd: 1.4, costEur: 1.29 }],
           },
           fxRateUsdToEur: 0.92,
         }}

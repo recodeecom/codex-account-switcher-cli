@@ -45,18 +45,18 @@ function resolveCostDensity(window: RequestLogUsageSummary["last5h"]): CostDensi
 }
 
 function resolveAggregateDensity(summary: RequestLogUsageSummary): CostDensity | null {
-  const aggregateTokens = summary.last5h.totalTokens + summary.last7d.totalTokens;
+  const aggregateTokens = summary.last5h.totalTokens + summary.last7d.totalTokens + summary.last30d.totalTokens;
   if (aggregateTokens <= 0) {
     return null;
   }
   const density = {
     usdPerToken: Math.max(
       0,
-      (summary.last5h.totalCostUsd + summary.last7d.totalCostUsd) / aggregateTokens,
+      (summary.last5h.totalCostUsd + summary.last7d.totalCostUsd + summary.last30d.totalCostUsd) / aggregateTokens,
     ),
     eurPerToken: Math.max(
       0,
-      (summary.last5h.totalCostEur + summary.last7d.totalCostEur) / aggregateTokens,
+      (summary.last5h.totalCostEur + summary.last7d.totalCostEur + summary.last30d.totalCostEur) / aggregateTokens,
     ),
   };
   return hasPositiveDensity(density) ? density : null;
@@ -200,6 +200,7 @@ export function buildLiveUsageFallbackSummary(
   return {
     last5h: toConsumedTokens(windows?.primary, density.primary),
     last7d: toConsumedTokens(windows?.secondary, density.secondary),
+    last30d: requestSummary.last30d,
     fxRateUsdToEur: requestSummary.fxRateUsdToEur,
   };
 }
@@ -212,6 +213,7 @@ export function mergeRequestLogUsageSummaryWithLiveFallback(
   const requestUsageSummary: RequestLogUsageSummary = requestSummary ?? {
     last5h: EMPTY_USAGE_WINDOW,
     last7d: EMPTY_USAGE_WINDOW,
+    last30d: EMPTY_USAGE_WINDOW,
     fxRateUsdToEur: 1,
   };
   const liveUsageSummary = buildLiveUsageFallbackSummary(windows, requestUsageSummary, accounts);
@@ -225,6 +227,7 @@ export function mergeRequestLogUsageSummaryWithLiveFallback(
     usageSummary: {
       last5h: use5hFallback ? liveUsageSummary.last5h : requestUsageSummary.last5h,
       last7d: use7dFallback ? liveUsageSummary.last7d : requestUsageSummary.last7d,
+      last30d: requestUsageSummary.last30d,
       fxRateUsdToEur: requestUsageSummary.fxRateUsdToEur,
     },
     fallback: {

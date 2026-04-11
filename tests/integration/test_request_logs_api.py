@@ -170,12 +170,15 @@ async def test_request_logs_usage_summary_returns_rolling_5h_and_7d_totals(async
 
     assert payload["last5h"]["totalTokens"] == 200
     assert payload["last7d"]["totalTokens"] == 260
+    assert payload["last30d"]["totalTokens"] == 2260
     assert payload["fxRateUsdToEur"] == pytest.approx(fx_rate)
 
     assert payload["last5h"]["totalCostUsd"] > 0
     assert payload["last7d"]["totalCostUsd"] >= payload["last5h"]["totalCostUsd"]
+    assert payload["last30d"]["totalCostUsd"] >= payload["last7d"]["totalCostUsd"]
     assert payload["last5h"]["totalCostEur"] == pytest.approx(payload["last5h"]["totalCostUsd"] * fx_rate)
     assert payload["last7d"]["totalCostEur"] == pytest.approx(payload["last7d"]["totalCostUsd"] * fx_rate)
+    assert payload["last30d"]["totalCostEur"] == pytest.approx(payload["last30d"]["totalCostUsd"] * fx_rate)
 
     last5h_accounts = payload["last5h"]["accounts"]
     assert last5h_accounts[0]["accountId"] == "acc_usage_a"
@@ -197,6 +200,15 @@ async def test_request_logs_usage_summary_returns_rolling_5h_and_7d_totals(async
     assert last7d_accounts[1]["tokens"] == 40
     assert last7d_accounts[2]["accountId"] is None
     assert last7d_accounts[2]["tokens"] == 10
+
+    last30d_accounts = payload["last30d"]["accounts"]
+    assert last30d_accounts[0]["accountId"] == "acc_usage_b"
+    assert last30d_accounts[0]["tokens"] == 2040
+    assert last30d_accounts[0]["costUsd"] >= last7d_accounts[1]["costUsd"]
+    assert last30d_accounts[1]["accountId"] == "acc_usage_a"
+    assert last30d_accounts[1]["tokens"] == 210
+    assert last30d_accounts[2]["accountId"] is None
+    assert last30d_accounts[2]["tokens"] == 10
 
 
 @pytest.mark.asyncio
@@ -235,8 +247,11 @@ async def test_request_logs_usage_summary_keeps_deleted_accounts_within_7d_windo
 
     row_5h = next((row for row in payload["last5h"]["accounts"] if row["accountId"] == account_id), None)
     row_7d = next((row for row in payload["last7d"]["accounts"] if row["accountId"] == account_id), None)
+    row_30d = next((row for row in payload["last30d"]["accounts"] if row["accountId"] == account_id), None)
     assert row_5h is not None
     assert row_7d is not None
+    assert row_30d is not None
     assert row_5h["tokens"] == 100
     assert row_7d["tokens"] == 100
+    assert row_30d["tokens"] == 100
     assert row_7d["accountEmail"] == email
