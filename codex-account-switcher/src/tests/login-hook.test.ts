@@ -89,6 +89,7 @@ test("renderLoginHookBlock includes terminal-mode restore guard", () => {
   assert.ok(hook.includes("__codex_auth_restore_tty"));
   assert.ok(hook.includes("command codex-auth restore-session"));
   assert.ok(hook.includes("CODEX_AUTH_FORCE_EXTERNAL_SYNC=1 command codex-auth status"));
+  assert.ok(!hook.includes("__first_non_flag"));
   assert.ok(hook.includes("\\033[>4m"));
   assert.ok(hook.includes("\\033[<u"));
   assert.ok(hook.includes("\\033[?2026l"));
