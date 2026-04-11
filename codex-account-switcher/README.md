@@ -123,7 +123,7 @@ codex-auth remove-login-hook
 - `codex-auth config auto ...` – Enables/disables managed auto-switch and updates threshold percentages.
 - `codex-auth config api enable|disable` – Chooses usage source mode (`api` or `local`).
 - `codex-auth daemon --once|--watch` – Runs the auto-switch loop once or continuously.
-- `codex-auth setup-login-hook [-f <path>]` – Installs an optional shell hook in your rc file to restore session-pinned snapshot before each `codex` run, auto-sync snapshots after successful official `codex login`, and restore common terminal modes before returning to your prompt.
+- `codex-auth setup-login-hook [-f <path>]` – Installs an optional shell hook in your rc file to restore session-pinned snapshot before each `codex` run, refresh codex-auth session memory after each `codex` exit, and restore common terminal modes before returning to your prompt.
 - `codex-auth hook-status [-f <path>]` – Shows whether the optional login auto-snapshot hook is installed for the selected rc file.
 - `codex-auth remove-login-hook [-f <path>]` – Removes the optional shell hook.
 
