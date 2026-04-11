@@ -953,10 +953,11 @@ def _is_unlabeled_default_scope_fallback_ambiguous_for_pid(
     if (started_at + tolerance_seconds) >= selection_changed_at:
         return False
 
-    # Pre-switch processes with known start times are not treated as ambiguous:
-    # fallback resolution uses previousActiveAccountName first, then auth.json
-    # identity inference, which are deterministic for the active auth scope.
-    return False
+    # Pre-switch unlabeled processes rely on shared default-scope fallback
+    # signals (previousActiveAccountName / auth pointer / registry usage). Those
+    # signals are not PID-specific, so suppress bulk remapping when multiple
+    # uncached sessions compete for the same fallback owner.
+    return True
 
 
 def _resolve_process_default_auth_scope_paths(
