@@ -1725,7 +1725,7 @@ def test_read_live_codex_process_session_counts_by_snapshot_maps_multiple_unlabe
     assert counts == {}
 
 
-def test_read_live_codex_process_session_counts_by_snapshot_maps_multiple_pre_switch_unlabeled_processes_to_previous_snapshot(
+def test_read_live_codex_process_session_counts_by_snapshot_skips_ambiguous_multiple_pre_switch_unlabeled_processes(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -1771,10 +1771,10 @@ def test_read_live_codex_process_session_counts_by_snapshot_maps_multiple_pre_sw
 
     attribution = read_live_codex_process_session_attribution()
     counts = read_live_codex_process_session_counts_by_snapshot()
-    assert attribution.counts_by_snapshot == {"tokio": 2}
-    assert attribution.fallback_mapped_session_pids_by_snapshot == {"tokio": [404, 405]}
-    assert attribution.unattributed_session_pids == []
-    assert counts == {"tokio": 2}
+    assert attribution.counts_by_snapshot == {}
+    assert attribution.fallback_mapped_session_pids_by_snapshot == {}
+    assert attribution.unattributed_session_pids == [404, 405]
+    assert counts == {}
 
 
 def test_read_live_codex_process_session_counts_by_snapshot_skips_ambiguous_post_switch_unlabeled_processes(
