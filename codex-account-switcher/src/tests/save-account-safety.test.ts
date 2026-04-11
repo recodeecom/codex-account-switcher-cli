@@ -63,6 +63,7 @@ async function withIsolatedCodexDir(
     CODEX_AUTH_ACCOUNTS_DIR: process.env.CODEX_AUTH_ACCOUNTS_DIR,
     CODEX_AUTH_JSON_PATH: process.env.CODEX_AUTH_JSON_PATH,
     CODEX_AUTH_CURRENT_PATH: process.env.CODEX_AUTH_CURRENT_PATH,
+    CODEX_AUTH_SESSION_ACTIVE_OVERRIDE: process.env.CODEX_AUTH_SESSION_ACTIVE_OVERRIDE,
   };
 
   process.env.CODEX_AUTH_CODEX_DIR = codexDir;
@@ -75,6 +76,7 @@ async function withIsolatedCodexDir(
     process.env.CODEX_AUTH_ACCOUNTS_DIR = previousEnv.CODEX_AUTH_ACCOUNTS_DIR;
     process.env.CODEX_AUTH_JSON_PATH = previousEnv.CODEX_AUTH_JSON_PATH;
     process.env.CODEX_AUTH_CURRENT_PATH = previousEnv.CODEX_AUTH_CURRENT_PATH;
+    process.env.CODEX_AUTH_SESSION_ACTIVE_OVERRIDE = previousEnv.CODEX_AUTH_SESSION_ACTIVE_OVERRIDE;
     await fsp.rm(codexDir, { recursive: true, force: true });
   });
 
@@ -616,12 +618,61 @@ test("useAccount writes auth.json as a regular file (never symlink)", async (t) 
   });
 });
 
-test("getCurrentAccountName prefers session-scoped snapshot over global current pointer", async (t) => {
+test("getCurrentAccountName falls back to global current pointer when codex is not active in this terminal", async (t) => {
   await withIsolatedCodexDir(t, async ({ codexDir, accountsDir }) => {
     const service = new AccountService();
     const currentPath = path.join(codexDir, "current");
     const sessionMapPath = path.join(accountsDir, "sessions.json");
     const sessionKey = `ppid:${process.ppid}`;
+
+    process.env.CODEX_AUTH_SESSION_ACTIVE_OVERRIDE = "0";
+
+    await fsp.writeFile(
+      path.join(accountsDir, "odin@megkapja.hu.json"),
+      buildAuthPayload("odin@megkapja.hu", {
+        accountId: "acct-odin",
+        userId: "user-odin",
+      }),
+    );
+    await fsp.writeFile(
+      path.join(accountsDir, "lajos@edix.hu.json"),
+      buildAuthPayload("lajos@edix.hu", {
+        accountId: "acct-lajos",
+        userId: "user-lajos",
+      }),
+    );
+    await fsp.writeFile(currentPath, "lajos@edix.hu\n", "utf8");
+    await fsp.writeFile(
+      sessionMapPath,
+      `${JSON.stringify(
+        {
+          version: 1,
+          sessions: {
+            [sessionKey]: {
+              accountName: "odin@megkapja.hu",
+              updatedAt: new Date().toISOString(),
+            },
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const active = await service.getCurrentAccountName();
+    assert.equal(active, "lajos@edix.hu");
+  });
+});
+
+test("getCurrentAccountName prefers session-scoped snapshot when codex is active in this terminal", async (t) => {
+  await withIsolatedCodexDir(t, async ({ codexDir, accountsDir }) => {
+    const service = new AccountService();
+    const currentPath = path.join(codexDir, "current");
+    const sessionMapPath = path.join(accountsDir, "sessions.json");
+    const sessionKey = `ppid:${process.ppid}`;
+
+    process.env.CODEX_AUTH_SESSION_ACTIVE_OVERRIDE = "1";
 
     await fsp.writeFile(
       path.join(accountsDir, "odin@megkapja.hu.json"),
@@ -661,12 +712,70 @@ test("getCurrentAccountName prefers session-scoped snapshot over global current 
   });
 });
 
-test("syncExternalAuthSnapshotIfNeeded ignores external login from another terminal when session snapshot differs", async (t) => {
+test("syncExternalAuthSnapshotIfNeeded follows global sync when codex is not active in this terminal", async (t) => {
   await withIsolatedCodexDir(t, async ({ codexDir, accountsDir, authPath }) => {
     const service = new AccountService();
     const currentPath = path.join(codexDir, "current");
     const sessionMapPath = path.join(accountsDir, "sessions.json");
     const sessionKey = `ppid:${process.ppid}`;
+
+    process.env.CODEX_AUTH_SESSION_ACTIVE_OVERRIDE = "0";
+
+    await fsp.writeFile(
+      path.join(accountsDir, "odin@megkapja.hu.json"),
+      buildAuthPayload("odin@megkapja.hu", {
+        accountId: "acct-odin",
+        userId: "user-odin",
+      }),
+    );
+    await fsp.writeFile(currentPath, "odin@megkapja.hu\n", "utf8");
+    await fsp.writeFile(
+      sessionMapPath,
+      `${JSON.stringify(
+        {
+          version: 1,
+          sessions: {
+            [sessionKey]: {
+              accountName: "odin@megkapja.hu",
+              updatedAt: new Date().toISOString(),
+            },
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await fsp.writeFile(
+      authPath,
+      buildAuthPayload("lajos@edix.hu", {
+        accountId: "acct-lajos",
+        userId: "user-lajos",
+      }),
+      "utf8",
+    );
+
+    const result = await service.syncExternalAuthSnapshotIfNeeded();
+    assert.deepEqual(result, {
+      synchronized: true,
+      savedName: "lajos@edix.hu",
+      autoSwitchDisabled: false,
+    });
+
+    const parsed = await parseAuthSnapshotFile(path.join(accountsDir, "lajos@edix.hu.json"));
+    assert.equal(parsed.email, "lajos@edix.hu");
+    assert.equal((await fsp.readFile(currentPath, "utf8")).trim(), "lajos@edix.hu");
+  });
+});
+
+test("syncExternalAuthSnapshotIfNeeded ignores external login from another terminal when codex remains active in this terminal", async (t) => {
+  await withIsolatedCodexDir(t, async ({ codexDir, accountsDir, authPath }) => {
+    const service = new AccountService();
+    const currentPath = path.join(codexDir, "current");
+    const sessionMapPath = path.join(accountsDir, "sessions.json");
+    const sessionKey = `ppid:${process.ppid}`;
+
+    process.env.CODEX_AUTH_SESSION_ACTIVE_OVERRIDE = "1";
 
     await fsp.writeFile(
       path.join(accountsDir, "odin@megkapja.hu.json"),
@@ -770,12 +879,75 @@ test("syncExternalAuthSnapshotIfNeeded can be forced for explicit in-terminal co
   });
 });
 
-test("restoreSessionSnapshotIfNeeded re-activates the session-pinned snapshot when auth.json drifts", async (t) => {
+test("restoreSessionSnapshotIfNeeded skips restore when codex is not active in this terminal", async (t) => {
   await withIsolatedCodexDir(t, async ({ codexDir, accountsDir, authPath }) => {
     const service = new AccountService();
     const currentPath = path.join(codexDir, "current");
     const sessionMapPath = path.join(accountsDir, "sessions.json");
     const sessionKey = `ppid:${process.ppid}`;
+
+    process.env.CODEX_AUTH_SESSION_ACTIVE_OVERRIDE = "0";
+
+    await fsp.writeFile(
+      path.join(accountsDir, "odin@megkapja.hu.json"),
+      buildAuthPayload("odin@megkapja.hu", {
+        accountId: "acct-odin",
+        userId: "user-odin",
+      }),
+    );
+    await fsp.writeFile(
+      path.join(accountsDir, "lajos@edix.hu.json"),
+      buildAuthPayload("lajos@edix.hu", {
+        accountId: "acct-lajos",
+        userId: "user-lajos",
+      }),
+    );
+    await fsp.writeFile(currentPath, "lajos@edix.hu\n", "utf8");
+    await fsp.writeFile(
+      sessionMapPath,
+      `${JSON.stringify(
+        {
+          version: 1,
+          sessions: {
+            [sessionKey]: {
+              accountName: "odin@megkapja.hu",
+              updatedAt: new Date().toISOString(),
+            },
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await fsp.writeFile(
+      authPath,
+      buildAuthPayload("lajos@edix.hu", {
+        accountId: "acct-lajos",
+        userId: "user-lajos",
+      }),
+      "utf8",
+    );
+
+    const restored = await service.restoreSessionSnapshotIfNeeded();
+    assert.deepEqual(restored, {
+      restored: false,
+    });
+
+    assert.equal((await fsp.readFile(currentPath, "utf8")).trim(), "lajos@edix.hu");
+    const parsed = await parseAuthSnapshotFile(authPath);
+    assert.equal(parsed.email, "lajos@edix.hu");
+  });
+});
+
+test("restoreSessionSnapshotIfNeeded re-activates the session-pinned snapshot while codex stays active in this terminal", async (t) => {
+  await withIsolatedCodexDir(t, async ({ codexDir, accountsDir, authPath }) => {
+    const service = new AccountService();
+    const currentPath = path.join(codexDir, "current");
+    const sessionMapPath = path.join(accountsDir, "sessions.json");
+    const sessionKey = `ppid:${process.ppid}`;
+
+    process.env.CODEX_AUTH_SESSION_ACTIVE_OVERRIDE = "1";
 
     await fsp.writeFile(
       path.join(accountsDir, "odin@megkapja.hu.json"),

@@ -47,6 +47,7 @@ import {
 const ACCOUNT_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._@+-]*$/;
 const EXTERNAL_SYNC_FORCE_ENV = "CODEX_AUTH_FORCE_EXTERNAL_SYNC";
 const SESSION_KEY_ENV = "CODEX_AUTH_SESSION_KEY";
+const SESSION_ACTIVE_OVERRIDE_ENV = "CODEX_AUTH_SESSION_ACTIVE_OVERRIDE";
 
 interface SessionMapEntry {
   accountName: string;
@@ -109,7 +110,7 @@ export class AccountService {
       };
     }
 
-    const sessionAccountName = await this.getSessionAccountName();
+    const sessionAccountName = await this.getActiveSessionAccountName();
     if (sessionAccountName) {
       const sessionSnapshotPath = this.accountFilePath(sessionAccountName);
       if (await this.pathExists(sessionSnapshotPath)) {
@@ -168,7 +169,7 @@ export class AccountService {
   }
 
   public async restoreSessionSnapshotIfNeeded(): Promise<{ restored: boolean; accountName?: string }> {
-    const sessionAccountName = await this.getSessionAccountName();
+    const sessionAccountName = await this.getActiveSessionAccountName();
     if (!sessionAccountName) {
       return { restored: false };
     }
@@ -286,7 +287,7 @@ export class AccountService {
   }
 
   public async getCurrentAccountName(): Promise<string | null> {
-    const sessionAccountName = await this.getSessionAccountName();
+    const sessionAccountName = await this.getActiveSessionAccountName();
     if (sessionAccountName) {
       const sessionSnapshotPath = this.accountFilePath(sessionAccountName);
       if (await this.pathExists(sessionSnapshotPath)) {
@@ -927,6 +928,17 @@ export class AccountService {
     }
   }
 
+  private async getActiveSessionAccountName(): Promise<string | null> {
+    const sessionAccountName = await this.getSessionAccountName();
+    if (!sessionAccountName) return null;
+
+    const sessionIsActive = await this.isSessionPinnedToActiveCodex();
+    if (sessionIsActive) return sessionAccountName;
+
+    await this.clearSessionAccountName();
+    return null;
+  }
+
   private async setSessionAccountName(accountName: string): Promise<void> {
     const sessionKey = this.resolveSessionScopeKey();
     if (!sessionKey) return;
@@ -997,6 +1009,68 @@ export class AccountService {
     const sessionMapPath = resolveSessionMapPath();
     await this.ensureDir(path.dirname(sessionMapPath));
     await fsp.writeFile(sessionMapPath, `${JSON.stringify(sessionMap, null, 2)}\n`, "utf8");
+  }
+
+  private async isSessionPinnedToActiveCodex(): Promise<boolean> {
+    const override = process.env[SESSION_ACTIVE_OVERRIDE_ENV]?.trim().toLowerCase();
+    if (override) {
+      if (["1", "true", "yes", "on"].includes(override)) return true;
+      if (["0", "false", "no", "off"].includes(override)) return false;
+    }
+
+    const sessionKey = this.resolveSessionScopeKey();
+    if (!sessionKey) return false;
+
+    if (sessionKey.startsWith("session:")) {
+      return true;
+    }
+
+    if (process.platform !== "linux") {
+      return true;
+    }
+
+    const ppidMatch = sessionKey.match(/^ppid:(\d+)$/);
+    if (!ppidMatch) return false;
+
+    const parentPid = Number(ppidMatch[1]);
+    if (!Number.isFinite(parentPid) || parentPid <= 1) return false;
+
+    const childPids = await this.readChildPids(parentPid);
+    if (childPids.length === 0) return false;
+
+    for (const childPid of childPids) {
+      if (await this.isCodexProcess(childPid)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private async readChildPids(parentPid: number): Promise<number[]> {
+    try {
+      const childrenRaw = await fsp.readFile(`/proc/${parentPid}/task/${parentPid}/children`, "utf8");
+      return childrenRaw
+        .split(/\s+/)
+        .map((value) => Number(value))
+        .filter((value) => Number.isInteger(value) && value > 1);
+    } catch {
+      return [];
+    }
+  }
+
+  private async isCodexProcess(pid: number): Promise<boolean> {
+    try {
+      const cmdline = await fsp.readFile(`/proc/${pid}/cmdline`, "utf8");
+      const normalized = cmdline.replace(/\0/g, " ").trim();
+      if (!normalized) return false;
+      if (/\bcodex-auth\b/.test(normalized)) return false;
+      if (/(^|\s|\/)codex(\s|$)/.test(normalized)) return true;
+      if (/(^|\s|\/)codex-linux-[^\s]*($|\s)/.test(normalized)) return true;
+      return false;
+    } catch {
+      return false;
+    }
   }
 
   private snapshotsShareIdentity(a: ParsedAuthSnapshot, b: ParsedAuthSnapshot): boolean {
