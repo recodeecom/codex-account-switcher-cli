@@ -1,0 +1,51 @@
+{
+  "generated_at_utc": "2026-04-09T22:29:28Z",
+  "scope": "local canary simulation (stable phase-6b subset)",
+  "shadow": {
+    "requests": 6,
+    "mismatches": 0,
+    "mismatch_basis": "status+content-type transport parity",
+    "match_rate": 1.0
+  },
+  "phases": [
+    {
+      "phase": "canary_1pct",
+      "total_requests": 120,
+      "rust_requests": 1,
+      "python_requests": 119,
+      "mismatches": 0,
+      "mismatch_basis": "status+content-type transport parity",
+      "error_rate": 0.0,
+      "rust_p95_ms": 2.65,
+      "python_p95_ms": 45.77
+    },
+    {
+      "phase": "canary_10pct",
+      "total_requests": 120,
+      "rust_requests": 12,
+      "python_requests": 108,
+      "mismatches": 0,
+      "mismatch_basis": "status+content-type transport parity",
+      "error_rate": 0.0,
+      "rust_p95_ms": 43.33,
+      "python_p95_ms": 43.34
+    },
+    {
+      "phase": "canary_50pct",
+      "total_requests": 120,
+      "rust_requests": 60,
+      "python_requests": 60,
+      "mismatches": 0,
+      "mismatch_basis": "status+content-type transport parity",
+      "error_rate": 0.0,
+      "rust_p95_ms": 48.89,
+      "python_p95_ms": 45.86
+    }
+  ],
+  "rollback_drill": {
+    "target": "<5m",
+    "measured_seconds": 0.001,
+    "within_target": true,
+    "notes": "Local direct-python rollback check; production traffic-switch drill still required before full promotion."
+  }
+}

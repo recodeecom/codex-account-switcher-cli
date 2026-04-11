@@ -224,6 +224,10 @@ export function RequestLogUsageDonuts({
     usageSummary.last7d.totalCostEur,
     items7d.reduce((total, item) => total + item.costEur, 0),
   );
+  const totalCostEur30d = Math.max(
+    usageSummary.last30d.totalCostEur,
+    usageSummary.last30d.accounts.reduce((total, item) => total + item.costEur, 0),
+  );
   const stats5h = useMemo(() => buildWindowStats(items5h, total5h), [items5h, total5h]);
   const stats7d = useMemo(() => buildWindowStats(items7d, total7d), [items7d, total7d]);
   const recentWindowWeight = total7d > 0 ? Math.min(100, (total5h / total7d) * 100) : 0;
@@ -232,7 +236,7 @@ export function RequestLogUsageDonuts({
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-7">
         <StatCard
           label={`${primaryWindowLabel} Tokens`}
           value={formatTokensAsThousands(total5h)}
@@ -252,6 +256,11 @@ export function RequestLogUsageDonuts({
           label="7d EUR"
           value={formatEuro(totalCostEur7d)}
           hint={fallback.last7d ? fallbackHint : fxHint}
+        />
+        <StatCard
+          label="30d EUR"
+          value={formatEuro(totalCostEur30d)}
+          hint={fxHint}
         />
         <StatCard
           label="Avg / active account"

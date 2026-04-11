@@ -40,6 +40,7 @@ function createRequestSummary(
   last5hTotal: number,
   last7dTotal: number,
 ): RequestLogUsageSummary {
+  const last30dTotal = Math.max(last7dTotal, last7dTotal * 2);
   return {
     last5h: {
       totalTokens: last5hTotal,
@@ -53,6 +54,12 @@ function createRequestSummary(
       totalCostEur: 1.84,
       accounts: [{ accountId: "acc-1", tokens: last7dTotal, costUsd: 2, costEur: 1.84 }],
     },
+    last30d: {
+      totalTokens: last30dTotal,
+      totalCostUsd: 4,
+      totalCostEur: 3.68,
+      accounts: [{ accountId: "acc-1", tokens: last30dTotal, costUsd: 4, costEur: 3.68 }],
+    },
     fxRateUsdToEur: 0.92,
   };
 }
@@ -60,10 +67,12 @@ function createRequestSummary(
 function createRequestSummaryWithWindows(
   last5h: RequestLogUsageSummary["last5h"],
   last7d: RequestLogUsageSummary["last7d"],
+  last30d: RequestLogUsageSummary["last30d"] = { totalTokens: 0, totalCostUsd: 0, totalCostEur: 0, accounts: [] },
 ): RequestLogUsageSummary {
   return {
     last5h,
     last7d,
+    last30d,
     fxRateUsdToEur: 0.92,
   };
 }
@@ -77,6 +86,7 @@ describe("mergeRequestLogUsageSummaryWithLiveFallback", () => {
 
     expect(merged.usageSummary.last5h.totalTokens).toBe(320);
     expect(merged.usageSummary.last7d.totalTokens).toBe(1800);
+    expect(merged.usageSummary.last30d.totalTokens).toBe(3600);
     expect(merged.usageSummary.fxRateUsdToEur).toBe(0.92);
     expect(merged.fallback).toEqual({
       last5h: false,
@@ -93,6 +103,7 @@ describe("mergeRequestLogUsageSummaryWithLiveFallback", () => {
 
     expect(merged.usageSummary.last5h.totalTokens).toBe(640);
     expect(merged.usageSummary.last7d.totalTokens).toBe(3200);
+    expect(merged.usageSummary.last30d.totalTokens).toBe(0);
     expect(merged.usageSummary.last5h.totalCostEur).toBeGreaterThan(0);
     expect(merged.usageSummary.last7d.totalCostEur).toBeGreaterThan(0);
     expect(merged.usageSummary.fxRateUsdToEur).toBe(0.92);
@@ -111,6 +122,7 @@ describe("mergeRequestLogUsageSummaryWithLiveFallback", () => {
 
     expect(merged.usageSummary.last5h.totalTokens).toBe(420);
     expect(merged.usageSummary.last7d.totalTokens).toBe(9000);
+    expect(merged.usageSummary.last30d.totalTokens).toBe(0);
     expect(merged.usageSummary.last7d.totalCostEur).toBeCloseTo(19_714.2857142857, 6);
     expect(merged.usageSummary.fxRateUsdToEur).toBe(0.92);
     expect(merged.fallback).toEqual({

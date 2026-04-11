@@ -12,6 +12,8 @@ Each plan must be stored as:
 openspec/plan/<plan-slug>/
   summary.md
   checkpoints.md
+  coordinator-prompt.md
+  kickoff-prompts.md
   planner/plan.md
   planner/tasks.md
   architect/tasks.md
@@ -96,6 +98,11 @@ Default roles created:
 - executor
 - writer
 - verifier
+
+Default prompt artifacts created:
+
+- `coordinator-prompt.md` (master coordinator prompt)
+- `kickoff-prompts.md` (A/B/C/D wave prompt templates for optional parallel lanes)
 
 The scaffold seeds role-specific `tasks.md` checklists for:
 - planner

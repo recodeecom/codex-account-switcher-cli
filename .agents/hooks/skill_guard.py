@@ -22,6 +22,7 @@ MAIN_RS_REL_PATH = "rust/codex-lb-runtime/src/main.rs"
 MAIN_RS_LOCK_REL_PATH = ".omx/locks/rust-main-rs.lock.json"
 PROTECTED_BRANCHES = {"dev", "main", "master"}
 DEFAULT_MAIN_RS_INTEGRATOR_AGENT = os.environ.get("MAIN_RS_INTEGRATOR_AGENT", "integrator")
+PROTECTED_BRANCH_EDIT_OVERRIDE_ENV = "ALLOW_CODE_EDIT_ON_PROTECTED_BRANCH"
 
 
 def load_skill_rules() -> dict:
@@ -116,6 +117,34 @@ def branch_agent_name(branch: str) -> str:
     if len(parts) >= 3 and parts[0] == "agent":
         return parts[1]
     return ""
+
+
+def is_codex_session() -> bool:
+    """Best-effort detection for Codex/OMX automated sessions."""
+    return bool(
+        os.environ.get("CODEX_THREAD_ID")
+        or os.environ.get("OMX_SESSION_ID")
+        or os.environ.get("CODEX_CI") == "1"
+    )
+
+
+def ensure_protected_branch_edit_allowed(file_path: str) -> str | None:
+    """Block agent edits on protected branches unless explicit override is set."""
+    if os.environ.get(PROTECTED_BRANCH_EDIT_OVERRIDE_ENV) == "1":
+        return None
+    repo_root = find_repo_root(file_path)
+    branch = current_branch(repo_root)
+    if branch not in PROTECTED_BRANCHES:
+        return None
+
+    return (
+        f"BLOCKED: Agent edit attempted on protected branch '{branch}'.\n"
+        "Agent edits must run from isolated agent/* branches.\n"
+        "Create a sandbox branch/worktree first:\n"
+        '  bash scripts/agent-branch-start.sh "<task>" "<agent-name>"\n'
+        "If you intentionally need a one-off protected-branch edit, set:\n"
+        f"  {PROTECTED_BRANCH_EDIT_OVERRIDE_ENV}=1"
+    )
 
 
 def ensure_main_rs_lock(file_path: str, session_id: str) -> str | None:
@@ -213,6 +242,22 @@ def main() -> None:
 
     if not file_path:
         sys.exit(0)
+
+    protected_branch_error = ensure_protected_branch_edit_allowed(file_path)
+    if protected_branch_error:
+        emit_event(
+            session_id,
+            "hook.invoked",
+            {
+                "hook": "skill_guard",
+                "trigger": "PreToolUse",
+                "outcome": "protected_branch_blocked",
+                "matched_count": 1,
+                "exit_code": 2,
+            },
+        )
+        print(protected_branch_error, file=sys.stderr)
+        sys.exit(2)
 
     lock_error = ensure_main_rs_lock(file_path, session_id)
     if lock_error:

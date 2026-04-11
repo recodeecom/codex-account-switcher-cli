@@ -52,6 +52,27 @@ test("installLoginHook is idempotent", async (t) => {
   });
 });
 
+test("installLoginHook refreshes an existing legacy hook block", async (t) => {
+  await withTempRcFile(t, async (rcPath) => {
+    const legacyBlock = [
+      LOGIN_HOOK_MARK_START,
+      "# legacy",
+      LOGIN_HOOK_MARK_END,
+    ].join("\n");
+    await fsp.writeFile(rcPath, `# test bashrc\n\n${legacyBlock}\n`, "utf8");
+
+    const result = await installLoginHook(rcPath);
+    assert.equal(result, "updated");
+
+    const contents = await fsp.readFile(rcPath, "utf8");
+    assert.ok(contents.includes("command codex-auth restore-session"));
+    assert.ok(contents.includes("CODEX_AUTH_FORCE_EXTERNAL_SYNC=1 command codex-auth status"));
+    assert.ok(!contents.includes("# legacy"));
+    const startCount = contents.split(LOGIN_HOOK_MARK_START).length - 1;
+    assert.equal(startCount, 1);
+  });
+});
+
 test("removeLoginHook removes installed marker block", async (t) => {
   await withTempRcFile(t, async (rcPath) => {
     await installLoginHook(rcPath);
@@ -87,6 +108,11 @@ test("getLoginHookStatus reflects installed state", async (t) => {
 test("renderLoginHookBlock includes terminal-mode restore guard", () => {
   const hook = renderLoginHookBlock();
   assert.ok(hook.includes("__codex_auth_restore_tty"));
+  assert.ok(hook.includes("codex() {"));
+  assert.ok(hook.includes("command codex-auth restore-session"));
+  assert.ok(hook.includes("CODEX_AUTH_FORCE_EXTERNAL_SYNC=1 command codex-auth status"));
+  assert.ok(!hook.includes("__first_non_flag"));
+  assert.ok(!hook.includes("if ! typeset -f codex"));
   assert.ok(hook.includes("\\033[>4m"));
   assert.ok(hook.includes("\\033[<u"));
   assert.ok(hook.includes("\\033[?2026l"));

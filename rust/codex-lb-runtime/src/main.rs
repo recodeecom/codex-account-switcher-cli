@@ -1,15 +1,16 @@
 use axum::{
     Json, Router,
     body::Bytes,
-    extract::{Path, RawQuery, State},
-    http::{HeaderMap, StatusCode},
+    extract::{Path, RawQuery, Request, State},
+    http::{HeaderMap, StatusCode, header},
+    middleware::{Next, from_fn_with_state},
     response::{Html, Response},
     routing::{any, get},
 };
 use reqwest::Client;
 use serde_json::Value;
 use std::{collections::BTreeMap, env, net::SocketAddr, time::Duration};
-use tracing::info;
+use tracing::{info, warn};
 
 mod runtime;
 #[cfg(test)]
@@ -24,8 +25,9 @@ use runtime::{
         proxy_python_live_usage_xml, proxy_python_raw_endpoint_with_method, query_param_true,
     },
     responses_bridge::{
-        proxy_backend_codex_responses_http, proxy_backend_codex_responses_ws,
-        proxy_v1_responses_http, proxy_v1_responses_ws,
+        proxy_account_terminal_ws, proxy_backend_codex_responses_http,
+        proxy_backend_codex_responses_ws, proxy_dashboard_overview_ws, proxy_v1_responses_http,
+        proxy_v1_responses_ws,
     },
     state::{RuntimeState, runtime_state_from_env},
 };
@@ -62,11 +64,19 @@ fn app_with_state(state: RuntimeState) -> Router {
             "/api/dashboard/system-monitor",
             get(dashboard_system_monitor),
         )
+        .route(
+            "/api/dashboard/overview/ws",
+            get(proxy_dashboard_overview_ws),
+        )
         .route("/api/projects/plans", get(projects_plans))
         .route("/api/projects/plans/{plan_slug}", get(project_plan))
         .route(
             "/api/projects/plans/{plan_slug}/runtime",
             get(project_plan_runtime),
+        )
+        .route(
+            "/api/accounts/{account_id}/terminal/ws",
+            get(proxy_account_terminal_ws),
         )
         .route(
             "/backend-api/codex/responses",
@@ -99,6 +109,10 @@ fn app_with_state(state: RuntimeState) -> Router {
         .route("/_rust_layer/info", get(runtime_info))
         .route("/_python_layer/health", get(python_layer_health))
         .route("/_python_layer/apis", get(python_layer_apis))
+        .layer(from_fn_with_state(
+            state.clone(),
+            track_inflight_http_requests,
+        ))
         .with_state(state)
 }
 
@@ -116,9 +130,10 @@ async fn main() {
         .unwrap_or_else(|err| panic!("failed to bind {addr}: {err}"));
 
     info!(%addr, "starting codex-lb rust runtime scaffold");
+    let state = runtime_state_from_env();
 
-    axum::serve(listener, app())
-        .with_graceful_shutdown(shutdown_signal())
+    axum::serve(listener, app_with_state(state.clone()))
+        .with_graceful_shutdown(shutdown_signal(state))
         .await
         .expect("server crashed");
 }
@@ -129,7 +144,7 @@ fn init_tracing() {
     tracing_subscriber::fmt().with_env_filter(filter).init();
 }
 
-async fn shutdown_signal() {
+async fn shutdown_signal(state: RuntimeState) {
     #[cfg(unix)]
     {
         use tokio::signal::unix::{SignalKind, signal};
@@ -143,6 +158,24 @@ async fn shutdown_signal() {
     #[cfg(not(unix))]
     {
         let _ = tokio::signal::ctrl_c().await;
+    }
+
+    state.set_bridge_drain_active(true);
+    state.set_draining(true);
+
+    let drained = state
+        .wait_for_in_flight_http_drain(
+            Duration::from_secs(state.flags.shutdown_drain_timeout_seconds),
+            Duration::from_millis(100),
+        )
+        .await;
+
+    if !drained {
+        warn!(
+            timeout_seconds = state.flags.shutdown_drain_timeout_seconds,
+            remaining_in_flight = state.in_flight_http_requests(),
+            "rust runtime drain timeout reached, continuing shutdown",
+        );
     }
 }
 
@@ -161,7 +194,7 @@ async fn health_live() -> Json<HealthCheckResponse> {
 async fn health_ready(
     State(state): State<RuntimeState>,
 ) -> Result<Json<HealthCheckResponse>, (StatusCode, Json<ErrorDetailResponse>)> {
-    if state.flags.draining {
+    if state.is_draining() {
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
             Json(ErrorDetailResponse {
@@ -177,6 +210,26 @@ async fn health_ready(
         checks: Some(checks),
         bridge_ring: None,
     }))
+}
+
+async fn track_inflight_http_requests(
+    State(state): State<RuntimeState>,
+    request: Request,
+    next: Next,
+) -> Response {
+    if request
+        .headers()
+        .get(header::UPGRADE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.eq_ignore_ascii_case("websocket"))
+    {
+        return next.run(request).await;
+    }
+
+    state.increment_in_flight_http_requests();
+    let response = next.run(request).await;
+    state.decrement_in_flight_http_requests();
+    response
 }
 
 async fn health_startup(
@@ -754,6 +807,7 @@ async fn root_panel(State(state): State<RuntimeState>) -> Html<String> {
 mod tests {
     use super::{
         RuntimeFlags, RuntimeState, app, app_with_flags, app_with_state, resolve_python_base_url,
+        runtime_state_with_flags,
     };
     use axum::{
         Json, Router,
@@ -872,6 +926,7 @@ mod tests {
             profile: "test".to_string(),
             draining: false,
             startup_pending: true,
+            shutdown_drain_timeout_seconds: 30,
         })
         .oneshot(
             Request::builder()
@@ -890,6 +945,31 @@ mod tests {
             .to_bytes();
         let payload: Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(payload["detail"], "Service is starting");
+    }
+
+    #[tokio::test]
+    async fn health_ready_returns_503_when_runtime_is_draining() {
+        let state = state_for_python_base_url("http://127.0.0.1:9".to_string());
+        state.set_draining(true);
+        let app = app_with_state(state);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/health/ready")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let body = http_body_util::BodyExt::collect(response.into_body())
+            .await
+            .unwrap()
+            .to_bytes();
+        let payload: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(payload["detail"], "Service is draining");
     }
 
     #[tokio::test]
@@ -1301,6 +1381,52 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn backend_api_wildcard_forwards_transcribe_multipart_payload() {
+        let (python_base_url, server_handle) = spawn_python_dashboard_api_stub().await;
+        let app = app_with_state(state_for_python_base_url(python_base_url));
+
+        let boundary = "----codex-lb-test-boundary";
+        let multipart_body = format!(
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"clip.wav\"\r\nContent-Type: audio/wav\r\n\r\nFAKEAUDIO\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\nhello from rust proxy\r\n--{boundary}--\r\n"
+        );
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/backend-api/transcribe?source=runtime-proxy")
+                    .header(
+                        "content-type",
+                        format!("multipart/form-data; boundary={boundary}"),
+                    )
+                    .body(Body::from(multipart_body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = http_body_util::BodyExt::collect(response.into_body())
+            .await
+            .unwrap()
+            .to_bytes();
+        let payload: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(payload["status"], "ok");
+        assert!(
+            payload["content_type"]
+                .as_str()
+                .unwrap_or_default()
+                .starts_with("multipart/form-data")
+        );
+        assert_eq!(payload["has_file_part"], true);
+        assert_eq!(payload["query_source"], "runtime-proxy");
+        assert!(payload["size_bytes"].as_u64().unwrap_or_default() > 0);
+
+        server_handle.abort();
+    }
+
+    #[tokio::test]
     async fn v1_wildcard_forwards_post_body_content_type_and_set_cookie() {
         let (python_base_url, server_handle) = spawn_python_dashboard_api_stub().await;
         let app = app_with_state(state_for_python_base_url(python_base_url));
@@ -1330,6 +1456,114 @@ mod tests {
         assert_eq!(payload["payload"]["task"], "quota-sync");
 
         server_handle.abort();
+    }
+
+    #[tokio::test]
+    async fn v1_wildcard_forwards_audio_transcriptions_multipart_payload() {
+        let (python_base_url, server_handle) = spawn_python_dashboard_api_stub().await;
+        let app = app_with_state(state_for_python_base_url(python_base_url));
+
+        let boundary = "----codex-lb-v1-boundary";
+        let multipart_body = format!(
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\ngpt-4o-transcribe\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"sample.wav\"\r\nContent-Type: audio/wav\r\n\r\nAUDIOPAYLOAD\r\n--{boundary}--\r\n"
+        );
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/audio/transcriptions?format=json")
+                    .header(
+                        "content-type",
+                        format!("multipart/form-data; boundary={boundary}"),
+                    )
+                    .body(Body::from(multipart_body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = http_body_util::BodyExt::collect(response.into_body())
+            .await
+            .unwrap()
+            .to_bytes();
+        let payload: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(payload["status"], "ok");
+        assert!(
+            payload["content_type"]
+                .as_str()
+                .unwrap_or_default()
+                .starts_with("multipart/form-data")
+        );
+        assert_eq!(payload["has_model_part"], true);
+        assert_eq!(payload["has_file_part"], true);
+        assert_eq!(payload["query_format"], "json");
+
+        server_handle.abort();
+    }
+
+    #[tokio::test]
+    async fn backend_responses_http_fails_closed_when_python_unreachable() {
+        let app = app_with_state(state_for_python_base_url("http://127.0.0.1:9".to_string()));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/backend-api/codex/responses")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"input":"hello"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+        let body = http_body_util::BodyExt::collect(response.into_body())
+            .await
+            .unwrap()
+            .to_bytes();
+        let payload: Value = serde_json::from_slice(&body).unwrap();
+        assert!(
+            payload["detail"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("upstream request failed")
+        );
+    }
+
+    #[tokio::test]
+    async fn v1_responses_http_fails_closed_when_python_unreachable() {
+        let app = app_with_state(state_for_python_base_url("http://127.0.0.1:9".to_string()));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/responses")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"input":"hello"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+        let body = http_body_util::BodyExt::collect(response.into_body())
+            .await
+            .unwrap()
+            .to_bytes();
+        let payload: Value = serde_json::from_slice(&body).unwrap();
+        assert!(
+            payload["detail"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("upstream request failed")
+        );
     }
 
     #[tokio::test]
@@ -1397,6 +1631,80 @@ mod tests {
         assert_eq!(payload["runtime_status"], "active");
 
         server_handle.abort();
+    }
+
+    #[tokio::test]
+    async fn dashboard_overview_ws_route_is_present() {
+        let app = app_with_state(state_for_python_base_url("http://127.0.0.1:9".to_string()));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/dashboard/overview/ws")
+                    .header("cookie", "dashboard_session=test")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert!(matches!(
+            response.status(),
+            StatusCode::BAD_REQUEST | StatusCode::UPGRADE_REQUIRED
+        ));
+    }
+
+    #[tokio::test]
+    async fn account_terminal_ws_route_is_present() {
+        let app = app_with_state(state_for_python_base_url("http://127.0.0.1:9".to_string()));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/accounts/account-1/terminal/ws")
+                    .header("cookie", "dashboard_session=test")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert!(matches!(
+            response.status(),
+            StatusCode::BAD_REQUEST | StatusCode::UPGRADE_REQUIRED
+        ));
+    }
+
+    #[tokio::test]
+    async fn responses_http_rejects_new_sessions_when_bridge_draining() {
+        let state = state_for_python_base_url("http://127.0.0.1:9".to_string());
+        state.set_bridge_drain_active(true);
+        let app = app_with_state(state);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/backend-api/codex/responses")
+                    .header("content-type", "application/json")
+                    .body(Body::from("{}"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let body = http_body_util::BodyExt::collect(response.into_body())
+            .await
+            .unwrap()
+            .to_bytes();
+        let payload: Value = serde_json::from_slice(&body).unwrap();
+        assert!(
+            payload["detail"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("HTTP bridge is draining")
+        );
     }
 
     #[tokio::test]
@@ -1607,18 +1915,18 @@ mod tests {
     }
 
     fn state_for_python_base_url(python_base_url: String) -> RuntimeState {
-        RuntimeState {
-            flags: RuntimeFlags {
-                profile: "test".to_string(),
-                draining: false,
-                startup_pending: false,
-            },
-            python_base_url,
-            python_client: reqwest::Client::builder()
-                .timeout(Duration::from_millis(500))
-                .build()
-                .unwrap(),
-        }
+        let mut state = runtime_state_with_flags(RuntimeFlags {
+            profile: "test".to_string(),
+            draining: false,
+            startup_pending: false,
+            shutdown_drain_timeout_seconds: 30,
+        });
+        state.python_base_url = python_base_url;
+        state.python_client = reqwest::Client::builder()
+            .timeout(Duration::from_millis(500))
+            .build()
+            .unwrap();
+        state
     }
 
     async fn spawn_python_stub(
@@ -1896,6 +2204,56 @@ mod tests {
                 }),
             )
             .route(
+                "/backend-api/transcribe",
+                post(
+                    |axum::extract::RawQuery(raw_query): axum::extract::RawQuery,
+                     headers: axum::http::HeaderMap,
+                     body: axum::body::Bytes| async move {
+                        let content_type = headers
+                            .get("content-type")
+                            .and_then(|value| value.to_str().ok())
+                            .unwrap_or_default()
+                            .to_string();
+                        let body_text = String::from_utf8_lossy(&body);
+                        let query_source =
+                            query_param(raw_query.as_deref(), "source").unwrap_or_default();
+
+                        (
+                            StatusCode::OK,
+                            Json(json!({
+                                "status": "ok",
+                                "content_type": content_type,
+                                "size_bytes": body.len(),
+                                "has_file_part": body_text.contains("filename=\"clip.wav\""),
+                                "query_source": query_source
+                            })),
+                        )
+                    },
+                ),
+            )
+            .route(
+                "/backend-api/codex/responses",
+                post(|headers: axum::http::HeaderMap, body: axum::body::Bytes| async move {
+                    let content_type = headers
+                        .get("content-type")
+                        .and_then(|value| value.to_str().ok())
+                        .unwrap_or_default()
+                        .to_string();
+                    let payload: Value =
+                        serde_json::from_slice(&body).unwrap_or_else(|_| json!({ "input": "" }));
+
+                    (
+                        StatusCode::OK,
+                        Json(json!({
+                            "status": "ok",
+                            "route": "backend-api",
+                            "content_type": content_type,
+                            "input": payload.get("input").cloned().unwrap_or(Value::Null)
+                        })),
+                    )
+                }),
+            )
+            .route(
                 "/v1/echo",
                 post(|headers: axum::http::HeaderMap, body: axum::body::Bytes| async move {
                     let content_type = headers
@@ -1913,6 +2271,57 @@ mod tests {
                             "status": "ok",
                             "content_type": content_type,
                             "payload": payload
+                        })),
+                    )
+                }),
+            )
+            .route(
+                "/v1/audio/transcriptions",
+                post(
+                    |axum::extract::RawQuery(raw_query): axum::extract::RawQuery,
+                     headers: axum::http::HeaderMap,
+                     body: axum::body::Bytes| async move {
+                        let content_type = headers
+                            .get("content-type")
+                            .and_then(|value| value.to_str().ok())
+                            .unwrap_or_default()
+                            .to_string();
+                        let body_text = String::from_utf8_lossy(&body);
+                        let query_format =
+                            query_param(raw_query.as_deref(), "format").unwrap_or_default();
+
+                        (
+                            StatusCode::OK,
+                            Json(json!({
+                                "status": "ok",
+                                "content_type": content_type,
+                                "has_model_part": body_text.contains("name=\"model\"")
+                                    && body_text.contains("gpt-4o-transcribe"),
+                                "has_file_part": body_text.contains("filename=\"sample.wav\""),
+                                "query_format": query_format
+                            })),
+                        )
+                    },
+                ),
+            )
+            .route(
+                "/v1/responses",
+                post(|headers: axum::http::HeaderMap, body: axum::body::Bytes| async move {
+                    let content_type = headers
+                        .get("content-type")
+                        .and_then(|value| value.to_str().ok())
+                        .unwrap_or_default()
+                        .to_string();
+                    let payload: Value =
+                        serde_json::from_slice(&body).unwrap_or_else(|_| json!({ "input": "" }));
+
+                    (
+                        StatusCode::OK,
+                        Json(json!({
+                            "status": "ok",
+                            "route": "v1",
+                            "content_type": content_type,
+                            "input": payload.get("input").cloned().unwrap_or(Value::Null)
                         })),
                     )
                 }),

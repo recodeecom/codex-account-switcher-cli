@@ -63,6 +63,161 @@ if [[ ! -f "$PLAN_DIR/README.md" ]]; then
   } > "$PLAN_DIR/README.md"
 fi
 
+if [[ ! -f "$PLAN_DIR/coordinator-prompt.md" ]]; then
+  cat > "$PLAN_DIR/coordinator-prompt.md" <<COORDPROMPTEOF
+# Master Coordinator Prompt
+
+You are the coordinator for plan \`${PLAN_SLUG}\`.
+
+## Objective
+
+Drive this plan from draft to execution-ready status with strict checkpoint discipline and no scope drift.
+
+## Source-of-truth artifacts
+
+- \`openspec/plan/${PLAN_SLUG}/summary.md\`
+- \`openspec/plan/${PLAN_SLUG}/checkpoints.md\`
+- \`openspec/plan/${PLAN_SLUG}/planner/plan.md\`
+- role \`tasks.md\` files for planner/architect/critic/executor/writer/verifier
+
+## Coordinator responsibilities
+
+1. Keep checkpoints current in each role \`tasks.md\` and root \`checkpoints.md\`.
+2. Ensure each role has explicit acceptance criteria and verification evidence.
+3. Prevent implementation from starting before planning gates are complete.
+4. Keep handoffs concise: files changed, behavior touched, verification output, risks.
+
+## Wave-splitting decision (optional)
+
+Create wave prompts in \`kickoff-prompts.md\` only when at least one applies:
+
+- 3+ independent implementation lanes can run in parallel.
+- Runtime cutover/rollback sequencing needs explicit lane ownership.
+- Risk is high enough that bounded execution packets reduce coordination mistakes.
+
+If wave splitting is not needed, keep execution under a single owner with normal role checkpoints.
+
+## Exit criteria
+
+- All role checkpoints required for planning are done.
+- Execution lanes (if any) have clear ownership boundaries.
+- Verification plan and rollback expectations are explicit and testable.
+COORDPROMPTEOF
+fi
+
+if [[ ! -f "$PLAN_DIR/kickoff-prompts.md" ]]; then
+  cat > "$PLAN_DIR/kickoff-prompts.md" <<KICKOFFPROMPTEOF
+# Kickoff Prompts (Copy/Paste)
+
+Use these only when the coordinator decides wave-splitting is needed.
+
+## Prompt A — Wave A (Primary lane)
+
+\`\`\`text
+You own Wave-A for plan \`${PLAN_SLUG}\` in /home/deadpool/Documents/codex-lb.
+
+Goal:
+Implement the assigned Wave-A scope and return verification evidence.
+
+Hard constraints:
+- You are not alone in the codebase; do not revert others' work.
+- Stay in your owned files/modules only.
+- Record explicit handoff notes for integration.
+
+Owned scope:
+- <fill owned files/modules>
+
+Verification:
+- <fill commands>
+
+Handoff format:
+- Files changed
+- Behavior touched
+- Verification outputs
+- Risks/follow-ups
+\`\`\`
+
+## Prompt B — Wave B (Secondary lane)
+
+\`\`\`text
+You own Wave-B for plan \`${PLAN_SLUG}\` in /home/deadpool/Documents/codex-lb.
+
+Goal:
+Implement the assigned Wave-B scope and return verification evidence.
+
+Hard constraints:
+- You are not alone in the codebase; do not revert others' work.
+- Stay in your owned files/modules only.
+- Record explicit handoff notes for integration.
+
+Owned scope:
+- <fill owned files/modules>
+
+Verification:
+- <fill commands>
+
+Handoff format:
+- Files changed
+- Behavior touched
+- Verification outputs
+- Risks/follow-ups
+\`\`\`
+
+## Prompt C — Wave C (Secondary lane)
+
+\`\`\`text
+You own Wave-C for plan \`${PLAN_SLUG}\` in /home/deadpool/Documents/codex-lb.
+
+Goal:
+Implement the assigned Wave-C scope and return verification evidence.
+
+Hard constraints:
+- You are not alone in the codebase; do not revert others' work.
+- Stay in your owned files/modules only.
+- Record explicit handoff notes for integration.
+
+Owned scope:
+- <fill owned files/modules>
+
+Verification:
+- <fill commands>
+
+Handoff format:
+- Files changed
+- Behavior touched
+- Verification outputs
+- Risks/follow-ups
+\`\`\`
+
+## Prompt D — Integrator lane
+
+\`\`\`text
+You are the integrator for plan \`${PLAN_SLUG}\` in /home/deadpool/Documents/codex-lb.
+
+Goal:
+Integrate completed waves, resolve conflicts, run final verification, and prepare rollout/cutover notes.
+
+Hard constraints:
+- You are not alone in the codebase; do not revert others' work.
+- Preserve safety-critical behavior unless explicitly planned and tested.
+- Keep final output evidence-first.
+
+Owned scope:
+- integration glue and shared touchpoints
+- final validation + handoff summary
+
+Verification:
+- <fill commands>
+
+Final report:
+- Files changed
+- Integration decisions
+- Verification outputs
+- Remaining risks
+\`\`\`
+KICKOFFPROMPTEOF
+fi
+
 for role in "${ROLES[@]}"; do
   ROLE_DIR="$PLAN_DIR/$role"
   mkdir -p "$ROLE_DIR"

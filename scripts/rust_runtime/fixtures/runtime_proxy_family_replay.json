@@ -25,11 +25,6 @@
       }
     },
     {
-      "label": "accounts_list_auth_required",
-      "method": "GET",
-      "endpoint": "/api/accounts"
-    },
-    {
       "label": "v1_model_list_auth_required",
       "method": "GET",
       "endpoint": "/v1/models"
@@ -44,6 +39,46 @@
       "body": {
         "task": "quota-sync"
       }
+    },
+    {
+      "label": "backend_responses_post_proxy",
+      "method": "POST",
+      "endpoint": "/backend-api/codex/responses",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "input": "bridge-check"
+      }
+    },
+    {
+      "label": "v1_responses_post_proxy",
+      "method": "POST",
+      "endpoint": "/v1/responses",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "input": "bridge-check"
+      }
+    },
+    {
+      "label": "backend_transcribe_multipart_proxy",
+      "method": "POST",
+      "endpoint": "/backend-api/transcribe?source=fixture",
+      "headers": {
+        "Content-Type": "multipart/form-data; boundary=----fixture-boundary"
+      },
+      "body": "invalid multipart payload"
+    },
+    {
+      "label": "v1_audio_transcriptions_multipart_proxy",
+      "method": "POST",
+      "endpoint": "/v1/audio/transcriptions?format=json",
+      "headers": {
+        "Content-Type": "multipart/form-data; boundary=----fixture-v1-boundary"
+      },
+      "body": "invalid multipart payload"
     }
   ]
 }

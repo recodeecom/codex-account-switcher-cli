@@ -3,18 +3,21 @@ use super::{
     state::RuntimeState,
 };
 use axum::{
-    body::Bytes,
+    body::{Body, Bytes},
     extract::{
-        RawQuery, State,
-        ws::{Message as AxumWsMessage, WebSocket, WebSocketUpgrade},
+        Path, RawQuery, State,
+        ws::{CloseFrame as AxumCloseFrame, Message as AxumWsMessage, WebSocket, WebSocketUpgrade},
     },
-    http::{HeaderMap, HeaderName, HeaderValue},
+    http::{HeaderMap, HeaderName, HeaderValue, StatusCode, header},
     response::Response,
 };
 use futures_util::{SinkExt, StreamExt};
 use tokio_tungstenite::{
     connect_async,
-    tungstenite::{Message as UpstreamWsMessage, client::IntoClientRequest},
+    tungstenite::{
+        Message as UpstreamWsMessage, client::IntoClientRequest,
+        protocol::CloseFrame as WsCloseFrame, protocol::frame::coding::CloseCode as WsCloseCode,
+    },
 };
 
 pub(crate) async fn proxy_backend_codex_responses_ws(
@@ -39,6 +42,32 @@ pub(crate) async fn proxy_v1_responses_ws(
     headers: HeaderMap,
 ) -> Response {
     proxy_websocket_response(ws_upgrade, state, "/v1/responses", raw_query.0, headers)
+}
+
+pub(crate) async fn proxy_dashboard_overview_ws(
+    ws_upgrade: WebSocketUpgrade,
+    State(state): State<RuntimeState>,
+    raw_query: RawQuery,
+    headers: HeaderMap,
+) -> Response {
+    proxy_websocket_response(
+        ws_upgrade,
+        state,
+        "/api/dashboard/overview/ws",
+        raw_query.0,
+        headers,
+    )
+}
+
+pub(crate) async fn proxy_account_terminal_ws(
+    Path(account_id): Path<String>,
+    ws_upgrade: WebSocketUpgrade,
+    State(state): State<RuntimeState>,
+    raw_query: RawQuery,
+    headers: HeaderMap,
+) -> Response {
+    let endpoint = format!("/api/accounts/{account_id}/terminal/ws");
+    proxy_websocket_response(ws_upgrade, state, endpoint, raw_query.0, headers)
 }
 
 pub(crate) async fn proxy_backend_codex_responses_http(
@@ -77,6 +106,10 @@ async fn proxy_responses_http_entry(
     body: Bytes,
     endpoint: &'static str,
 ) -> Response {
+    if state.is_bridge_drain_active() {
+        return bridge_draining_response();
+    }
+
     proxy_python_raw_endpoint_with_method(
         &state,
         reqwest_method_from_axum(&method),
@@ -91,10 +124,15 @@ async fn proxy_responses_http_entry(
 fn proxy_websocket_response(
     ws_upgrade: WebSocketUpgrade,
     state: RuntimeState,
-    endpoint: &'static str,
+    endpoint: impl Into<String>,
     raw_query: Option<String>,
     headers: HeaderMap,
 ) -> Response {
+    if state.is_bridge_drain_active() {
+        return bridge_draining_response();
+    }
+
+    let endpoint = endpoint.into();
     let turn_state = downstream_turn_state(&headers);
     let turn_state_header_value = HeaderValue::from_str(&turn_state).ok();
     let on_upgrade_turn_state = turn_state.clone();
@@ -119,12 +157,12 @@ fn proxy_websocket_response(
 async fn proxy_websocket_bridge(
     downstream: WebSocket,
     state: RuntimeState,
-    endpoint: &'static str,
+    endpoint: String,
     raw_query: Option<String>,
     incoming_headers: HeaderMap,
     turn_state: String,
 ) {
-    let upstream_url = build_python_ws_url(&state.python_base_url, endpoint, raw_query.as_deref());
+    let upstream_url = build_python_ws_url(&state.python_base_url, &endpoint, raw_query.as_deref());
     let Ok(mut upstream_request) = upstream_url.into_client_request() else {
         let _ = close_websocket_silent(downstream).await;
         return;
@@ -157,10 +195,10 @@ fn forward_websocket_headers(
     }
 
     let turn_state_header = HeaderName::from_static("x-codex-turn-state");
-    if !outgoing_headers.contains_key(&turn_state_header) {
-        if let Ok(value) = HeaderValue::from_str(turn_state) {
-            outgoing_headers.insert(turn_state_header, value);
-        }
+    if !outgoing_headers.contains_key(&turn_state_header)
+        && let Ok(value) = HeaderValue::from_str(turn_state)
+    {
+        outgoing_headers.insert(turn_state_header, value);
     }
 }
 
@@ -211,10 +249,10 @@ async fn relay_websocket_streams(
             };
 
             let is_close = matches!(message, AxumWsMessage::Close(_));
-            if let Some(upstream_message) = downstream_to_upstream_message(message) {
-                if upstream_tx.send(upstream_message).await.is_err() {
-                    break;
-                }
+            if let Some(upstream_message) = downstream_to_upstream_message(message)
+                && upstream_tx.send(upstream_message).await.is_err()
+            {
+                break;
             }
             if is_close {
                 break;
@@ -230,10 +268,10 @@ async fn relay_websocket_streams(
             };
 
             let is_close = matches!(message, UpstreamWsMessage::Close(_));
-            if let Some(downstream_message) = upstream_to_downstream_message(message) {
-                if downstream_tx.send(downstream_message).await.is_err() {
-                    break;
-                }
+            if let Some(downstream_message) = upstream_to_downstream_message(message)
+                && downstream_tx.send(downstream_message).await.is_err()
+            {
+                break;
             }
             if is_close {
                 break;
@@ -247,11 +285,13 @@ async fn relay_websocket_streams(
 
 fn downstream_to_upstream_message(message: AxumWsMessage) -> Option<UpstreamWsMessage> {
     match message {
-        AxumWsMessage::Text(text) => Some(UpstreamWsMessage::Text(text.to_string().into())),
+        AxumWsMessage::Text(text) => Some(UpstreamWsMessage::Text(text.to_string())),
         AxumWsMessage::Binary(binary) => Some(UpstreamWsMessage::Binary(binary.to_vec())),
         AxumWsMessage::Ping(ping) => Some(UpstreamWsMessage::Ping(ping.to_vec())),
         AxumWsMessage::Pong(pong) => Some(UpstreamWsMessage::Pong(pong.to_vec())),
-        AxumWsMessage::Close(_) => Some(UpstreamWsMessage::Close(None)),
+        AxumWsMessage::Close(close_frame) => Some(UpstreamWsMessage::Close(
+            close_frame.map(axum_close_frame_to_upstream),
+        )),
     }
 }
 
@@ -261,11 +301,113 @@ fn upstream_to_downstream_message(message: UpstreamWsMessage) -> Option<AxumWsMe
         UpstreamWsMessage::Binary(binary) => Some(AxumWsMessage::Binary(binary.into())),
         UpstreamWsMessage::Ping(ping) => Some(AxumWsMessage::Ping(ping.into())),
         UpstreamWsMessage::Pong(pong) => Some(AxumWsMessage::Pong(pong.into())),
-        UpstreamWsMessage::Close(_) => Some(AxumWsMessage::Close(None)),
+        UpstreamWsMessage::Close(close_frame) => Some(AxumWsMessage::Close(
+            close_frame.map(upstream_close_frame_to_axum),
+        )),
         _ => None,
+    }
+}
+
+fn axum_close_frame_to_upstream(frame: AxumCloseFrame) -> WsCloseFrame<'static> {
+    WsCloseFrame {
+        code: WsCloseCode::from(frame.code),
+        reason: frame.reason.to_string().into(),
+    }
+}
+
+fn upstream_close_frame_to_axum(frame: WsCloseFrame<'_>) -> AxumCloseFrame {
+    AxumCloseFrame {
+        code: u16::from(frame.code),
+        reason: frame.reason.to_string().into(),
     }
 }
 
 async fn close_websocket_silent(mut socket: WebSocket) -> Result<(), axum::Error> {
     socket.send(AxumWsMessage::Close(None)).await
+}
+
+fn bridge_draining_response() -> Response {
+    Response::builder()
+        .status(StatusCode::SERVICE_UNAVAILABLE)
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(header::CACHE_CONTROL, "no-store")
+        .body(Body::from(
+            r#"{"detail":"HTTP bridge is draining — new sessions not accepted during shutdown"}"#,
+        ))
+        .unwrap_or_else(|_| {
+            Response::builder()
+                .status(StatusCode::SERVICE_UNAVAILABLE)
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::CACHE_CONTROL, "no-store")
+                .body(Body::from(r#"{"detail":"Service is draining"}"#))
+                .expect("build static JSON draining response")
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::extract::ws::Message as AxumMessage;
+
+    #[test]
+    fn forward_websocket_headers_filters_handshake_and_sets_turn_state() {
+        let mut outgoing = HeaderMap::new();
+        let mut incoming = HeaderMap::new();
+        incoming.insert("cookie", HeaderValue::from_static("dashboard_session=test"));
+        incoming.insert("authorization", HeaderValue::from_static("Bearer test"));
+        incoming.insert("host", HeaderValue::from_static("localhost:8099"));
+        incoming.insert("connection", HeaderValue::from_static("upgrade"));
+
+        forward_websocket_headers(&mut outgoing, &incoming, "turn_test");
+
+        assert_eq!(
+            outgoing.get("cookie").and_then(|value| value.to_str().ok()),
+            Some("dashboard_session=test")
+        );
+        assert_eq!(
+            outgoing
+                .get("authorization")
+                .and_then(|value| value.to_str().ok()),
+            Some("Bearer test")
+        );
+        assert!(outgoing.get("host").is_none());
+        assert!(outgoing.get("connection").is_none());
+        assert_eq!(
+            outgoing
+                .get("x-codex-turn-state")
+                .and_then(|value| value.to_str().ok()),
+            Some("turn_test")
+        );
+    }
+
+    #[test]
+    fn downstream_close_frame_preserves_code_and_reason() {
+        let message = AxumMessage::Close(Some(AxumCloseFrame {
+            code: 1008,
+            reason: "policy".into(),
+        }));
+
+        let Some(UpstreamWsMessage::Close(Some(frame))) = downstream_to_upstream_message(message)
+        else {
+            panic!("expected upstream close frame");
+        };
+
+        assert_eq!(u16::from(frame.code), 1008);
+        assert_eq!(frame.reason, "policy");
+    }
+
+    #[test]
+    fn upstream_close_frame_preserves_code_and_reason() {
+        let upstream = UpstreamWsMessage::Close(Some(WsCloseFrame {
+            code: WsCloseCode::from(1011),
+            reason: "upstream-error".into(),
+        }));
+
+        let Some(AxumMessage::Close(Some(frame))) = upstream_to_downstream_message(upstream) else {
+            panic!("expected downstream close frame");
+        };
+
+        assert_eq!(frame.code, 1011);
+        assert_eq!(frame.reason.as_str(), "upstream-error");
+    }
 }

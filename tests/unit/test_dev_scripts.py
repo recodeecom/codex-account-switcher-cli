@@ -187,6 +187,13 @@ echo "unsupported bun invocation: $*" >&2
 exit 1
 """,
     )
+    _write_executable(
+        stubs / "cargo",
+        """#!/usr/bin/env bash
+set -euo pipefail
+echo "cargo stub"
+""",
+    )
 
     env = os.environ.copy()
     env["PATH"] = f"{stubs}:{env['PATH']}"
@@ -212,7 +219,8 @@ exit 1
         assert "http://localhost:39000/app" in output
         assert "http://localhost:35174" in output
         assert "runtime  http://localhost:32455 (python)" in output
-        assert "bun run logs -watch rust" not in output
+        assert "rust     http://localhost:38090 (sidecar)" in output
+        assert "bun run logs -watch rust" in output
         assert "APP NOISY LINE" not in output
         assert "BACKEND NOISY LINE" not in output
         assert "FRONTEND NOISY LINE" not in output
@@ -323,6 +331,89 @@ echo "cargo stub"
         assert "bun run logs -watch rust" in output
         rust_log = (project / "logs" / "rust-runtime.log").read_text(encoding="utf-8")
         assert "RUST APP PORT 32465" in rust_log
+    finally:
+        proc.terminate()
+        proc.wait(timeout=5)
+
+
+def test_dev_all_allows_disabling_python_rust_sidecar(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    (project / "scripts").mkdir(parents=True)
+    (project / "apps" / "backend").mkdir(parents=True)
+    (project / "apps" / "frontend" / "scripts").mkdir(parents=True)
+    (project / "logs").mkdir()
+    (project / "apps" / "backend" / ".medusa").mkdir(parents=True)
+
+    shutil.copy2(DEV_ALL_SCRIPT, project / "scripts" / "dev-all.sh")
+
+    _write_executable(
+        project / "scripts" / "run-server-dev.sh",
+        """#!/bin/sh
+set -eu
+port="${APP_BACKEND_PORT:-2455}"
+echo "[stub] App URL -> http://localhost:${port}"
+exec python3 -m http.server "${port}" --bind 127.0.0.1
+""",
+    )
+
+    _write_executable(
+        project / "apps" / "backend" / "dev-stub.sh",
+        """#!/usr/bin/env bash
+set -euo pipefail
+port="${MEDUSA_PORT:-9000}"
+echo "info:    Admin URL → http://localhost:${port}/app"
+exec python3 -m http.server "${port}" --bind 127.0.0.1
+""",
+    )
+
+    _write_executable(
+        project / "apps" / "frontend" / "scripts" / "run-frontend-dev.sh",
+        """#!/bin/sh
+set -eu
+port="${NEXT_DEV_PORT:-5174}"
+echo "[codex-lb] Frontend dev server: http://localhost:${port}"
+exec python3 -m http.server "${port}" --bind 127.0.0.1
+""",
+    )
+
+    stubs = project / "stubs"
+    stubs.mkdir()
+    _write_executable(
+        stubs / "bun",
+        f"""#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${{1:-}}" == "run" && "${{2:-}}" == "dev" && "$PWD" == "{project / 'apps' / 'backend'}" ]]; then
+  shift 2
+  exec bash ./dev-stub.sh "$@"
+fi
+echo "unsupported bun invocation: $*" >&2
+exit 1
+""",
+    )
+
+    env = os.environ.copy()
+    env["PATH"] = f"{stubs}:{env['PATH']}"
+    env["APP_BACKEND_PORT"] = "32466"
+    env["MEDUSA_BACKEND_PORT"] = "39066"
+    env["FRONTEND_PORT"] = "35166"
+    env["RUST_RUNTIME_PORT"] = "38098"
+    env["START_RUST_RUNTIME"] = "false"
+
+    proc = subprocess.Popen(
+        ["bash", "./scripts/dev-all.sh"],
+        cwd=project,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+
+    try:
+        output = _read_until(proc, "[dev] Ready")
+        output += _read_until(proc, "bun run logs -watch frontend")
+        assert "runtime  http://localhost:32466 (python)" in output
+        assert "rust     http://localhost:38098 (sidecar)" not in output
+        assert "bun run logs -watch rust" not in output
     finally:
         proc.terminate()
         proc.wait(timeout=5)
