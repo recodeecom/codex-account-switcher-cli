@@ -1824,6 +1824,35 @@ export const handlers = [
 		return HttpResponse.json({ activeWorkspaceId: workspaceId });
 	}),
 
+	http.delete("/api/workspaces/:workspaceId", ({ params }) => {
+		const workspaceId = String(params.workspaceId);
+		const target = state.workspaces.find((entry) => entry.id === workspaceId);
+		if (!target) {
+			return HttpResponse.json(
+				{
+					error: {
+						code: "workspace_not_found",
+						message: "Workspace not found",
+					},
+				},
+				{ status: 404 },
+			);
+		}
+		if (target.isActive) {
+			return HttpResponse.json(
+				{
+					error: {
+						code: "workspace_active_delete_forbidden",
+						message: "Active workspace cannot be deleted",
+					},
+				},
+				{ status: 409 },
+			);
+		}
+		state.workspaces = state.workspaces.filter((entry) => entry.id !== workspaceId);
+		return new HttpResponse(null, { status: 204 });
+	}),
+
 	http.get("/api/projects", () => {
 		return HttpResponse.json({ entries: state.projects });
 	}),

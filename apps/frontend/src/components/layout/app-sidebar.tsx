@@ -11,6 +11,7 @@ import {
   KeyRound,
   LayoutDashboard,
   Link2,
+  Loader2,
   MonitorSmartphone,
   PanelsTopLeft,
   Plus,
@@ -20,6 +21,7 @@ import {
   Settings2,
   Sparkles,
   SquarePen,
+  Trash2,
   Users,
 } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -96,7 +98,7 @@ export function AppSidebar() {
   const [switchboardOpen, setSwitchboardOpen] = useState(false);
   const [workspaceOnboardingOpen, setWorkspaceOnboardingOpen] = useState(false);
   const dashboardQuery = useDashboard();
-  const { workspacesQuery, createMutation, selectMutation } = useWorkspaces();
+  const { workspacesQuery, createMutation, selectMutation, deleteMutation } = useWorkspaces();
 
   const accountCountLabel = useMemo(() => {
     const count =
@@ -146,10 +148,17 @@ export function AppSidebar() {
   };
 
   const handleSelectWorkspace = (workspaceId: string) => {
-    if (selectMutation.isPending) {
+    if (selectMutation.isPending || deleteMutation.isPending) {
       return;
     }
     selectMutation.mutate(workspaceId);
+  };
+
+  const handleDeleteWorkspace = (workspaceId: string, workspaceName: string) => {
+    if (selectMutation.isPending || deleteMutation.isPending) {
+      return;
+    }
+    deleteMutation.mutate({ workspaceId, workspaceName });
   };
 
   const renderNavLink = (item: SidebarNavEntry, compact = false) => {
@@ -342,26 +351,33 @@ export function AppSidebar() {
                 <div className="space-y-2 px-2 pb-2">
                   {workspaces.map((workspace) => {
                     const isSelected = workspace.isActive;
+                    const isDeleting =
+                      deleteMutation.isPending
+                      && deleteMutation.variables?.workspaceId === workspace.id;
                     return (
-                      <button
-                        type="button"
+                      <div
                         key={workspace.id}
-                        onClick={() => handleSelectWorkspace(workspace.id)}
-                        aria-label={`Select workspace ${workspace.name}`}
                         className={cn(
-                          "flex w-full items-center gap-3 rounded-xl border px-2.5 py-2.5 text-left transition-colors",
+                          "flex items-center gap-2 rounded-xl border px-2.5 py-2.5 transition-colors",
                           isSelected
                             ? "border-white/[0.2] bg-white/[0.08]"
                             : "border-white/[0.12] bg-white/[0.04] hover:border-white/[0.22] hover:bg-white/[0.08]",
                         )}
-                        disabled={selectMutation.isPending}
                       >
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-semibold text-white">
-                            {workspace.name}
-                          </p>
-                          <p className="truncate text-xs text-slate-400">{workspace.label}</p>
-                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleSelectWorkspace(workspace.id)}
+                          aria-label={`Select workspace ${workspace.name}`}
+                          className="min-w-0 flex flex-1 items-center text-left"
+                          disabled={selectMutation.isPending || deleteMutation.isPending}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-semibold text-white">
+                              {workspace.name}
+                            </p>
+                            <p className="truncate text-xs text-slate-400">{workspace.label}</p>
+                          </div>
+                        </button>
                         {isSelected ? (
                           <span className="flex h-6 w-6 items-center justify-center rounded-full border border-emerald-300/40 bg-emerald-300/12">
                             <Check
@@ -369,8 +385,25 @@ export function AppSidebar() {
                               aria-hidden="true"
                             />
                           </span>
-                        ) : null}
-                      </button>
+                        ) : (
+                          <button
+                            type="button"
+                            aria-label={`Delete workspace ${workspace.name}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleDeleteWorkspace(workspace.id, workspace.name);
+                            }}
+                            disabled={selectMutation.isPending || deleteMutation.isPending}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-white/[0.12] bg-white/[0.04] text-slate-400 transition-colors hover:border-red-400/45 hover:bg-red-500/10 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {isDeleting ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                            ) : (
+                              <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                            )}
+                          </button>
+                        )}
+                      </div>
                     );
                   })}
                 </div>

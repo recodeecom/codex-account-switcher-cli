@@ -73,6 +73,15 @@ class WorkspacesRepository:
         await self._session.refresh(row)
         return row
 
+    async def remove(self, workspace_id: str) -> bool:
+        await self._ensure_workspaces_table()
+        row = await self._session.get(SwitchboardWorkspace, workspace_id)
+        if row is None:
+            return False
+        await self._session.delete(row)
+        await self._session.commit()
+        return True
+
     async def _ensure_workspaces_table(self) -> None:
         try:
             await self._session.execute(select(SwitchboardWorkspace.id).limit(1))
@@ -104,4 +113,3 @@ def _is_missing_workspaces_table_error(exc: OperationalError) -> bool:
         or ('relation "switchboard_workspaces" does not exist' in message)
         or ("relation 'switchboard_workspaces' does not exist" in message)
     )
-

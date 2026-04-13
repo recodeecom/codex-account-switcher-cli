@@ -1,4 +1,4 @@
-import { get, post } from "@/lib/api-client";
+import { del, get, post } from "@/lib/api-client";
 
 import {
   WorkspaceCreateRequestSchema,
@@ -25,3 +25,6 @@ export function selectWorkspace(workspaceId: string) {
   );
 }
 
+export function deleteWorkspace(workspaceId: string) {
+  return del(`${WORKSPACES_BASE_PATH}/${encodeURIComponent(workspaceId)}`);
+}

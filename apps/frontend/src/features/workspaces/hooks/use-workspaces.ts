@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-import { createWorkspace, listWorkspaces, selectWorkspace } from "@/features/workspaces/api";
+import { createWorkspace, deleteWorkspace, listWorkspaces, selectWorkspace } from "@/features/workspaces/api";
 import type {
   WorkspaceCreateRequest,
   WorkspacesResponse,
@@ -66,9 +66,30 @@ export function useWorkspaces() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: ({ workspaceId }: { workspaceId: string; workspaceName: string }) =>
+      deleteWorkspace(workspaceId),
+    onSuccess: (_, variables) => {
+      queryClient.setQueryData<WorkspacesResponse | undefined>(queryKey, (current) => {
+        if (!current) {
+          return current;
+        }
+        return {
+          entries: current.entries.filter((entry) => entry.id !== variables.workspaceId),
+        };
+      });
+      toast.success(`Workspace removed: ${variables.workspaceName}`);
+      invalidate();
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Failed to delete workspace");
+    },
+  });
+
   return {
     workspacesQuery,
     createMutation,
     selectMutation,
+    deleteMutation,
   };
 }

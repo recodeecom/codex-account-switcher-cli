@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Body, Depends
+from fastapi import APIRouter, Body, Depends, Response, status
 
 from app.core.auth.dependencies import set_dashboard_error_format, validate_dashboard_session
 from app.core.exceptions import DashboardBadRequestError, DashboardConflictError, DashboardNotFoundError
@@ -12,6 +12,7 @@ from app.modules.workspaces.schemas import (
     WorkspaceSelectionResponse,
 )
 from app.modules.workspaces.service import (
+    WorkspaceActiveDeleteError,
     WorkspaceEntryData,
     WorkspaceNameExistsError,
     WorkspaceNotFoundError,
@@ -58,6 +59,19 @@ async def select_workspace(
     except WorkspaceNotFoundError as exc:
         raise DashboardNotFoundError(str(exc), code="workspace_not_found") from exc
     return WorkspaceSelectionResponse(active_workspace_id=selected.id)
+
+
+@router.delete("/{workspace_id}", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
+async def delete_workspace(
+    workspace_id: str,
+    context: WorkspacesContext = Depends(get_workspaces_context),
+) -> None:
+    try:
+        await context.service.delete_workspace(workspace_id)
+    except WorkspaceNotFoundError as exc:
+        raise DashboardNotFoundError(str(exc), code="workspace_not_found") from exc
+    except WorkspaceActiveDeleteError as exc:
+        raise DashboardConflictError(str(exc), code="workspace_active_delete_forbidden") from exc
 
 
 def _to_schema(entry: WorkspaceEntryData) -> WorkspaceEntry:

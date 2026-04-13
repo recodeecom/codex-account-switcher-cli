@@ -34,6 +34,8 @@ class WorkspacesRepositoryPort(Protocol):
 
     async def set_active(self, workspace_id: str) -> WorkspaceEntryLike | None: ...
 
+    async def remove(self, workspace_id: str) -> bool: ...
+
 
 class WorkspaceValidationError(ValueError):
     def __init__(
@@ -51,6 +53,10 @@ class WorkspaceNameExistsError(ValueError):
 
 
 class WorkspaceNotFoundError(ValueError):
+    pass
+
+
+class WorkspaceActiveDeleteError(ValueError):
     pass
 
 
@@ -121,6 +127,18 @@ class WorkspacesService:
         if selected is None:
             raise WorkspaceNotFoundError("Workspace not found")
         return _to_entry_data(selected)
+
+    async def delete_workspace(self, workspace_id: str) -> None:
+        rows = list(await self._repository.list_entries())
+        target = next((row for row in rows if row.id == workspace_id), None)
+        if target is None:
+            raise WorkspaceNotFoundError("Workspace not found")
+        if target.is_active:
+            raise WorkspaceActiveDeleteError("Active workspace cannot be deleted")
+
+        deleted = await self._repository.remove(workspace_id)
+        if not deleted:
+            raise WorkspaceNotFoundError("Workspace not found")
 
     async def _resolve_unique_slug(self, name: str) -> str:
         base = slugify_workspace_name(name)

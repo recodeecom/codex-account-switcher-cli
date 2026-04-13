@@ -91,5 +91,11 @@ describe("AppSidebar", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Active workspace name")).toHaveTextContent("recodee.com");
     });
+
+    await user.click(screen.getByLabelText("Delete workspace My Team"));
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Select workspace My Team")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Delete workspace My Team")).not.toBeInTheDocument();
+    });
   });
 });
