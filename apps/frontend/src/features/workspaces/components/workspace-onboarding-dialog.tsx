@@ -11,7 +11,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { AccountSummary } from "@/features/accounts/schemas";
@@ -202,6 +202,10 @@ export function WorkspaceOnboardingDialog({
         showCloseButton
         className="top-0 left-0 h-screen max-h-screen w-screen max-w-none translate-x-0 translate-y-0 rounded-none border-0 bg-[linear-gradient(180deg,rgba(3,6,16,0.98)_0%,rgba(2,4,12,1)_100%)] p-6 text-slate-100 sm:p-10"
       >
+        <DialogTitle className="sr-only">Workspace onboarding</DialogTitle>
+        <DialogDescription className="sr-only">
+          Create a workspace, connect runtimes, and optionally create your first agent.
+        </DialogDescription>
         <div className="mx-auto flex h-full w-full max-w-3xl flex-col">
           <div className="flex items-center justify-center gap-2 pb-6 sm:pb-10">
             {STEPS.map((label, index) => {
