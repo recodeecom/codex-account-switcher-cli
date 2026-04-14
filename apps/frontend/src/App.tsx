@@ -55,12 +55,13 @@ function AppLayout() {
           className={cn(
             "w-full flex-1",
             isRuntimesRoute
-              || isSkillsRoute
-              || isAgentsRoute
+            || isSkillsRoute
+            || isAgentsRoute
+            || isIssuesRoute
               ? "max-w-none overflow-hidden p-0"
               : isDashboardRoute
                 ? "px-0 py-8"
-              : isProjectsRoute || isAccountsRoute || isPlansRoute || isBillingRoute || isApisRoute || isIssuesRoute
+              : isProjectsRoute || isAccountsRoute || isPlansRoute || isBillingRoute || isApisRoute
                 ? "px-2 py-5 sm:px-3 lg:px-4"
                 : "px-4 py-8 sm:px-6 lg:px-8",
             isPlansRoute ||

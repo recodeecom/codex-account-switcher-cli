@@ -49,10 +49,11 @@ export default function AuthenticatedLayout({ children }: { children: ReactNode 
               isRuntimesRoute
                 || isSkillsRoute
                 || isAgentsRoute
+                || isIssuesRoute
                 ? "max-w-none overflow-hidden p-0"
                 : isSettingsRoute
                   ? "max-w-none px-0 py-5"
-                : isProjectsRoute || isAccountsRoute || isPlansRoute || isIssuesRoute
+                : isProjectsRoute || isAccountsRoute || isPlansRoute
                   ? "px-2 py-5 sm:px-3 lg:px-4"
                 : "px-4 py-8 sm:px-6 lg:px-8",
               !isFullBleedRoute
