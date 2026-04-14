@@ -687,6 +687,32 @@ export function buildPlanStarterPrompt(
   return lines.join("\n");
 }
 
+type PlanLaunchSuggestion = {
+  id: "ralph" | "team";
+  title: string;
+  description: string;
+  command: string;
+};
+
+export function buildPlanLaunchSuggestions(planDetail: OpenSpecPlanDetail): PlanLaunchSuggestion[] {
+  const plannerPlanPath = `openspec/plan/${planDetail.slug}/planner/plan.md`;
+
+  return [
+    {
+      id: "ralph",
+      title: "Execute sequentially with $ralph",
+      description: "Single-owner execution and verification loop for this plan.",
+      command: `$ralph execute ${plannerPlanPath}`,
+    },
+    {
+      id: "team",
+      title: "Execute in parallel with $team",
+      description: "Coordinated parallel lanes (waves + integrator) on the same plan file.",
+      command: `$team execute ${plannerPlanPath}`,
+    },
+  ];
+}
+
 export function PlansPage() {
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
@@ -780,6 +806,7 @@ export function PlansPage() {
     planDetail && selectedEntryDisplayStatus
       ? buildPlanStarterPrompt(planDetail, selectedEntryDisplayStatus, summaryLines)
       : "";
+  const launchSuggestions = planDetail ? buildPlanLaunchSuggestions(planDetail) : [];
   const executorRole = planDetail?.roles.find((role) => role.role.trim().toLowerCase() === "executor") ?? null;
   const executorCheckpointStatusMap = parseCheckpointStatusMap(executorRole?.tasksMarkdown ?? "");
   if (
@@ -1064,7 +1091,44 @@ export function PlansPage() {
                       </p>
                     </div>
 
-                    <div className="space-y-3 rounded-lg border border-border/60 bg-background/20 p-3" data-testid="plan-included-prompts">
+                    <div
+                      className="space-y-3 rounded-xl border border-emerald-500/20 bg-gradient-to-b from-[#021114] via-[#020b12] to-[#02080f] p-3.5 shadow-[0_16px_38px_-34px_rgba(34,197,94,0.9)]"
+                      data-testid="plan-next-step-suggestions"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-xs uppercase tracking-wide text-emerald-100/85">Suggested next step</p>
+                        <Badge variant="outline" className="border-emerald-400/35 bg-emerald-500/15 text-[10px] text-emerald-100">
+                          {launchSuggestions.length} options
+                        </Badge>
+                      </div>
+                      <ol className="space-y-2">
+                        {launchSuggestions.map((suggestion, index) => (
+                          <li
+                            key={suggestion.id}
+                            className="rounded-lg border border-emerald-500/20 bg-[#021219]/70 px-3 py-2.5"
+                            data-testid={`plan-launch-suggestion-${suggestion.id}`}
+                          >
+                            <div className="flex flex-wrap items-start justify-between gap-2.5">
+                              <div className="min-w-0 space-y-1">
+                                <p className="text-sm font-medium text-emerald-100">
+                                  {index + 1}. {suggestion.title}
+                                </p>
+                                <p className="text-xs text-emerald-100/70">{suggestion.description}</p>
+                                <pre className="overflow-auto rounded-md border border-emerald-500/25 bg-[#010b10] px-2 py-1.5 font-mono text-[11px] text-emerald-100/95">
+                                  {suggestion.command}
+                                </pre>
+                              </div>
+                              <CopyButton value={suggestion.command} label={`Copy ${suggestion.id} next-step command`} />
+                            </div>
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+
+                    <div
+                      className="space-y-3 rounded-xl border border-border/60 bg-gradient-to-b from-[#030a16]/85 via-[#020813]/85 to-[#020611]/85 p-3.5"
+                      data-testid="plan-included-prompts"
+                    >
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <p className="text-xs uppercase tracking-wide text-muted-foreground">Included AI prompts</p>
                         <Badge variant="outline" className="text-[10px]">
@@ -1080,7 +1144,7 @@ export function PlansPage() {
                             return (
                               <li
                                 key={prompt.key}
-                                className="overflow-hidden rounded-md border border-border/60 bg-background/15"
+                                className="overflow-hidden rounded-lg border border-white/10 bg-[#020913]/70 shadow-[inset_0_1px_0_rgba(148,163,184,0.06)]"
                                 data-testid={`plan-included-prompt-card-${prompt.id}`}
                               >
                                 <div

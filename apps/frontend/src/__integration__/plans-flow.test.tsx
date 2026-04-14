@@ -69,6 +69,15 @@ describe("plans flow integration", () => {
     expect(await screen.findByTestId("plan-left-off-card")).toHaveClass("border-red-500/40");
     expect(await screen.findByTestId("plan-step-timeline")).toHaveTextContent("Plan steps");
     expect(screen.getByTestId("plan-step-timeline")).toHaveTextContent("Planner");
+    expect(await screen.findByTestId("plan-next-step-suggestions")).toHaveTextContent("Suggested next step");
+    expect(await screen.findByTestId("plan-launch-suggestion-ralph")).toHaveTextContent(
+      "$ralph execute openspec/plan/projects-plans-page/planner/plan.md",
+    );
+    expect(await screen.findByTestId("plan-launch-suggestion-team")).toHaveTextContent(
+      "$team execute openspec/plan/projects-plans-page/planner/plan.md",
+    );
+    expect(await screen.findByRole("button", { name: /copy ralph next-step command/i })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /copy team next-step command/i })).toBeInTheDocument();
     expect(await screen.findByTestId("plan-included-prompts")).toHaveTextContent("Included AI prompts");
     expect(await screen.findByRole("button", { name: /copy prompt a/i })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: /copy prompt b/i })).toBeInTheDocument();

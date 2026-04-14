@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { buildPlanStarterPrompt } from "@/features/plans/components/plans-page";
+import {
+  buildPlanLaunchSuggestions,
+  buildPlanStarterPrompt,
+} from "@/features/plans/components/plans-page";
 import type { OpenSpecPlanDetail } from "@/features/plans/schemas";
 
 const planDetail: OpenSpecPlanDetail = {
@@ -86,5 +89,21 @@ describe("buildPlanStarterPrompt", () => {
     expect(prompt).toContain("Remaining role checkpoints:");
     expect(prompt).toContain("- Executor 0/1");
     expect(prompt).toContain("Continue implementation from the current checkpoint or the next unfinished role.");
+  });
+});
+
+describe("buildPlanLaunchSuggestions", () => {
+  it("builds copy-ready ralph and team launch commands for planner plan execution", () => {
+    const suggestions = buildPlanLaunchSuggestions(planDetail);
+
+    expect(suggestions).toHaveLength(2);
+    expect(suggestions[0]?.title).toContain("$ralph");
+    expect(suggestions[0]?.command).toBe(
+      "$ralph execute openspec/plan/plans-live-execution-observer/planner/plan.md",
+    );
+    expect(suggestions[1]?.title).toContain("$team");
+    expect(suggestions[1]?.command).toBe(
+      "$team execute openspec/plan/plans-live-execution-observer/planner/plan.md",
+    );
   });
 });
