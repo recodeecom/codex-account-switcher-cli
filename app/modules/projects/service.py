@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal, Protocol
 from urllib.parse import urlparse
@@ -29,6 +29,13 @@ class ProjectsRepositoryPort(Protocol):
     async def get_entry(self, project_id: str) -> ProjectEntryLike | None: ...
 
     async def exists_name(self, name: str) -> bool: ...
+
+    async def exists_path(
+        self,
+        project_path: str,
+        *,
+        exclude_project_id: str | None = None,
+    ) -> bool: ...
 
     async def add(
         self,
@@ -76,6 +83,10 @@ class ProjectNameExistsError(ValueError):
     pass
 
 
+class ProjectPathExistsError(ValueError):
+    pass
+
+
 @dataclass(frozen=True, slots=True)
 class ProjectEntryData:
     id: str
@@ -92,6 +103,19 @@ class ProjectEntryData:
 @dataclass(frozen=True, slots=True)
 class ProjectsListData:
     entries: list[ProjectEntryData]
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectPlanLinkData:
+    project_id: str
+    plan_count: int
+    latest_plan_slug: str | None
+    latest_plan_updated_at: datetime | None
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectPlanLinksData:
+    entries: list[ProjectPlanLinkData]
 
 
 DEFAULT_SANDBOX_MODE = "workspace-write"
@@ -156,6 +180,8 @@ class ProjectsService:
 
         if await self._repository.exists_name(normalized_name):
             raise ProjectNameExistsError("Project name already exists")
+        if normalized_project_path and await self._repository.exists_path(normalized_project_path):
+            raise ProjectPathExistsError("Project path is already linked to another project")
 
         try:
             row = await self._repository.add(
@@ -169,6 +195,8 @@ class ProjectsService:
         except ProjectRepositoryConflictError as exc:
             if exc.field == "name":
                 raise ProjectNameExistsError("Project name already exists") from exc
+            if exc.field == "path":
+                raise ProjectPathExistsError("Project path is already linked to another project") from exc
             raise
 
         return ProjectEntryData(
@@ -200,6 +228,12 @@ class ProjectsService:
         normalized_sandbox_mode = normalize_sandbox_mode(sandbox_mode)
         normalized_git_branch = normalize_git_branch(git_branch)
 
+        if normalized_project_path and await self._repository.exists_path(
+            normalized_project_path,
+            exclude_project_id=project_id,
+        ):
+            raise ProjectPathExistsError("Project path is already linked to another project")
+
         try:
             row = await self._repository.update(
                 project_id,
@@ -213,6 +247,8 @@ class ProjectsService:
         except ProjectRepositoryConflictError as exc:
             if exc.field == "name":
                 raise ProjectNameExistsError("Project name already exists") from exc
+            if exc.field == "path":
+                raise ProjectPathExistsError("Project path is already linked to another project") from exc
             raise
 
         if row is None:
@@ -232,6 +268,60 @@ class ProjectsService:
 
     async def remove_project(self, project_id: str) -> bool:
         return await self._repository.delete(project_id)
+
+    async def list_project_plan_links(self) -> ProjectPlanLinksData:
+        rows = await self._repository.list_entries()
+        entries: list[ProjectPlanLinkData] = []
+
+        for row in rows:
+            normalized_project_path = normalize_stored_project_path(row.project_path)
+            if not normalized_project_path:
+                entries.append(
+                    ProjectPlanLinkData(
+                        project_id=row.id,
+                        plan_count=0,
+                        latest_plan_slug=None,
+                        latest_plan_updated_at=None,
+                    )
+                )
+                continue
+
+            plan_root = Path(normalized_project_path) / "openspec" / "plan"
+            plan_dirs = _list_plan_directories(plan_root)
+
+            if not plan_dirs:
+                entries.append(
+                    ProjectPlanLinkData(
+                        project_id=row.id,
+                        plan_count=0,
+                        latest_plan_slug=None,
+                        latest_plan_updated_at=None,
+                    )
+                )
+                continue
+
+            latest_plan_slug: str | None = None
+            latest_plan_updated_at: datetime | None = None
+            latest_plan_mtime = 0.0
+
+            for plan_dir in plan_dirs:
+                candidate_mtime = _latest_plan_mtime(plan_dir)
+                if candidate_mtime <= latest_plan_mtime:
+                    continue
+                latest_plan_mtime = candidate_mtime
+                latest_plan_slug = plan_dir.name
+                latest_plan_updated_at = datetime.fromtimestamp(candidate_mtime, tz=UTC)
+
+            entries.append(
+                ProjectPlanLinkData(
+                    project_id=row.id,
+                    plan_count=len(plan_dirs),
+                    latest_plan_slug=latest_plan_slug,
+                    latest_plan_updated_at=latest_plan_updated_at,
+                )
+            )
+
+        return ProjectPlanLinksData(entries=entries)
 
 
 def normalize_project_name(value: str) -> str:
@@ -378,3 +468,33 @@ def _extract_documents_shorthand_suffix(value: str) -> tuple[str, ...] | None:
     if parts[0].lower() != "documents":
         return None
     return tuple(parts[1:])
+
+
+def _list_plan_directories(plan_root: Path) -> list[Path]:
+    try:
+        if not plan_root.exists() or not plan_root.is_dir():
+            return []
+        entries = [entry for entry in plan_root.iterdir() if entry.is_dir() and not entry.name.startswith(".")]
+    except OSError:
+        return []
+
+    return [entry for entry in entries if (entry / "summary.md").is_file()]
+
+
+def _latest_plan_mtime(plan_dir: Path) -> float:
+    latest_mtime = _safe_path_mtime(plan_dir)
+    try:
+        for candidate in plan_dir.rglob("*"):
+            if not candidate.is_file():
+                continue
+            latest_mtime = max(latest_mtime, _safe_path_mtime(candidate))
+    except OSError:
+        return latest_mtime
+    return latest_mtime
+
+
+def _safe_path_mtime(path: Path) -> float:
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0

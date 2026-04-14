@@ -88,6 +88,7 @@ export type AccountCardProps = {
   taskPanelAddon?: ReactNode;
   primaryActionLabel?: string;
   primaryActionAriaLabel?: string;
+  forcePrimaryActionLabel?: boolean;
   onAction?: (
     account: AccountSummary,
     action: AccountAction,
@@ -1341,6 +1342,7 @@ export function AccountCard(props: AccountCardProps) {
     taskPanelAddon,
     primaryActionLabel = "Use this account",
     primaryActionAriaLabel,
+    forcePrimaryActionLabel = false,
     onAction,
   } = props;
   const tokensRemaining = props.tokensRemaining ?? null;
@@ -1592,9 +1594,12 @@ export function AccountCard(props: AccountCardProps) {
     !canUseLocally ||
     useLocalBusy ||
     useLocalBlockedByWeeklyQuota;
-  const useLocalButtonShowsSuccess = isActiveSnapshot || useLocalBusy;
+  const useLocalButtonShowsSuccess =
+    !forcePrimaryActionLabel && (isActiveSnapshot || useLocalBusy);
   const shouldShowCurrentUseLabel =
-    isActiveSnapshot && !useLocalBlockedByDisconnected;
+    isActiveSnapshot &&
+    !useLocalBlockedByDisconnected &&
+    !forcePrimaryActionLabel;
   const resolvedPrimaryActionLabel = useLocalBlockedByDisconnected
     ? "Token needs refresh"
     : shouldShowCurrentUseLabel

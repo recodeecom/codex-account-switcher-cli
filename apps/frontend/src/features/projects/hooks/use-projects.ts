@@ -5,6 +5,7 @@ import {
   createProject,
   deleteProject,
   listProjects,
+  listProjectPlanLinks,
   openProjectFolder,
   updateProject,
 } from "@/features/projects/api";
@@ -22,8 +23,17 @@ export function useProjects(activeWorkspaceId: string | null = null) {
     refetchOnWindowFocus: true,
   });
 
+  const planLinksQuery = useQuery({
+    queryKey: ["projects", "plan-links", activeWorkspaceId ?? "no-workspace"],
+    queryFn: listProjectPlanLinks,
+    refetchInterval: 10_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
+  });
+
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ["projects", "list"] });
+    void queryClient.invalidateQueries({ queryKey: ["projects", "plan-links"] });
   };
 
   const createMutation = useMutation({
@@ -73,6 +83,7 @@ export function useProjects(activeWorkspaceId: string | null = null) {
 
   return {
     projectsQuery,
+    planLinksQuery,
     createMutation,
     updateMutation,
     deleteMutation,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -127,12 +128,34 @@ async def test_projects_api_crud_and_validation(async_client):
     assert update_missing.status_code == 404
     assert update_missing.json()["error"]["code"] == "project_not_found"
 
+    update_duplicate_path = await async_client.put(
+        f"/api/projects/{created_payload['id']}",
+        json={
+            "name": "recodee-core-v4",
+            "description": "path collision",
+            "projectPath": second_payload["projectPath"],
+        },
+    )
+    assert update_duplicate_path.status_code == 409
+    assert update_duplicate_path.json()["error"]["code"] == "project_path_exists"
+
     duplicate_name = await async_client.post(
         "/api/projects",
         json={"name": "recodee-core-v2", "description": "another project"},
     )
     assert duplicate_name.status_code == 409
     assert duplicate_name.json()["error"]["code"] == "project_name_exists"
+
+    duplicate_path = await async_client.post(
+        "/api/projects",
+        json={
+            "name": "recodee-core-v3",
+            "description": "same path",
+            "projectPath": second_payload["projectPath"],
+        },
+    )
+    assert duplicate_path.status_code == 409
+    assert duplicate_path.json()["error"]["code"] == "project_path_exists"
 
     invalid_name = await async_client.post(
         "/api/projects",
@@ -317,3 +340,57 @@ async def test_projects_api_scopes_entries_by_active_workspace(async_client):
     delete_other_while_default_active = await async_client.delete(f"/api/projects/{other_project_id}")
     assert delete_other_while_default_active.status_code == 404
     assert delete_other_while_default_active.json()["error"]["code"] == "project_not_found"
+
+
+@pytest.mark.asyncio
+async def test_projects_api_plan_links_scans_project_paths(async_client, tmp_path):
+    first_path = tmp_path / "project-a"
+    second_path = tmp_path / "project-b"
+    (first_path / "openspec" / "plan" / "alpha-plan").mkdir(parents=True, exist_ok=False)
+    (first_path / "openspec" / "plan" / "beta-plan").mkdir(parents=True, exist_ok=False)
+    (second_path / "openspec" / "plan" / "ignored-plan").mkdir(parents=True, exist_ok=False)
+
+    alpha_summary = first_path / "openspec" / "plan" / "alpha-plan" / "summary.md"
+    beta_summary = first_path / "openspec" / "plan" / "beta-plan" / "summary.md"
+    ignored_notes = second_path / "openspec" / "plan" / "ignored-plan" / "notes.md"
+    alpha_summary.write_text("# Plan Summary: alpha-plan\n", encoding="utf-8")
+    beta_summary.write_text("# Plan Summary: beta-plan\n", encoding="utf-8")
+    ignored_notes.write_text("No summary file means not a plan\n", encoding="utf-8")
+
+    older_ts = 1_700_000_000
+    newer_ts = 1_800_000_000
+    os.utime(alpha_summary, (older_ts, older_ts))
+    os.utime(beta_summary, (newer_ts, newer_ts))
+
+    first_created = await async_client.post(
+        "/api/projects",
+        json={
+            "name": "project-a",
+            "projectPath": str(first_path),
+        },
+    )
+    assert first_created.status_code == 200
+    first_id = first_created.json()["id"]
+
+    second_created = await async_client.post(
+        "/api/projects",
+        json={
+            "name": "project-b",
+            "projectPath": str(second_path),
+        },
+    )
+    assert second_created.status_code == 200
+    second_id = second_created.json()["id"]
+
+    links = await async_client.get("/api/projects/plan-links")
+    assert links.status_code == 200
+    payload = links.json()
+    entries = {entry["projectId"]: entry for entry in payload["entries"]}
+
+    assert entries[first_id]["planCount"] == 2
+    assert entries[first_id]["latestPlanSlug"] == "beta-plan"
+    assert isinstance(entries[first_id]["latestPlanUpdatedAt"], str)
+
+    assert entries[second_id]["planCount"] == 0
+    assert entries[second_id]["latestPlanSlug"] is None
+    assert entries[second_id]["latestPlanUpdatedAt"] is None

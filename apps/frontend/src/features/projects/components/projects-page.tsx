@@ -412,6 +412,7 @@ export function ProjectsPage() {
   const [editDraft, setEditDraft] = useState<ProjectDraft>(() => getEmptyProjectDraft());
   const {
     projectsQuery,
+    planLinksQuery,
     createMutation,
     updateMutation,
     deleteMutation,
@@ -448,6 +449,11 @@ export function ProjectsPage() {
   }, [mutationError, projectsQuery.isError]);
 
   const entries = projectsQuery.data?.entries ?? [];
+  const projectPlanLinkById = useMemo(
+    () =>
+      new Map((planLinksQuery.data?.entries ?? []).map((entry) => [entry.projectId, entry] as const)),
+    [planLinksQuery.data?.entries],
+  );
   const busy = createMutation.isPending || updateMutation.isPending || deleteMutation.isPending;
   const openFolderBusyProjectId =
     openFolderMutation.isPending
@@ -563,13 +569,14 @@ export function ProjectsPage() {
             </div>
           ) : (
             <div className="min-h-0 flex-1 overflow-auto">
-              <div className="min-w-[1320px]">
-                <div className="sticky top-0 z-[1] grid h-9 grid-cols-[minmax(220px,1.6fr)_minmax(220px,1.4fr)_minmax(220px,1.8fr)_150px_170px_110px_220px] items-center gap-3 border-b border-border/65 bg-background/95 px-5 text-[11px] uppercase tracking-[0.08em] text-muted-foreground backdrop-blur-sm">
+              <div className="min-w-[1420px]">
+                <div className="sticky top-0 z-[1] grid h-9 grid-cols-[minmax(220px,1.5fr)_minmax(220px,1.3fr)_minmax(220px,1.7fr)_150px_170px_180px_110px_220px] items-center gap-3 border-b border-border/65 bg-background/95 px-5 text-[11px] uppercase tracking-[0.08em] text-muted-foreground backdrop-blur-sm">
                   <span>Name</span>
                   <span>URL</span>
                   <span>Path</span>
                   <span>Sandbox</span>
                   <span>Branch</span>
+                  <span>Plans</span>
                   <span>Updated</span>
                   <span className="text-right">Actions</span>
                 </div>
@@ -577,7 +584,7 @@ export function ProjectsPage() {
                 {entries.map((entry) => (
                   <div
                     key={entry.id}
-                    className="group/row grid min-h-12 grid-cols-[minmax(220px,1.6fr)_minmax(220px,1.4fr)_minmax(220px,1.8fr)_150px_170px_110px_220px] items-center gap-3 border-b border-border/45 px-5 py-2 text-sm transition-colors hover:bg-accent/35"
+                    className="group/row grid min-h-12 grid-cols-[minmax(220px,1.5fr)_minmax(220px,1.3fr)_minmax(220px,1.7fr)_150px_170px_180px_110px_220px] items-center gap-3 border-b border-border/45 px-5 py-2 text-sm transition-colors hover:bg-accent/35"
                   >
                     <div className="min-w-0">
                       <p className="truncate font-medium">{entry.name}</p>
@@ -608,6 +615,24 @@ export function ProjectsPage() {
                     </Badge>
 
                     <span className="truncate font-mono text-xs text-muted-foreground">{entry.gitBranch || "—"}</span>
+
+                    <div
+                      className="min-w-0 text-xs text-muted-foreground"
+                      data-testid={`project-plan-count-${entry.id}`}
+                    >
+                      {(() => {
+                        const link = projectPlanLinkById.get(entry.id);
+                        if (!link) {
+                          return "0 plans";
+                        }
+                        if (link.planCount === 0) {
+                          return "0 plans";
+                        }
+                        const latestSlug = link.latestPlanSlug ?? "latest plan";
+                        const pluralSuffix = link.planCount === 1 ? "" : "s";
+                        return `${link.planCount} plan${pluralSuffix} • ${latestSlug}`;
+                      })()}
+                    </div>
 
                     <span className="text-xs text-muted-foreground tabular-nums">
                       {formatRelativeDate(entry.updatedAt)}

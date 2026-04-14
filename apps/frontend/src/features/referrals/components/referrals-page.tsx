@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { SpinnerBlock } from "@/components/ui/spinner";
 import { useDashboard } from "@/features/dashboard/hooks/use-dashboard";
 import { useMedusaCustomerAuthStore } from "@/features/medusa-customer-auth/hooks/use-medusa-customer-auth";
-import { buildReferralLink } from "@/features/referrals/utils";
+import { buildReferralLink, extractReferredUserEmails } from "@/features/referrals/utils";
 import { getErrorMessageOrNull } from "@/utils/errors";
 
 export function ReferralsPage() {
@@ -15,6 +15,7 @@ export function ReferralsPage() {
   const customerEmail = useMedusaCustomerAuthStore((state) =>
     state.customer?.email?.trim().toLowerCase() ?? null,
   );
+  const customerMetadata = useMedusaCustomerAuthStore((state) => state.customer?.metadata ?? null);
   const [copiedPrimaryLink, setCopiedPrimaryLink] = useState(false);
   const [copiedRowAccountId, setCopiedRowAccountId] = useState<string | null>(null);
 
@@ -41,11 +42,8 @@ export function ReferralsPage() {
   }, [customerEmail, rows]);
 
   const referredRows = useMemo(() => {
-    if (!selectedInviteRow) {
-      return [];
-    }
-    return rows.filter((row) => row.accountId !== selectedInviteRow.accountId);
-  }, [rows, selectedInviteRow]);
+    return extractReferredUserEmails(customerMetadata, selectedInviteRow?.accountId ?? null);
+  }, [customerMetadata, selectedInviteRow?.accountId]);
 
   const queryError = getErrorMessageOrNull(dashboardQuery.error);
   const primaryInviteLink = selectedInviteRow?.referralLink ?? null;
@@ -82,7 +80,7 @@ export function ReferralsPage() {
   return (
     <div className="animate-fade-in-up min-h-[72vh] px-4 py-8">
       <div className="mx-auto flex w-full max-w-5xl items-center justify-center">
-        <div className="w-full max-w-[28.5rem] space-y-4">
+        <div className="w-full space-y-4">
           <div>
             <h1 className="sr-only">Referrals</h1>
             <p className="text-base font-semibold tracking-tight text-zinc-100">
@@ -196,9 +194,9 @@ export function ReferralsPage() {
                 {referredRows.length === 0 ? (
                   <div className="px-3 py-3 text-xs text-muted-foreground">No referred users yet.</div>
                 ) : (
-                  referredRows.map((row) => (
-                    <div key={row.accountId} className="px-3 py-2.5">
-                      <p className="truncate text-sm text-zinc-200">{row.email}</p>
+                  referredRows.map((email) => (
+                    <div key={email} className="px-3 py-2.5">
+                      <p className="truncate text-sm text-zinc-200">{email}</p>
                     </div>
                   ))
                 )}

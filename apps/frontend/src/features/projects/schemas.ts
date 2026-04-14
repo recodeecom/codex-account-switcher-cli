@@ -52,6 +52,17 @@ export const ProjectOpenFolderResponseSchema = z.object({
   editor: z.string().nullable().optional(),
 });
 
+export const ProjectPlanLinkEntrySchema = z.object({
+  projectId: z.string().min(1),
+  planCount: z.number().int().min(0),
+  latestPlanSlug: z.string().nullable(),
+  latestPlanUpdatedAt: z.string().datetime({ offset: true }).nullable(),
+});
+
+export const ProjectPlanLinksResponseSchema = z.object({
+  entries: z.array(ProjectPlanLinkEntrySchema).default([]),
+});
+
 export type ProjectEntry = z.infer<typeof ProjectEntrySchema>;
 export type ProjectsResponse = z.infer<typeof ProjectsResponseSchema>;
 export type ProjectCreateRequest = z.input<typeof ProjectCreateRequestSchema>;
@@ -59,3 +70,5 @@ export type ProjectUpdateRequest = z.input<typeof ProjectUpdateRequestSchema>;
 export type ProjectDeleteResponse = z.infer<typeof ProjectDeleteResponseSchema>;
 export type ProjectOpenFolderResponse = z.infer<typeof ProjectOpenFolderResponseSchema>;
 export type ProjectSandboxMode = z.infer<typeof ProjectSandboxModeSchema>;
+export type ProjectPlanLinkEntry = z.infer<typeof ProjectPlanLinkEntrySchema>;
+export type ProjectPlanLinksResponse = z.infer<typeof ProjectPlanLinksResponseSchema>;

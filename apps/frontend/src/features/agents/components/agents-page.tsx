@@ -103,6 +103,19 @@ You are a frontend engineer specializing in React and TypeScript.
 - Do not modify shared/ types without explicit approval
 - Follow the existing component patterns in features/`;
 
+const CODEX_CLI_AUTOMATION_SKILLS: Array<Omit<AgentAssignedSkill, "id">> = [
+  {
+    name: "codex-auth CLI instruction writer",
+    description: "Auto-generates agent instructions from the active codex-auth CLI runtime session.",
+    source: "created",
+  },
+  {
+    name: "codex-auth CLI bot creator",
+    description: "Creates workspace agents/bots from the active codex-auth CLI runtime and snapshot.",
+    source: "created",
+  },
+];
+
 function buildCreateDraft(runtime: string = DEFAULT_RUNTIME): CreateAgentDraft {
   return {
     name: "",
@@ -308,6 +321,16 @@ function resolveRuntimeOption(runtime: string, options: RuntimeOption[]): Runtim
   };
 }
 
+function ensureRuntimeOptionPresent(
+  options: RuntimeOption[],
+  current: RuntimeOption,
+): RuntimeOption[] {
+  if (options.some((option) => option.value === current.value)) {
+    return options;
+  }
+  return [current, ...options];
+}
+
 function sanitizeAgent(agent: AgentEntry): AgentEntry {
   return {
     ...agent,
@@ -319,6 +342,38 @@ function sanitizeAgent(agent: AgentEntry): AgentEntry {
         : DEFAULT_MAX_CONCURRENT_TASKS,
     avatarDataUrl: agent.avatarDataUrl ?? null,
   };
+}
+
+function extractRuntimeSnapshot(runtime: string): string {
+  const matched = /\(([^)]+)\)/.exec(runtime);
+  return matched?.[1]?.trim() || "active snapshot";
+}
+
+function buildCliSessionInstructions(input: {
+  agentName: string;
+  runtimeLabel: string;
+  skills: AgentAssignedSkill[];
+}) {
+  const snapshot = extractRuntimeSnapshot(input.runtimeLabel);
+  const skillLines =
+    input.skills.length > 0
+      ? input.skills.map((skill) => `- ${skill.name}`).join("\n")
+      : "- codex-auth CLI instruction writer\n- codex-auth CLI bot creator";
+
+  return `You are ${input.agentName}, running on ${input.runtimeLabel}.
+Use the active codex-auth CLI session (${snapshot}) as your execution source of truth.
+
+## Session Workflow
+- Validate the active CLI account before work: \`codex-auth list\` and \`codex-auth whoami\`.
+- Keep runtime, instructions, and agent actions aligned with the selected codex-auth snapshot.
+- If runtime/session mismatch appears, pause and switch snapshot before proceeding.
+
+## Skills
+${skillLines}
+
+## Bot/Agent Creation
+- When asked to create a new agent or bot, initialize it from the current codex-auth runtime first.
+- Keep names clear and role-based, then persist settings in the Agents panel.`;
 }
 
 export function AgentsPage() {
@@ -390,6 +445,16 @@ export function AgentsPage() {
   const selectedAgentRuntimeOption = selectedAgent
     ? resolveRuntimeOption(selectedAgent.runtime, runtimeOptions)
     : null;
+  const selectedAgentRuntimeOptions = useMemo(() => {
+    if (!selectedAgentRuntimeOption) {
+      return runtimeOptions;
+    }
+    return ensureRuntimeOptionPresent(runtimeOptions, selectedAgentRuntimeOption);
+  }, [runtimeOptions, selectedAgentRuntimeOption]);
+  const createRuntimeOptions = useMemo(
+    () => ensureRuntimeOptionPresent(runtimeOptions, createRuntimeOption),
+    [runtimeOptions, createRuntimeOption],
+  );
   const selectedAgentSkills = selectedAgent ? (skillsByAgentId[selectedAgent.id] ?? []) : [];
   const canCreateSkill = skillNameDraft.trim().length > 0;
   const canImportSkill = skillImportUrlDraft.trim().length > 0;
@@ -554,6 +619,54 @@ export function AgentsPage() {
       };
     });
   };
+  const handleAddCodexCliSkills = () => {
+    if (!selectedAgent) {
+      return;
+    }
+    setSkillsByAgentId((current) => {
+      const existingSkills = current[selectedAgent.id] ?? [];
+      const existingNames = new Set(existingSkills.map((skill) => skill.name.trim().toLowerCase()));
+      const additions = CODEX_CLI_AUTOMATION_SKILLS.filter(
+        (skill) => !existingNames.has(skill.name.trim().toLowerCase()),
+      ).map((skill) => ({
+        ...skill,
+        id: generateId(),
+      }));
+
+      if (additions.length === 0) {
+        toast.info("Codex CLI automation skills are already assigned");
+        return current;
+      }
+
+      toast.success(`Added ${additions.length} Codex CLI automation skill${additions.length > 1 ? "s" : ""}`);
+      return {
+        ...current,
+        [selectedAgent.id]: [...existingSkills, ...additions],
+      };
+    });
+  };
+  const handleGenerateInstructionsFromCliSession = async () => {
+    if (!selectedAgent) {
+      return;
+    }
+    const runtimeLabel = selectedAgentRuntimeOption?.label ?? selectedAgent.runtime;
+    const skills = skillsByAgentId[selectedAgent.id] ?? [];
+    const generatedInstructions = buildCliSessionInstructions({
+      agentName: selectedAgent.name,
+      runtimeLabel,
+      skills,
+    });
+    const updatedAgent = sanitizeAgent({
+      ...selectedAgent,
+      instructions: generatedInstructions,
+    });
+    setAgentDrafts((current) => ({
+      ...current,
+      [selectedAgent.id]: updatedAgent,
+    }));
+    await persistAgent(updatedAgent);
+    toast.success("Instructions generated from active CLI runtime");
+  };
 
   return (
     <div className="animate-fade-in-up h-full w-full overflow-hidden bg-[linear-gradient(180deg,rgba(7,10,18,0.97)_0%,rgba(3,5,12,1)_100%)]">
@@ -701,6 +814,24 @@ export function AgentsPage() {
                           agent&apos;s context for every task.
                         </p>
                       </div>
+                      <div className="flex items-center justify-between gap-2 rounded-lg border border-cyan-400/20 bg-cyan-500/[0.06] px-3 py-2">
+                        <p className="text-xs text-cyan-100">
+                          Auto-write instructions from active codex-auth CLI runtime and assigned skills.
+                        </p>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-7 shrink-0 gap-1.5 border-cyan-300/30 bg-transparent px-3 text-xs text-cyan-100 hover:bg-cyan-500/10"
+                          disabled={isBusy}
+                          onClick={() => {
+                            void handleGenerateInstructionsFromCliSession();
+                          }}
+                        >
+                          <Sparkle className="h-3.5 w-3.5" aria-hidden="true" />
+                          Auto-write from CLI session
+                        </Button>
+                      </div>
                       <Textarea
                         value={selectedAgent.instructions}
                         onChange={(event) => {
@@ -753,6 +884,16 @@ export function AgentsPage() {
                         >
                           <Plus className="h-3.5 w-3.5" aria-hidden="true" />
                           Add Skill
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-8 shrink-0 gap-1.5 border-cyan-300/30 bg-transparent px-3 text-xs text-cyan-100 hover:bg-cyan-500/10"
+                          onClick={handleAddCodexCliSkills}
+                        >
+                          <Sparkle className="h-3.5 w-3.5" aria-hidden="true" />
+                          Add Codex CLI skills
                         </Button>
                       </div>
 
@@ -986,7 +1127,7 @@ export function AgentsPage() {
                             </div>
                           </SelectTrigger>
                           <SelectContent>
-                            {runtimeOptions.map((runtime) => (
+                            {selectedAgentRuntimeOptions.map((runtime) => (
                               <SelectItem key={runtime.value} value={runtime.value} className="py-2">
                                 <div className="flex min-w-0 items-center gap-2">
                                   {runtime.provider === "openclaw" ? (
@@ -1207,7 +1348,7 @@ export function AgentsPage() {
                   </div>
                 </SelectTrigger>
                 <SelectContent>
-                  {runtimeOptions.map((runtime) => (
+                  {createRuntimeOptions.map((runtime) => (
                     <SelectItem key={runtime.value} value={runtime.value} className="py-2">
                       <div className="flex min-w-0 items-center gap-2">
                         {runtime.provider === "openclaw" ? (

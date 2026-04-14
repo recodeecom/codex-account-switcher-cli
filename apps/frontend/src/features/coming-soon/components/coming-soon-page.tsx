@@ -79,6 +79,7 @@ type AgentToolItem = {
   logoSrc: string;
   logoAlt: string;
   logoClassName?: string;
+  comingSoon?: boolean;
 };
 
 const WHAT_IT_DOES: InfoItem[] = [
@@ -102,8 +103,8 @@ const WHAT_IT_DOES: InfoItem[] = [
 
 const WHY_IT_HELPS: InfoItem[] = [
   {
-    title: "Protect deep work blocks",
-    body: "This is not about prettier stats. It is about preserving long, useful stretches of uninterrupted work.",
+    title: "Save money with us",
+    body: "Save 50% of your quota monthly by seeing account pressure early and switching before you burn expensive quota windows.",
   },
   {
     title: "Less dashboard-terminal ping-pong",
@@ -123,12 +124,6 @@ const AGENT_TOOL_ITEMS: AgentToolItem[] = [
     logoAlt: "Codex logo",
   },
   {
-    name: "Claude",
-    description: "Run parallel reasoning for architecture and critiques.",
-    logoSrc: "/agent-logos/claude.svg",
-    logoAlt: "Claude logo",
-  },
-  {
     name: "OpenAI",
     description: "Power API workflows with model routing and tool calls.",
     logoSrc: "/openai.svg",
@@ -136,16 +131,39 @@ const AGENT_TOOL_ITEMS: AgentToolItem[] = [
     logoClassName: "brightness-0 invert",
   },
   {
-    name: "Open WebUI",
-    description: "Bring local/self-hosted model frontends into one flow.",
-    logoSrc: "/agent-logos/openwebui.png",
-    logoAlt: "Open WebUI logo",
+    name: "Claude",
+    description: "Run parallel reasoning for architecture and critiques.",
+    logoSrc: "/agent-logos/claude.svg",
+    logoAlt: "Claude logo",
+    comingSoon: true,
+  },
+  {
+    name: "Claude Code",
+    description: "Use Claude Code workflows directly in your agent stack.",
+    logoSrc: "/agent-logos/claude.svg",
+    logoAlt: "Claude Code logo",
+    comingSoon: true,
+  },
+  {
+    name: "OpenClaw",
+    description: "OpenClaw provider routing for Claude-compatible tasks.",
+    logoSrc: "/agent-logos/red-crab.svg",
+    logoAlt: "OpenClaw logo",
+    comingSoon: true,
+  },
+  {
+    name: "Claw Code",
+    description: "Claw Code execution lane for coding automation tasks.",
+    logoSrc: "/agent-logos/red-crab.svg",
+    logoAlt: "Claw Code logo",
+    comingSoon: true,
   },
   {
     name: "Gemini",
     description: "Add fast multimodal checks for docs, code, and UI.",
     logoSrc: "/agent-logos/gemini.svg",
     logoAlt: "Gemini logo",
+    comingSoon: true,
   },
   {
     name: "OpenRouter",
@@ -153,64 +171,12 @@ const AGENT_TOOL_ITEMS: AgentToolItem[] = [
     logoSrc: "/agent-logos/openrouter.svg",
     logoAlt: "OpenRouter logo",
     logoClassName: "brightness-0 invert",
+    comingSoon: true,
   },
 ];
 
 function isValidEmailAddress(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
-}
-
-function BulletList({
-  items,
-  compact = false,
-  centered = false,
-  carded = false,
-}: {
-  items: InfoItem[];
-  compact?: boolean;
-  centered?: boolean;
-  carded?: boolean;
-}) {
-  return (
-    <div className={compact ? "space-y-2.5" : "space-y-3"}>
-      {items.map((item) => (
-        <div
-          key={item.title}
-          className={
-            centered
-              ? "mx-auto flex w-full max-w-3xl items-start gap-3 text-left"
-              : carded
-                ? "flex gap-3 border-b border-white/10 pb-3 last:border-b-0 last:pb-0"
-                : "flex gap-3"
-          }
-        >
-          <div className="pt-2.5">
-            <span className="block h-1 w-1 rounded-full bg-cyan-300/80" />
-          </div>
-          <div>
-            <p
-              className={
-                compact
-                  ? "text-sm font-semibold text-zinc-100"
-                  : "text-sm font-medium text-zinc-100 sm:text-[15px]"
-              }
-            >
-              {item.title}
-            </p>
-            <p
-              className={
-                compact
-                  ? "mt-1 text-sm leading-6 text-zinc-300"
-                  : "mt-1 text-sm leading-7 text-zinc-400"
-              }
-            >
-              {item.body}
-            </p>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
 }
 
 function SectionHeading({
@@ -225,11 +191,11 @@ function SectionHeading({
   centered?: boolean;
 }) {
   return (
-    <div className={`space-y-2 ${centered ? "text-center" : ""}`}>
+    <div className={`space-y-3 ${centered ? "text-center" : "text-left"}`}>
       <h2
         className={
           compact
-            ? "text-base font-semibold tracking-tight text-zinc-100 sm:text-lg"
+            ? "text-[1.95rem] font-semibold leading-[1.12] tracking-tight text-zinc-50"
             : "text-lg font-semibold tracking-tight text-zinc-100 sm:text-xl"
         }
       >
@@ -238,12 +204,88 @@ function SectionHeading({
       <p
         className={
           compact
-            ? "mx-auto max-w-3xl text-sm leading-7 text-zinc-300"
+            ? "max-w-4xl text-[1.04rem] leading-8 text-zinc-300/95"
             : "max-w-2xl text-sm leading-7 text-zinc-400"
         }
       >
         {description}
       </p>
+      {compact ? (
+        <div
+          aria-hidden="true"
+          className="h-px w-full bg-gradient-to-r from-cyan-300/25 via-white/10 to-transparent"
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function FeatureTilesSection({
+  title,
+  description,
+  items,
+  columnsClassName,
+  topContent,
+}: {
+  title: string;
+  description: string;
+  items: InfoItem[];
+  columnsClassName: string;
+  topContent?: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-4">
+      <SectionHeading compact title={title} description={description} />
+      {topContent ? <div>{topContent}</div> : null}
+      <div className={`grid gap-3 ${columnsClassName}`}>
+        {items.map((item, index) => (
+          <article
+            key={item.title}
+            className="relative overflow-hidden rounded-[22px] border border-white/12 bg-[linear-gradient(150deg,rgba(15,24,40,0.96)_0%,rgba(9,15,27,0.92)_100%)] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.07)] transition-colors duration-200 hover:border-cyan-200/32 hover:bg-[linear-gradient(150deg,rgba(17,28,47,0.97)_0%,rgba(11,19,33,0.94)_100%)] sm:p-6"
+          >
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 opacity-70 bg-[radial-gradient(55%_78%_at_10%_4%,rgba(56,189,248,0.12)_0%,rgba(56,189,248,0.01)_62%,transparent_100%)]"
+            />
+            <span className="mb-5 inline-flex h-11 w-11 items-center justify-center rounded-xl border border-cyan-300/15 bg-[#192434]/90 text-cyan-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                aria-hidden="true"
+                className="h-5 w-5"
+              >
+                <path
+                  d="M5 18L11 12L15 15L19 9"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                <circle cx="5" cy="18" r="1.3" fill="currentColor" />
+                <circle cx="11" cy="12" r="1.3" fill="currentColor" />
+                <circle cx="15" cy="15" r="1.3" fill="currentColor" />
+                <circle cx="19" cy="9" r="1.3" fill="currentColor" />
+              </svg>
+            </span>
+            <h3 className="relative text-[2rem] font-semibold leading-[1.15] tracking-tight text-zinc-50">
+              {item.title}
+            </h3>
+            <p className="relative mt-4 text-[1.03rem] leading-8 text-zinc-300/95">
+              {item.body}
+            </p>
+            <div className="relative mt-6 flex items-center gap-3">
+              <div
+                aria-hidden="true"
+                className="h-px flex-1 bg-gradient-to-r from-cyan-300/25 via-white/10 to-transparent"
+              />
+              <span className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-500/[0.08] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-200/90">
+                <span className="h-1.5 w-1.5 rounded-full bg-cyan-300/90" />
+                Insight {index + 1}
+              </span>
+            </div>
+          </article>
+        ))}
+      </div>
     </div>
   );
 }
@@ -261,11 +303,10 @@ function AmbientLights() {
 function FunFactCard() {
   return (
     <div className="mx-auto mt-4 w-full max-w-6xl">
-      <div className="relative overflow-hidden rounded-[20px] border border-white/12 bg-[#030814] shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
-        <div className="pointer-events-none absolute inset-0 opacity-90">
-          <div className="absolute -left-20 top-0 h-full w-[46%] bg-[radial-gradient(circle_at_20%_35%,rgba(110,228,170,0.45),rgba(110,228,170,0.08)_45%,transparent_70%)]" />
-          <div className="absolute left-[28%] top-0 h-full w-[40%] bg-[radial-gradient(circle_at_40%_60%,rgba(99,102,241,0.35),rgba(99,102,241,0.08)_50%,transparent_75%)]" />
-          <div className="absolute right-[-10%] top-[-20%] h-[150%] w-[50%] bg-[radial-gradient(circle_at_65%_45%,rgba(96,165,250,0.35),rgba(37,99,235,0.08)_52%,transparent_78%)]" />
+      <div className="relative overflow-hidden rounded-[20px] border border-white/12 bg-[#020613] shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
+        <div className="pointer-events-none absolute inset-0">
+          <div className="absolute inset-0 opacity-95 bg-[radial-gradient(56%_95%_at_10%_55%,rgba(96,214,166,0.36)_0%,rgba(96,214,166,0.06)_49%,transparent_74%),radial-gradient(50%_90%_at_43%_72%,rgba(99,102,241,0.34)_0%,rgba(99,102,241,0.06)_53%,transparent_78%),radial-gradient(56%_120%_at_98%_32%,rgba(96,165,250,0.34)_0%,rgba(59,130,246,0.06)_58%,transparent_82%),linear-gradient(114deg,rgba(2,9,24,0.98)_0%,rgba(1,8,23,0.97)_37%,rgba(3,12,35,0.95)_66%,rgba(16,39,74,0.9)_100%)]" />
+          <div className="absolute inset-0 opacity-35 bg-[linear-gradient(90deg,transparent_18%,rgba(255,255,255,0.04)_52%,transparent_84%)]" />
         </div>
 
         <div className="relative z-10 grid gap-6 px-6 py-7 sm:px-8 sm:py-9 lg:grid-cols-[1.4fr_1fr] lg:items-center lg:gap-10">
@@ -280,6 +321,9 @@ function FunFactCard() {
 
             <p className="text-2xl font-semibold tracking-tight text-zinc-100 sm:text-[2.45rem] sm:leading-[1.15]">
               We built recodee with recodee. We call that confidence.
+            </p>
+            <p className="mt-2 text-base font-semibold text-zinc-100/95 sm:text-lg">
+              Very on-brand. Also genuinely useful.
             </p>
 
             <div className="mt-5 grid gap-2.5 sm:grid-cols-2">
@@ -304,13 +348,13 @@ function FunFactCard() {
 
           <div className="space-y-4 lg:border-l lg:border-white/10 lg:pl-8">
             <p className="text-base font-semibold leading-8 text-zinc-100 sm:text-[1.05rem]">
-              Very on-brand. Also genuinely useful.
+              No trial. No credit card required. Just your GitHub account.
             </p>
             <div className="flex flex-wrap items-center gap-2.5">
               <Button
                 type="button"
                 variant="outline"
-                className="h-12 rounded-xl border-white/25 bg-white/10 px-6 text-lg font-semibold text-zinc-100 hover:bg-white/20"
+                className="h-12 rounded-[18px] border-white/20 bg-[linear-gradient(180deg,rgba(17,29,54,0.94)_0%,rgba(9,16,34,0.94)_100%)] px-7 text-lg font-semibold text-zinc-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_14px_30px_rgba(4,8,20,0.45)] transition-colors hover:border-cyan-300/35 hover:bg-[linear-gradient(180deg,rgba(21,35,62,0.96)_0%,rgba(12,20,41,0.96)_100%)]"
               >
                 Try free
               </Button>
@@ -422,29 +466,33 @@ function DemoCardAnnotations() {
 function AgentToolsPanel() {
   return (
     <div
-      className="mx-auto w-full max-w-6xl px-1 py-3 sm:py-4"
+      className="mx-auto w-full max-w-7xl px-1 py-3 sm:py-4"
       data-testid="agent-tools-panel"
     >
-      <div className="grid gap-8 lg:grid-cols-[1fr_1.8fr] lg:gap-10">
+      <div className="grid gap-8 lg:grid-cols-[1fr_2.15fr] lg:gap-10">
         <div className="self-center space-y-3">
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-200/80">
             Agent Stack
           </p>
           <h3 className="text-4xl font-bold tracking-tight text-zinc-50 sm:text-[3.2rem] sm:leading-[1.05]">
-            Code with extensions
+            Code with multiple agents at the same time
           </h3>
           <p className="max-w-[34rem] text-[1.04rem] leading-9 text-zinc-300">
-            Extend your agents with tools from extensions and Model Context
-            Protocol servers. Or, build your own extension to power your
-            team&apos;s unique scenarios.
+            Run multiple agents in parallel, coordinate their outputs, and keep
+            one shared workflow without context switching.
           </p>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-2">
           {AGENT_TOOL_ITEMS.map((item) => (
             <div
               key={item.name}
-              className="group rounded-2xl border border-white/10 bg-[#0a0f1b]/86 p-4 transition-colors duration-200 hover:border-cyan-200/28 hover:bg-[#0d1627]"
+              aria-disabled={item.comingSoon ? "true" : undefined}
+              className={`group rounded-2xl border border-white/10 bg-[#0a0f1b]/86 p-4 transition-colors duration-200 ${
+                item.comingSoon
+                  ? "cursor-not-allowed opacity-65 saturate-50"
+                  : "hover:border-cyan-200/28 hover:bg-[#0d1627]"
+              }`}
             >
               <div className="flex items-start gap-4">
                 <span className="mt-0.5 inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#101b2e]/90 ring-1 ring-white/10">
@@ -456,9 +504,16 @@ function AgentToolsPanel() {
                   />
                 </span>
                 <div className="space-y-1.5">
-                  <p className="text-lg font-semibold leading-6 text-zinc-100">
-                    {item.name}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-lg font-semibold leading-6 text-zinc-100">
+                      {item.name}
+                    </p>
+                    {item.comingSoon ? (
+                      <span className="inline-flex items-center whitespace-nowrap rounded-full border border-cyan-200/20 bg-cyan-500/10 px-2 py-0.5 text-[10px] font-semibold tracking-[0.04em] text-cyan-100">
+                        Coming soon
+                      </span>
+                    ) : null}
+                  </div>
                   <p className="text-sm leading-6 text-zinc-400">
                     {item.description}
                   </p>
@@ -607,6 +662,7 @@ export function ComingSoonPage() {
                       hideCurrentTaskPreview
                       primaryActionLabel="Submit"
                       primaryActionAriaLabel="Submit account tutorial"
+                      forcePrimaryActionLabel
                       taskPanelAddon={
                         <div className="space-y-2">
                           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -649,30 +705,40 @@ export function ComingSoonPage() {
 
           <AgentToolsPanel />
 
-          <div className="mx-auto w-full max-w-5xl px-1 py-4 sm:py-6">
-            <div className="grid gap-5 lg:grid-cols-2">
-              <div className="rounded-2xl border border-white/10 bg-black/20 p-5 sm:p-6">
-                <SectionHeading
-                  compact
-                  title="What the dashboard currently does"
-                  description="Built around official Codex account and session signals so you can decide faster and rotate accounts with less friction."
-                />
-                <div className="mt-3">
-                  <BulletList compact items={WHAT_IT_DOES} carded />
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-white/10 bg-black/20 p-5 sm:p-6">
-                <SectionHeading
-                  compact
-                  title="Why this improves daily work"
-                  description="This is about protecting focused work blocks, not just making a prettier dashboard."
-                />
-                <div className="mt-3">
-                  <BulletList compact items={WHY_IT_HELPS} carded />
-                </div>
-              </div>
-            </div>
+          <div className="mx-auto w-full max-w-6xl space-y-6 px-1 py-4 sm:py-6">
+            <FeatureTilesSection
+              title="What the dashboard currently does"
+              description="Built around official Codex account and session signals so you can decide faster and rotate accounts with less friction."
+              items={WHAT_IT_DOES}
+              columnsClassName="md:grid-cols-2 xl:grid-cols-4"
+            />
+            <FeatureTilesSection
+              title="Why this improves daily work"
+              description="This is about protecting focused work blocks, not just making a prettier dashboard."
+              items={WHY_IT_HELPS}
+              columnsClassName="md:grid-cols-2 xl:grid-cols-3"
+              topContent={
+                <article className="overflow-hidden rounded-[24px] border border-white/15 bg-[linear-gradient(145deg,rgba(13,20,36,0.97)_0%,rgba(8,14,28,0.95)_100%)] shadow-[0_22px_58px_rgba(0,0,0,0.44)]">
+                  <img
+                    src="/vscode-subbranches-showcase.svg"
+                    alt="VS Code subbranch workflow with visible file changes and commit status"
+                    className="block h-auto w-full"
+                    loading="lazy"
+                  />
+                  <div className="space-y-3 p-5 sm:p-6">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-cyan-200/85">
+                      VS Code branch workflow
+                    </p>
+                    <h3 className="text-2xl font-semibold tracking-tight text-zinc-50 sm:text-3xl">
+                      Subbranch changes, clearly visible
+                    </h3>
+                    <p className="max-w-4xl text-[1.03rem] leading-8 text-zinc-300/95">
+                      Show edits, modified files, and commit status per subbranch in one clean view so parallel branch work stays easy to track.
+                    </p>
+                  </div>
+                </article>
+              }
+            />
           </div>
         </div>
 

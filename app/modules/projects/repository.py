@@ -12,7 +12,7 @@ from app.modules.workspaces.service import DEFAULT_WORKSPACE_LABEL, DEFAULT_WORK
 
 
 class ProjectRepositoryConflictError(ValueError):
-    def __init__(self, field: Literal["name", "unknown"] = "unknown") -> None:
+    def __init__(self, field: Literal["name", "path", "unknown"] = "unknown") -> None:
         self.field = field
         super().__init__("Project already exists")
 
@@ -51,6 +51,25 @@ class ProjectsRepository:
             .where(Project.name == name)
             .limit(1)
         )
+        return result.scalar_one_or_none() is not None
+
+    async def exists_path(
+        self,
+        project_path: str,
+        *,
+        exclude_project_id: str | None = None,
+    ) -> bool:
+        await self._ensure_projects_table()
+        workspace_id = await self._resolve_active_workspace_id()
+        query = (
+            select(Project.id)
+            .where(Project.workspace_id == workspace_id)
+            .where(Project.project_path == project_path)
+            .limit(1)
+        )
+        if exclude_project_id:
+            query = query.where(Project.id != exclude_project_id)
+        result = await self._session.execute(query)
         return result.scalar_one_or_none() is not None
 
     async def add(
@@ -222,7 +241,7 @@ class ProjectsRepository:
         await self._session.commit()
 
 
-def _detect_conflict_field(exc: IntegrityError) -> Literal["name", "unknown"]:
+def _detect_conflict_field(exc: IntegrityError) -> Literal["name", "path", "unknown"]:
     message = str(getattr(exc, "orig", exc)).lower()
     if (
         "projects.name" in message
@@ -231,6 +250,13 @@ def _detect_conflict_field(exc: IntegrityError) -> Literal["name", "unknown"]:
         or "(workspace_id, name)" in message
     ):
         return "name"
+    if (
+        "projects.project_path" in message
+        or "(project_path)" in message
+        or "uq_projects_workspace_path" in message
+        or "(workspace_id, project_path)" in message
+    ):
+        return "path"
     return "unknown"
 
 

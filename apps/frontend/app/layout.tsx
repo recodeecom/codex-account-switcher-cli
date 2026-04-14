@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Script from "next/script";
 import type { ReactNode } from "react";
 
 import "../src/index.css";
@@ -46,41 +45,6 @@ const THEME_BOOTSTRAP_STYLES = `
   }
 `;
 
-const THEME_BOOTSTRAP_SCRIPT = `
-  (() => {
-    try {
-      const LIGHT_BACKGROUND_COLOR = ${JSON.stringify(
-        LIGHT_BOOTSTRAP_BACKGROUND,
-      )};
-      const DARK_BACKGROUND_COLOR = ${JSON.stringify(
-        DARK_BOOTSTRAP_BACKGROUND,
-      )};
-      const DARK_BACKGROUND_IMAGE = ${JSON.stringify(
-        DARK_BOOTSTRAP_BACKGROUND_IMAGE,
-      )};
-      const storageKey = "codex-lb-theme";
-      const stored = window.localStorage.getItem(storageKey);
-      const preference =
-        stored === "light" || stored === "dark" || stored === "auto" ? stored : "dark";
-      const prefersDark =
-        typeof window.matchMedia === "function" &&
-        window.matchMedia("(prefers-color-scheme: dark)").matches;
-      const isDark = preference === "dark" || (preference === "auto" && prefersDark);
-      const backgroundColor = isDark ? DARK_BACKGROUND_COLOR : LIGHT_BACKGROUND_COLOR;
-
-      const root = document.documentElement;
-      root.classList.toggle("dark", isDark);
-      root.classList.toggle("light", !isDark);
-      root.style.colorScheme = isDark ? "dark" : "light";
-      root.style.backgroundColor = backgroundColor;
-      root.style.backgroundImage = isDark ? DARK_BACKGROUND_IMAGE : "none";
-      root.style.backgroundPosition = isDark ? "center top" : "";
-      root.style.backgroundRepeat = isDark ? "no-repeat" : "";
-      root.style.backgroundSize = isDark ? "cover" : "";
-    } catch {}
-  })();
-`;
-
 export const metadata: Metadata = {
   title: "recodee.com",
   description: "Live account switchboard",
@@ -103,12 +67,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           id="theme-bootstrap-styles"
           dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP_STYLES }}
         />
-        <Script
-          id="theme-bootstrap-script"
-          strategy="beforeInteractive"
-        >
-          {THEME_BOOTSTRAP_SCRIPT}
-        </Script>
       </head>
       <body suppressHydrationWarning>
         <AppProviders>{children}</AppProviders>

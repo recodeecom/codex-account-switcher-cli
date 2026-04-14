@@ -4,6 +4,7 @@ import {
   ProjectCreateRequestSchema,
   ProjectDeleteResponseSchema,
   ProjectEntrySchema,
+  ProjectPlanLinksResponseSchema,
   ProjectOpenFolderResponseSchema,
   ProjectsResponseSchema,
   ProjectUpdateRequestSchema,
@@ -13,6 +14,10 @@ const PROJECTS_BASE_PATH = "/api/projects";
 
 export function listProjects() {
   return get(PROJECTS_BASE_PATH, ProjectsResponseSchema);
+}
+
+export function listProjectPlanLinks() {
+  return get(`${PROJECTS_BASE_PATH}/plan-links`, ProjectPlanLinksResponseSchema);
 }
 
 export function createProject(payload: unknown) {

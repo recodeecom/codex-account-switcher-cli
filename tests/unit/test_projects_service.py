@@ -12,6 +12,7 @@ from app.modules.projects.repository import ProjectRepositoryConflictError
 from app.modules.projects.service import (
     DEFAULT_SANDBOX_MODE,
     ProjectNameExistsError,
+    ProjectPathExistsError,
     ProjectsRepositoryPort,
     ProjectsService,
     ProjectValidationError,
@@ -51,6 +52,17 @@ class _Repo:
 
     async def exists_name(self, name: str) -> bool:
         return any(entry.name == name for entry in self._entries.values())
+
+    async def exists_path(
+        self,
+        project_path: str,
+        *,
+        exclude_project_id: str | None = None,
+    ) -> bool:
+        return any(
+            entry.project_path == project_path and entry.id != exclude_project_id
+            for entry in self._entries.values()
+        )
 
     async def add(
         self,
@@ -180,6 +192,15 @@ async def test_add_project_rejects_duplicate_name() -> None:
 
 
 @pytest.mark.asyncio
+async def test_add_project_rejects_duplicate_path() -> None:
+    service = ProjectsService(cast(ProjectsRepositoryPort, _Repo()))
+    await service.add_project("recodee-core", "Main project", None, "/home/deadpool/projects/recodee", None, None)
+
+    with pytest.raises(ProjectPathExistsError):
+        await service.add_project("recodee-ui", "Another description", None, "/home/deadpool/projects/recodee", None, None)
+
+
+@pytest.mark.asyncio
 async def test_add_project_maps_repository_conflict() -> None:
     class _ConflictRepo(_Repo):
         async def exists_name(self, name: str) -> bool:  # noqa: ARG002
@@ -262,6 +283,24 @@ async def test_update_project_maps_repository_conflict() -> None:
 
     with pytest.raises(ProjectNameExistsError):
         await service.update_project("proj-1", "new-name", "new-description", None, None, None, None)
+
+
+@pytest.mark.asyncio
+async def test_update_project_rejects_duplicate_path() -> None:
+    service = ProjectsService(cast(ProjectsRepositoryPort, _Repo()))
+    first = await service.add_project("alpha", None, None, "/home/deadpool/projects/alpha", None, None)
+    await service.add_project("beta", None, None, "/home/deadpool/projects/beta", None, None)
+
+    with pytest.raises(ProjectPathExistsError):
+        await service.update_project(
+            first.id,
+            "alpha-renamed",
+            None,
+            None,
+            "/home/deadpool/projects/beta",
+            None,
+            None,
+        )
 
 
 @pytest.mark.asyncio

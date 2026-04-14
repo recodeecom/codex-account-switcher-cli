@@ -22,6 +22,17 @@ class ProjectsResponse(DashboardModel):
     entries: list[ProjectEntry]
 
 
+class ProjectPlanLinkEntry(DashboardModel):
+    project_id: str
+    plan_count: int
+    latest_plan_slug: str | None
+    latest_plan_updated_at: datetime | None
+
+
+class ProjectPlanLinksResponse(DashboardModel):
+    entries: list[ProjectPlanLinkEntry]
+
+
 class ProjectCreateRequest(DashboardModel):
     name: str
     description: str | None = None

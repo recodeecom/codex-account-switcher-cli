@@ -224,6 +224,7 @@ type MockState = {
 		slug: string;
 		title: string;
 		status: string;
+		projectPath: string | null;
 		createdAt: string;
 		updatedAt: string;
 		roles: Array<{
@@ -362,6 +363,7 @@ function createDefaultOpenSpecPlans(): MockState["openSpecPlans"] {
 			slug: "projects-plans-page",
 			title: "projects-plans-page",
 			status: "approved",
+			projectPath: null,
 			createdAt: new Date("2026-04-08T07:41:12Z").toISOString(),
 			updatedAt: new Date("2026-04-08T09:51:46Z").toISOString(),
 			roles: [
@@ -545,6 +547,7 @@ function createDefaultOpenSpecPlans(): MockState["openSpecPlans"] {
 			slug: "ralplan-openspec-plan-export",
 			title: "ralplan-openspec-plan-export",
 			status: "proposed",
+			projectPath: null,
 			createdAt: new Date("2026-04-08T06:58:03Z").toISOString(),
 			updatedAt: new Date("2026-04-08T09:46:52Z").toISOString(),
 			roles: [
@@ -1920,6 +1923,32 @@ export const handlers = [
 		});
 	}),
 
+	http.get("/api/projects/plan-links", () => {
+		const activeWorkspaceId = getActiveWorkspaceId(state);
+		const entries =
+			activeWorkspaceId === null
+				? []
+				: state.projects.filter((entry) => entry.workspaceId === activeWorkspaceId);
+
+		return HttpResponse.json({
+			entries: entries.map((entry) => {
+				const linkedPlans = state.openSpecPlans
+					.filter((plan) => Boolean(plan.projectPath) && plan.projectPath === entry.projectPath)
+					.sort(
+						(left, right) =>
+							new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime(),
+					);
+				const latest = linkedPlans[0] ?? null;
+				return {
+					projectId: entry.id,
+					planCount: linkedPlans.length,
+					latestPlanSlug: latest ? latest.slug : null,
+					latestPlanUpdatedAt: latest ? latest.updatedAt : null,
+				};
+			}),
+		});
+	}),
+
 	http.post("/api/projects", async ({ request }) => {
 		const payload = await parseJsonBody(request, ProjectCreatePayloadSchema);
 		const name = String(payload?.name || "").trim();
@@ -2032,6 +2061,24 @@ export const handlers = [
 					error: {
 						code: "project_name_exists",
 						message: "Project name already exists",
+					},
+				},
+				{ status: 409 },
+			);
+		}
+		if (
+			projectPathResult.value
+			&& state.projects.some(
+				(entry) =>
+					entry.workspaceId === activeWorkspaceId
+					&& entry.projectPath === projectPathResult.value,
+			)
+		) {
+			return HttpResponse.json(
+				{
+					error: {
+						code: "project_path_exists",
+						message: "Project path is already linked to another project",
 					},
 				},
 				{ status: 409 },
@@ -2186,6 +2233,25 @@ export const handlers = [
 					error: {
 						code: "project_name_exists",
 						message: "Project name already exists",
+					},
+				},
+				{ status: 409 },
+			);
+		}
+		if (
+			projectPathResult.value
+			&& state.projects.some(
+				(entry) =>
+					entry.id !== projectId
+					&& entry.workspaceId === current.workspaceId
+					&& entry.projectPath === projectPathResult.value,
+			)
+		) {
+			return HttpResponse.json(
+				{
+					error: {
+						code: "project_path_exists",
+						message: "Project path is already linked to another project",
 					},
 				},
 				{ status: 409 },

@@ -32,13 +32,30 @@ describe("ComingSoonPage", () => {
       }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "Code with extensions", level: 3 }),
+      screen.getByRole("heading", {
+        name: "Code with multiple agents at the same time",
+        level: 3,
+      }),
     ).toBeInTheDocument();
     const agentPanel = screen.getByTestId("agent-tools-panel");
-    expect(within(agentPanel).getByText("Open WebUI")).toBeInTheDocument();
+    expect(within(agentPanel).getByText("Claude Code")).toBeInTheDocument();
+    expect(within(agentPanel).getByText("OpenClaw")).toBeInTheDocument();
+    expect(within(agentPanel).getByText("Claw Code")).toBeInTheDocument();
     expect(within(agentPanel).getByText("OpenRouter")).toBeInTheDocument();
+    expect(within(agentPanel).getAllByText("Coming soon")).toHaveLength(6);
     expect(within(agentPanel).getByAltText("Codex logo")).toBeInTheDocument();
     expect(within(agentPanel).getByAltText("OpenAI logo")).toBeInTheDocument();
+    expect(
+      within(agentPanel).getByAltText("Claude Code logo"),
+    ).toBeInTheDocument();
+    expect(within(agentPanel).getByAltText("OpenClaw logo")).toHaveAttribute(
+      "src",
+      "/agent-logos/red-crab.svg",
+    );
+    expect(within(agentPanel).getByAltText("Claw Code logo")).toHaveAttribute(
+      "src",
+      "/agent-logos/red-crab.svg",
+    );
     expect(within(agentPanel).queryByText("Cursor")).not.toBeInTheDocument();
     expect(within(agentPanel).queryByText("Aider")).not.toBeInTheDocument();
     expect(within(agentPanel).queryByText("Ollama")).not.toBeInTheDocument();
@@ -51,9 +68,12 @@ describe("ComingSoonPage", () => {
     expect(screen.queryByText("Waiting for email address")).not.toBeInTheDocument();
     expect(screen.queryByText("working...")).not.toBeInTheDocument();
     expect(screen.getByText("Team · demo@demo.com")).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Submit account tutorial" }),
-    ).toBeDisabled();
+    const submitTutorialButton = screen.getByRole("button", {
+      name: "Submit account tutorial",
+    });
+    expect(submitTutorialButton).toBeDisabled();
+    expect(submitTutorialButton).toHaveTextContent("Submit");
+    expect(submitTutorialButton).not.toHaveTextContent("Currently used");
     expect(screen.queryByLabelText("Email address")).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Submit account tutorial" }),
@@ -83,6 +103,14 @@ describe("ComingSoonPage", () => {
     expect(
       screen.getByText("We built recodee with recodee. We call that confidence."),
     ).toBeInTheDocument();
+    expect(
+      screen.getByText("Very on-brand. Also genuinely useful."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "No trial. No credit card required. Just your GitHub account.",
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByText("codex tokens used: 3B")).toBeInTheDocument();
     expect(screen.getByText("money saved: $10k+")).toBeInTheDocument();
     expect(screen.getByAltText("Codex app screenshot")).toBeInTheDocument();
@@ -103,9 +131,12 @@ describe("ComingSoonPage", () => {
       "demo@demo.com",
     );
 
-    expect(
-      screen.getByRole("button", { name: "Submit account tutorial" }),
-    ).toBeEnabled();
+    const submitTutorialButton = screen.getByRole("button", {
+      name: "Submit account tutorial",
+    });
+    expect(submitTutorialButton).toBeEnabled();
+    expect(submitTutorialButton).toHaveTextContent("Submit");
+    expect(submitTutorialButton).not.toHaveTextContent("Currently used");
     expect(screen.queryByText("thinking")).not.toBeInTheDocument();
   });
 

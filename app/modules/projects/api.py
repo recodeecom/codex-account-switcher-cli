@@ -10,11 +10,17 @@ from app.modules.projects.schemas import (
     ProjectCreateRequest,
     ProjectDeleteResponse,
     ProjectEntry,
+    ProjectPlanLinkEntry,
+    ProjectPlanLinksResponse,
     ProjectOpenFolderResponse,
     ProjectsResponse,
     ProjectUpdateRequest,
 )
-from app.modules.projects.service import ProjectNameExistsError, ProjectValidationError
+from app.modules.projects.service import (
+    ProjectNameExistsError,
+    ProjectPathExistsError,
+    ProjectValidationError,
+)
 
 router = APIRouter(
     prefix="/api/projects",
@@ -46,6 +52,24 @@ async def list_projects(
     )
 
 
+@router.get("/plan-links", response_model=ProjectPlanLinksResponse)
+async def list_project_plan_links(
+    context: ProjectsContext = Depends(get_projects_context),
+) -> ProjectPlanLinksResponse:
+    payload = await context.service.list_project_plan_links()
+    return ProjectPlanLinksResponse(
+        entries=[
+            ProjectPlanLinkEntry(
+                project_id=entry.project_id,
+                plan_count=entry.plan_count,
+                latest_plan_slug=entry.latest_plan_slug,
+                latest_plan_updated_at=entry.latest_plan_updated_at,
+            )
+            for entry in payload.entries
+        ]
+    )
+
+
 @router.post("", response_model=ProjectEntry)
 async def create_project(
     payload: ProjectCreateRequest = Body(...),
@@ -64,6 +88,8 @@ async def create_project(
         raise DashboardBadRequestError(str(exc), code=exc.code) from exc
     except ProjectNameExistsError as exc:
         raise DashboardConflictError(str(exc), code="project_name_exists") from exc
+    except ProjectPathExistsError as exc:
+        raise DashboardConflictError(str(exc), code="project_path_exists") from exc
 
     return ProjectEntry(
         id=created.id,
@@ -98,6 +124,8 @@ async def update_project(
         raise DashboardBadRequestError(str(exc), code=exc.code) from exc
     except ProjectNameExistsError as exc:
         raise DashboardConflictError(str(exc), code="project_name_exists") from exc
+    except ProjectPathExistsError as exc:
+        raise DashboardConflictError(str(exc), code="project_path_exists") from exc
 
     if updated is None:
         raise DashboardNotFoundError("Project not found", code="project_not_found")

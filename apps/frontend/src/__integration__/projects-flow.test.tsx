@@ -67,6 +67,7 @@ describe("projects flow integration", () => {
     expect(screen.getByText("Main dashboard project")).toBeInTheDocument();
     expect(screen.getByText("https://recodee.com/")).toBeInTheDocument();
     expect(screen.getByText("/home/deadpool/projects/recodee-core")).toBeInTheDocument();
+    expect(screen.getByTestId("project-plan-count-project_1")).toHaveTextContent("0 plans");
     expect(screen.getAllByText("—").length).toBeGreaterThan(0);
     expect(screen.getAllByText("workspace-write").length).toBeGreaterThan(0);
 
@@ -112,4 +113,46 @@ describe("projects flow integration", () => {
     });
   });
 
+  it("renders live plan linkage per project path", async () => {
+    server.use(
+      http.post("http://localhost:9000/store/customers/me", () => HttpResponse.json({ customer: {} })),
+      http.get("/api/projects", () =>
+        HttpResponse.json({
+          entries: [
+            {
+              id: "project_live_1",
+              name: "marvahome",
+              description: "linked project",
+              projectUrl: "https://marvahome.com",
+              projectPath: "/home/deadpool/Documents/szaloniroda/marva",
+              sandboxMode: "workspace-write",
+              gitBranch: null,
+              createdAt: new Date("2026-04-14T08:00:00Z").toISOString(),
+              updatedAt: new Date("2026-04-14T08:00:00Z").toISOString(),
+            },
+          ],
+        }),
+      ),
+      http.get("/api/projects/plan-links", () =>
+        HttpResponse.json({
+          entries: [
+            {
+              projectId: "project_live_1",
+              planCount: 3,
+              latestPlanSlug: "marva-release-rollout",
+              latestPlanUpdatedAt: new Date("2026-04-14T09:00:00Z").toISOString(),
+            },
+          ],
+        }),
+      ),
+    );
+
+    window.history.pushState({}, "", "/projects");
+    renderWithProviders(<App />);
+
+    expect(await screen.findByText("marvahome")).toBeInTheDocument();
+    expect(screen.getByTestId("project-plan-count-project_live_1")).toHaveTextContent(
+      "3 plans • marva-release-rollout",
+    );
+  });
 });

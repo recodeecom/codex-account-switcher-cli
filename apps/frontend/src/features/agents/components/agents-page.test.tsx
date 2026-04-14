@@ -215,6 +215,35 @@ describe("AgentsPage", () => {
     });
   });
 
+  it("auto-writes instructions from active CLI runtime session", async () => {
+    const user = userEvent.setup({ delay: null });
+    renderWithProviders(<AgentsPage />);
+
+    await user.click(screen.getByRole("button", { name: "Auto-write from CLI session" }));
+
+    await waitFor(() => {
+      expect(updateMutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agentId: "agent-master",
+          payload: expect.objectContaining({
+            instructions: expect.stringContaining("active codex-auth CLI session"),
+          }),
+        }),
+      );
+    });
+  });
+
+  it("adds codex CLI automation skills from one click", async () => {
+    const user = userEvent.setup({ delay: null });
+    renderWithProviders(<AgentsPage />);
+
+    await user.click(screen.getByRole("tab", { name: "Skills" }));
+    await user.click(screen.getByRole("button", { name: "Add Codex CLI skills" }));
+
+    expect(screen.getByText("codex-auth CLI instruction writer")).toBeInTheDocument();
+    expect(screen.getByText("codex-auth CLI bot creator")).toBeInTheDocument();
+  });
+
   it("creates a new agent from popup", async () => {
     const user = userEvent.setup({ delay: null });
     renderWithProviders(<AgentsPage />);
