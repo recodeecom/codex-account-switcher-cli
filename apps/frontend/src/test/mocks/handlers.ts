@@ -82,6 +82,7 @@ const ProjectCreatePayloadSchema = z
 		name: z.string().optional(),
 		description: z.string().nullable().optional(),
 		projectUrl: z.string().nullable().optional(),
+		githubRepoUrl: z.string().nullable().optional(),
 		projectPath: z.string().nullable().optional(),
 		sandboxMode: z.string().optional(),
 		gitBranch: z.string().nullable().optional(),
@@ -93,6 +94,7 @@ const ProjectUpdatePayloadSchema = z
 		name: z.string().optional(),
 		description: z.string().nullable().optional(),
 		projectUrl: z.string().nullable().optional(),
+		githubRepoUrl: z.string().nullable().optional(),
 		projectPath: z.string().nullable().optional(),
 		sandboxMode: z.string().optional(),
 		gitBranch: z.string().nullable().optional(),
@@ -205,6 +207,7 @@ type MockState = {
 		name: string;
 		description: string | null;
 		projectUrl: string | null;
+		githubRepoUrl: string | null;
 		projectPath: string | null;
 		sandboxMode: "read-only" | "workspace-write" | "danger-full-access";
 		gitBranch: string | null;
@@ -845,6 +848,65 @@ function normalizeProjectUrl(
 	}
 }
 
+function normalizeProjectGithubRepoUrl(
+	value: unknown,
+): { ok: true; value: string | null } | {
+	ok: false;
+	code: "invalid_project_github_repo_url";
+	message: string;
+} {
+	if (value == null) {
+		return { ok: true, value: null };
+	}
+	const normalized = String(value).trim();
+	if (!normalized) {
+		return { ok: true, value: null };
+	}
+	if (normalized.length > 2048) {
+		return {
+			ok: false,
+			code: "invalid_project_github_repo_url",
+			message: "GitHub repo URL must be 2048 characters or fewer",
+		};
+	}
+	const withScheme = /^https?:\/\//i.test(normalized) ? normalized : `https://${normalized}`;
+	let url: URL;
+	try {
+		url = new URL(withScheme);
+	} catch {
+		return {
+			ok: false,
+			code: "invalid_project_github_repo_url",
+			message: "GitHub repo URL must be a valid github.com URL",
+		};
+	}
+	if (url.protocol !== "http:" && url.protocol !== "https:") {
+		return {
+			ok: false,
+			code: "invalid_project_github_repo_url",
+			message: "GitHub repo URL must be a valid github.com URL",
+		};
+	}
+	if (!["github.com", "www.github.com"].includes(url.hostname.toLowerCase())) {
+		return {
+			ok: false,
+			code: "invalid_project_github_repo_url",
+			message: "GitHub repo URL must use github.com",
+		};
+	}
+	const parts = url.pathname.split("/").filter(Boolean);
+	if (parts.length < 2) {
+		return {
+			ok: false,
+			code: "invalid_project_github_repo_url",
+			message: "GitHub repo URL must include owner and repository",
+		};
+	}
+	const owner = parts[0];
+	const repo = parts[1].replace(/\.git$/i, "");
+	return { ok: true, value: `https://github.com/${owner}/${repo}` };
+}
+
 function normalizeProjectSandboxMode(
 	value: unknown,
 ): { ok: true; value: "read-only" | "workspace-write" | "danger-full-access" } | {
@@ -1095,6 +1157,9 @@ const sourceControlBots = [
 		matchedBranch: "agent/demo-source-control",
 		inSync: true,
 		branchCandidates: ["agent/master-agent", "agent_master-agent", "subbranch/master-agent"],
+		source: "agent",
+		snapshotName: null,
+		sessionCount: 0,
 	},
 	{
 		botName: "Runtime Guardrail Bot",
@@ -1103,6 +1168,20 @@ const sourceControlBots = [
 		matchedBranch: "gx/runtime-guardrails",
 		inSync: true,
 		branchCandidates: ["gx/runtime-guardrails", "agent/runtime-guardrail-bot"],
+		source: "agent",
+		snapshotName: null,
+		sessionCount: 0,
+	},
+	{
+		botName: "Codex (admin@kozponthiusbolt.hu--dup-2)",
+		botStatus: "active",
+		runtime: "codex-auth snapshot session",
+		matchedBranch: "dev",
+		inSync: true,
+		branchCandidates: ["dev", "agent/codex/admin-kozponthiusbolt-hu--dup-2"],
+		source: "snapshot",
+		snapshotName: "admin@kozponthiusbolt.hu--dup-2",
+		sessionCount: 1,
 	},
 ];
 
@@ -2187,6 +2266,7 @@ export const handlers = [
 				name: entry.name,
 				description: entry.description,
 				projectUrl: entry.projectUrl,
+				githubRepoUrl: entry.githubRepoUrl,
 				projectPath: entry.projectPath,
 				sandboxMode: entry.sandboxMode,
 				gitBranch: entry.gitBranch,
@@ -2229,6 +2309,7 @@ export const handlers = [
 		const description =
 			typeof descriptionRaw === "string" ? descriptionRaw.trim() : null;
 		const projectUrlResult = normalizeProjectUrl(payload?.projectUrl);
+		const githubRepoUrlResult = normalizeProjectGithubRepoUrl(payload?.githubRepoUrl);
 		const projectPathResult = normalizeProjectPath(payload?.projectPath);
 		const sandboxModeResult = normalizeProjectSandboxMode(payload?.sandboxMode);
 		const gitBranchResult = normalizeProjectGitBranch(payload?.gitBranch);
@@ -2283,6 +2364,17 @@ export const handlers = [
 					error: {
 						code: projectUrlResult.code,
 						message: projectUrlResult.message,
+					},
+				},
+				{ status: 400 },
+			);
+		}
+		if (!githubRepoUrlResult.ok) {
+			return HttpResponse.json(
+				{
+					error: {
+						code: githubRepoUrlResult.code,
+						message: githubRepoUrlResult.message,
 					},
 				},
 				{ status: 400 },
@@ -2365,6 +2457,7 @@ export const handlers = [
 			name,
 			description: description || null,
 			projectUrl: projectUrlResult.value,
+			githubRepoUrl: githubRepoUrlResult.value,
 			projectPath: projectPathResult.value,
 			sandboxMode: sandboxModeResult.value,
 			gitBranch: gitBranchResult.value,
@@ -2377,6 +2470,7 @@ export const handlers = [
 			name: created.name,
 			description: created.description,
 			projectUrl: created.projectUrl,
+			githubRepoUrl: created.githubRepoUrl,
 			projectPath: created.projectPath,
 			sandboxMode: created.sandboxMode,
 			gitBranch: created.gitBranch,
@@ -2393,6 +2487,7 @@ export const handlers = [
 		const description =
 			typeof descriptionRaw === "string" ? descriptionRaw.trim() : null;
 		const projectUrlResult = normalizeProjectUrl(payload?.projectUrl);
+		const githubRepoUrlResult = normalizeProjectGithubRepoUrl(payload?.githubRepoUrl);
 		const projectPathResult = normalizeProjectPath(payload?.projectPath);
 		const sandboxModeResult = normalizeProjectSandboxMode(payload?.sandboxMode);
 		const gitBranchResult = normalizeProjectGitBranch(payload?.gitBranch);
@@ -2471,6 +2566,17 @@ export const handlers = [
 				{ status: 400 },
 			);
 		}
+		if (!githubRepoUrlResult.ok) {
+			return HttpResponse.json(
+				{
+					error: {
+						code: githubRepoUrlResult.code,
+						message: githubRepoUrlResult.message,
+					},
+				},
+				{ status: 400 },
+			);
+		}
 		if (!sandboxModeResult.ok) {
 			return HttpResponse.json(
 				{
@@ -2536,6 +2642,7 @@ export const handlers = [
 			name,
 			description: description || null,
 			projectUrl: projectUrlResult.value,
+			githubRepoUrl: githubRepoUrlResult.value,
 			projectPath: projectPathResult.value,
 			sandboxMode: sandboxModeResult.value,
 			gitBranch: gitBranchResult.value,
@@ -2549,6 +2656,7 @@ export const handlers = [
 			name: updated.name,
 			description: updated.description,
 			projectUrl: updated.projectUrl,
+			githubRepoUrl: updated.githubRepoUrl,
 			projectPath: updated.projectPath,
 			sandboxMode: updated.sandboxMode,
 			gitBranch: updated.gitBranch,

@@ -10,6 +10,7 @@ import pytest
 
 from app.modules.projects.repository import ProjectRepositoryConflictError
 from app.modules.projects.service import (
+    AutoDiscoveredGitProject,
     DEFAULT_SANDBOX_MODE,
     ProjectNameExistsError,
     ProjectPathExistsError,
@@ -17,10 +18,11 @@ from app.modules.projects.service import (
     ProjectsService,
     ProjectValidationError,
     normalize_git_branch,
+    normalize_github_repo_url,
     normalize_project_description,
-    normalize_project_url,
     normalize_project_path,
     normalize_project_name,
+    normalize_project_url,
     normalize_sandbox_mode,
 )
 
@@ -33,6 +35,7 @@ class _Entry:
     name: str
     description: str | None
     project_url: str | None
+    github_repo_url: str | None
     project_path: str | None
     sandbox_mode: str
     git_branch: str | None
@@ -69,6 +72,7 @@ class _Repo:
         name: str,
         description: str | None,
         project_url: str | None,
+        github_repo_url: str | None,
         project_path: str | None,
         sandbox_mode: str,
         git_branch: str | None,
@@ -79,6 +83,7 @@ class _Repo:
             name=name,
             description=description,
             project_url=project_url,
+            github_repo_url=github_repo_url,
             project_path=project_path,
             sandbox_mode=sandbox_mode,
             git_branch=git_branch,
@@ -94,6 +99,7 @@ class _Repo:
         name: str,
         description: str | None,
         project_url: str | None,
+        github_repo_url: str | None,
         project_path: str | None,
         sandbox_mode: str,
         git_branch: str | None,
@@ -107,6 +113,7 @@ class _Repo:
             name=name,
             description=description,
             project_url=project_url,
+            github_repo_url=github_repo_url,
             project_path=project_path,
             sandbox_mode=sandbox_mode,
             git_branch=git_branch,
@@ -148,6 +155,15 @@ def test_normalize_project_url_normalizes_domain_to_https() -> None:
     assert normalize_project_url("marvahome.com") == "https://marvahome.com"
 
 
+def test_normalize_github_repo_url_accepts_scp_remote() -> None:
+    assert normalize_github_repo_url("git@github.com:webu-pro/recodee.git") == "https://github.com/webu-pro/recodee"
+
+
+def test_normalize_github_repo_url_rejects_non_github_host() -> None:
+    with pytest.raises(ProjectValidationError):
+        normalize_github_repo_url("https://gitlab.com/webu-pro/recodee")
+
+
 def test_normalize_project_path_rejects_relative_value() -> None:
     with pytest.raises(ProjectValidationError):
         normalize_project_path("./repo")
@@ -185,19 +201,27 @@ def test_normalize_git_branch_rejects_invalid_value() -> None:
 @pytest.mark.asyncio
 async def test_add_project_rejects_duplicate_name() -> None:
     service = ProjectsService(cast(ProjectsRepositoryPort, _Repo()))
-    await service.add_project("recodee-core", "Main project", None, None, None, None)
+    await service.add_project("recodee-core", "Main project", None, None, None, None, None)
 
     with pytest.raises(ProjectNameExistsError):
-        await service.add_project("recodee-core", "Another description", None, None, None, None)
+        await service.add_project("recodee-core", "Another description", None, None, None, None, None)
 
 
 @pytest.mark.asyncio
 async def test_add_project_rejects_duplicate_path() -> None:
     service = ProjectsService(cast(ProjectsRepositoryPort, _Repo()))
-    await service.add_project("recodee-core", "Main project", None, "/home/deadpool/projects/recodee", None, None)
+    await service.add_project("recodee-core", "Main project", None, None, "/home/deadpool/projects/recodee", None, None)
 
     with pytest.raises(ProjectPathExistsError):
-        await service.add_project("recodee-ui", "Another description", None, "/home/deadpool/projects/recodee", None, None)
+        await service.add_project(
+            "recodee-ui",
+            "Another description",
+            None,
+            None,
+            "/home/deadpool/projects/recodee",
+            None,
+            None,
+        )
 
 
 @pytest.mark.asyncio
@@ -211,6 +235,7 @@ async def test_add_project_maps_repository_conflict() -> None:
             name: str,
             description: str | None,
             project_url: str | None,
+            github_repo_url: str | None,
             project_path: str | None,
             sandbox_mode: str,
             git_branch: str | None,
@@ -220,7 +245,7 @@ async def test_add_project_maps_repository_conflict() -> None:
     service = ProjectsService(cast(ProjectsRepositoryPort, _ConflictRepo()))
 
     with pytest.raises(ProjectNameExistsError):
-        await service.add_project("recodee-core", "Main project", None, None, None, None)
+        await service.add_project("recodee-core", "Main project", None, None, None, None, None)
 
 
 @pytest.mark.asyncio
@@ -230,6 +255,7 @@ async def test_update_project_success() -> None:
         "old-name",
         "Old description",
         "https://old.example.com",
+        "https://github.com/example/old-name",
         "/home/deadpool/projects/old-name",
         "workspace-write",
         "feature/old-name",
@@ -240,6 +266,7 @@ async def test_update_project_success() -> None:
         "new-name",
         "New description",
         "https://new.example.com",
+        "https://github.com/example/new-name",
         "/home/deadpool/projects/new-name",
         "danger-full-access",
         "feature/new-name",
@@ -250,6 +277,7 @@ async def test_update_project_success() -> None:
     assert updated.name == "new-name"
     assert updated.description == "New description"
     assert updated.project_url == "https://new.example.com"
+    assert updated.github_repo_url == "https://github.com/example/new-name"
     assert updated.project_path == "/home/deadpool/projects/new-name"
     assert updated.sandbox_mode == "danger-full-access"
     assert updated.git_branch == "feature/new-name"
@@ -259,7 +287,7 @@ async def test_update_project_success() -> None:
 async def test_update_project_returns_none_when_missing() -> None:
     service = ProjectsService(cast(ProjectsRepositoryPort, _Repo()))
 
-    updated = await service.update_project("missing", "new-name", None, None, None, None, None)
+    updated = await service.update_project("missing", "new-name", None, None, None, None, None, None)
 
     assert updated is None
 
@@ -273,6 +301,7 @@ async def test_update_project_maps_repository_conflict() -> None:
             name: str,
             description: str | None,
             project_url: str | None,
+            github_repo_url: str | None,
             project_path: str | None,
             sandbox_mode: str,
             git_branch: str | None,
@@ -282,19 +311,20 @@ async def test_update_project_maps_repository_conflict() -> None:
     service = ProjectsService(cast(ProjectsRepositoryPort, _ConflictRepo()))
 
     with pytest.raises(ProjectNameExistsError):
-        await service.update_project("proj-1", "new-name", "new-description", None, None, None, None)
+        await service.update_project("proj-1", "new-name", "new-description", None, None, None, None, None)
 
 
 @pytest.mark.asyncio
 async def test_update_project_rejects_duplicate_path() -> None:
     service = ProjectsService(cast(ProjectsRepositoryPort, _Repo()))
-    first = await service.add_project("alpha", None, None, "/home/deadpool/projects/alpha", None, None)
-    await service.add_project("beta", None, None, "/home/deadpool/projects/beta", None, None)
+    first = await service.add_project("alpha", None, None, None, "/home/deadpool/projects/alpha", None, None)
+    await service.add_project("beta", None, None, None, "/home/deadpool/projects/beta", None, None)
 
     with pytest.raises(ProjectPathExistsError):
         await service.update_project(
             first.id,
             "alpha-renamed",
+            None,
             None,
             None,
             "/home/deadpool/projects/beta",
@@ -307,9 +337,71 @@ async def test_update_project_rejects_duplicate_path() -> None:
 async def test_add_project_applies_planner_defaults() -> None:
     service = ProjectsService(cast(ProjectsRepositoryPort, _Repo()))
 
-    created = await service.add_project("planner-defaults", None, None, None, None, None)
+    created = await service.add_project("planner-defaults", None, None, None, None, None, None)
 
     assert created.project_url is None
+    assert created.github_repo_url is None
     assert created.project_path is None
     assert created.sandbox_mode == DEFAULT_SANDBOX_MODE
     assert created.git_branch is None
+
+
+@pytest.mark.asyncio
+async def test_list_projects_auto_discovers_git_repositories(monkeypatch: pytest.MonkeyPatch) -> None:
+    service = ProjectsService(cast(ProjectsRepositoryPort, _Repo()))
+    monkeypatch.setenv("CODEX_LB_PROJECTS_AUTO_DISCOVER_ENABLED", "true")
+
+    monkeypatch.setattr(
+        "app.modules.projects.service.discover_active_codex_git_projects",
+        lambda: [
+            AutoDiscoveredGitProject(
+                name="recodee",
+                project_path="/home/deadpool/Documents/recodee",
+                git_branch="dev",
+                github_repo_url="https://github.com/webu-pro/recodee",
+            )
+        ],
+    )
+
+    listed = await service.list_projects()
+    assert len(listed.entries) == 1
+    assert listed.entries[0].name == "recodee"
+    assert listed.entries[0].project_path == "/home/deadpool/Documents/recodee"
+    assert listed.entries[0].git_branch == "dev"
+    assert listed.entries[0].github_repo_url == "https://github.com/webu-pro/recodee"
+
+
+@pytest.mark.asyncio
+async def test_list_projects_auto_discovery_updates_existing_missing_git_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = ProjectsService(cast(ProjectsRepositoryPort, _Repo()))
+    monkeypatch.setenv("CODEX_LB_PROJECTS_AUTO_DISCOVER_ENABLED", "true")
+    created = await service.add_project(
+        "recodee",
+        None,
+        "https://recodee.com",
+        None,
+        "/home/deadpool/Documents/recodee",
+        None,
+        None,
+    )
+
+    monkeypatch.setattr(
+        "app.modules.projects.service.discover_active_codex_git_projects",
+        lambda: [
+            AutoDiscoveredGitProject(
+                name="recodee",
+                project_path="/home/deadpool/Documents/recodee",
+                git_branch="feature/active",
+                github_repo_url="https://github.com/webu-pro/recodee",
+            )
+        ],
+    )
+
+    listed = await service.list_projects()
+    assert len(listed.entries) == 1
+    assert listed.entries[0].id == created.id
+    assert listed.entries[0].project_url == "https://recodee.com"
+    assert listed.entries[0].git_branch == "feature/active"
+    assert listed.entries[0].github_repo_url == "https://github.com/webu-pro/recodee"

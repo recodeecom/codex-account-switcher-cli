@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Sequence
 
+from app.modules.accounts.codex_live_usage import (
+    read_live_codex_process_session_attribution,
+    read_runtime_live_session_counts_by_snapshot,
+)
 from app.core.utils.time import utcnow
 from app.modules.source_control.schemas import (
     SourceControlBotSyncEntry,
@@ -101,6 +106,7 @@ class SourceControlService:
         branch_state_by_name = {entry.name: entry for entry in branch_previews}
 
         merge_preview: list[SourceControlMergePreviewEntry] = []
+        merge_preview_branches: set[str] = set()
         for branch in preferred_branches:
             if branch == base_branch:
                 continue
@@ -117,6 +123,7 @@ class SourceControlService:
                     behind=preview.behind,
                 )
             )
+            merge_preview_branches.add(preview.name)
 
         gx_bots: list[SourceControlBotSyncEntry] = []
         for bot in bots:
@@ -131,9 +138,12 @@ class SourceControlService:
                     matched_branch=matched,
                     in_sync=bool(matched and matched_preview is not None),
                     branch_candidates=candidates,
+                    source="agent",
+                    snapshot_name=None,
+                    session_count=0,
                 )
             )
-            if matched and matched_preview and matched not in {entry.branch for entry in merge_preview}:
+            if matched and matched_preview and matched not in merge_preview_branches:
                 merge_preview.append(
                     SourceControlMergePreviewEntry(
                         branch=matched_preview.name,
@@ -142,6 +152,27 @@ class SourceControlService:
                         behind=matched_preview.behind,
                     )
                 )
+                merge_preview_branches.add(matched)
+
+        live_snapshot_bots = self._build_live_snapshot_bot_entries(
+            repo_root=repo_root,
+            all_branches=all_branches,
+            worktrees=worktrees,
+        )
+        for snapshot_bot in live_snapshot_bots:
+            gx_bots.append(snapshot_bot)
+            matched = snapshot_bot.matched_branch
+            matched_preview = branch_state_by_name.get(matched) if matched else None
+            if matched and matched_preview and matched not in merge_preview_branches:
+                merge_preview.append(
+                    SourceControlMergePreviewEntry(
+                        branch=matched_preview.name,
+                        merge_state=matched_preview.merge_state,
+                        ahead=matched_preview.ahead,
+                        behind=matched_preview.behind,
+                    )
+                )
+                merge_preview_branches.add(matched)
 
         pull_requests = self._list_pull_requests(repo_root=repo_root, base_branch=base_branch)
 
@@ -216,6 +247,14 @@ class SourceControlService:
             matched = self._match_bot_to_branch(bot_name=bot.name, all_branches=all_branches)
             if matched == target_branch:
                 linked_bots.append(bot.name)
+        worktrees = self._list_worktrees(repo_root=repo_root)
+        for snapshot_bot in self._build_live_snapshot_bot_entries(
+            repo_root=repo_root,
+            all_branches=all_branches,
+            worktrees=worktrees,
+        ):
+            if snapshot_bot.matched_branch == target_branch:
+                linked_bots.append(snapshot_bot.bot_name)
 
         return SourceControlBranchDetailsResponse(
             repository_root=str(repo_root),
@@ -226,7 +265,7 @@ class SourceControlService:
             ahead=branch_preview.ahead,
             behind=branch_preview.behind,
             changed_files=changed_files,
-            linked_bots=linked_bots,
+            linked_bots=list(dict.fromkeys(linked_bots)),
             pull_request=pull_request,
         )
 
@@ -618,6 +657,125 @@ class SourceControlService:
         candidates = _candidate_branches_for_bot(bot_name)
         return next((branch for branch in candidates if branch in all_branches), None)
 
+    def _build_live_snapshot_bot_entries(
+        self,
+        *,
+        repo_root: Path,
+        all_branches: Sequence[str],
+        worktrees: Sequence[SourceControlWorktreeEntry],
+    ) -> list[SourceControlBotSyncEntry]:
+        attribution = read_live_codex_process_session_attribution()
+        process_counts_by_snapshot = attribution.counts_by_snapshot
+        runtime_counts_by_snapshot = read_runtime_live_session_counts_by_snapshot()
+        if not process_counts_by_snapshot and not runtime_counts_by_snapshot:
+            return []
+
+        snapshot_names = sorted(
+            set(process_counts_by_snapshot.keys()) | set(runtime_counts_by_snapshot.keys()),
+            key=lambda snapshot_name: (
+                -max(
+                    int(process_counts_by_snapshot.get(snapshot_name, 0)),
+                    int(runtime_counts_by_snapshot.get(snapshot_name, 0)),
+                ),
+                snapshot_name.lower(),
+            ),
+        )
+
+        entries: list[SourceControlBotSyncEntry] = []
+        for snapshot_name in snapshot_names:
+            process_session_count = max(0, int(process_counts_by_snapshot.get(snapshot_name, 0)))
+            runtime_session_count = max(0, int(runtime_counts_by_snapshot.get(snapshot_name, 0)))
+            total_session_count = max(process_session_count, runtime_session_count)
+            if total_session_count <= 0:
+                continue
+
+            session_pids = attribution.mapped_session_pids_by_snapshot.get(snapshot_name, [])
+            matched_branch = self._resolve_snapshot_branch_for_repo(
+                snapshot_name=snapshot_name,
+                all_branches=all_branches,
+                worktrees=worktrees,
+                session_pids=session_pids,
+            )
+            branch_candidates = _candidate_branches_for_snapshot(
+                snapshot_name=snapshot_name,
+                all_branches=all_branches,
+            )
+            if matched_branch and matched_branch not in branch_candidates:
+                branch_candidates = [matched_branch, *branch_candidates]
+
+            entries.append(
+                SourceControlBotSyncEntry(
+                    bot_name=f"Codex ({snapshot_name})",
+                    bot_status="active",
+                    runtime="codex-auth snapshot session",
+                    matched_branch=matched_branch,
+                    in_sync=bool(matched_branch),
+                    branch_candidates=branch_candidates,
+                    source="snapshot",
+                    snapshot_name=snapshot_name,
+                    session_count=total_session_count,
+                )
+            )
+
+        return entries
+
+    def _resolve_snapshot_branch_for_repo(
+        self,
+        *,
+        snapshot_name: str,
+        all_branches: Sequence[str],
+        worktrees: Sequence[SourceControlWorktreeEntry],
+        session_pids: Sequence[int],
+    ) -> str | None:
+        branch_from_process = self._resolve_snapshot_branch_from_live_processes(
+            worktrees=worktrees,
+            session_pids=session_pids,
+        )
+        if branch_from_process:
+            return branch_from_process
+
+        snapshot_candidates = _candidate_branches_for_snapshot(
+            snapshot_name=snapshot_name,
+            all_branches=all_branches,
+        )
+        if snapshot_candidates:
+            return snapshot_candidates[0]
+        return None
+
+    def _resolve_snapshot_branch_from_live_processes(
+        self,
+        *,
+        worktrees: Sequence[SourceControlWorktreeEntry],
+        session_pids: Sequence[int],
+    ) -> str | None:
+        worktree_branches: list[tuple[Path, str]] = []
+        for entry in worktrees:
+            if not entry.branch:
+                continue
+            try:
+                worktree_path = Path(entry.path).resolve()
+            except OSError:
+                worktree_path = Path(entry.path)
+            worktree_branches.append((worktree_path, entry.branch))
+
+        if not worktree_branches or not session_pids:
+            return None
+
+        worktree_branches.sort(key=lambda item: len(str(item[0])), reverse=True)
+        branch_hits: dict[str, int] = {}
+        for pid in session_pids:
+            cwd = _read_process_cwd(pid)
+            if cwd is None:
+                continue
+            matched_branch = _resolve_branch_for_path(cwd, worktree_branches)
+            if not matched_branch:
+                continue
+            branch_hits[matched_branch] = branch_hits.get(matched_branch, 0) + 1
+
+        if not branch_hits:
+            return None
+        return max(branch_hits.items(), key=lambda item: (item[1], item[0]))[0]
+
     def _ahead_behind(self, *, repo_root: Path, base_branch: str, branch: str) -> tuple[int, int]:
         raw = self._run_git(
             ["rev-list", "--left-right", "--count", f"{base_branch}...{branch}"],
@@ -780,6 +938,64 @@ def _candidate_branches_for_bot(bot_name: str) -> list[str]:
         f"bot/{slug}",
         slug,
     ]
+
+
+def _candidate_branches_for_snapshot(*, snapshot_name: str, all_branches: Sequence[str]) -> list[str]:
+    snapshot_slug = _slugify(snapshot_name)
+    if not snapshot_slug:
+        return []
+
+    preferred_prefixes = (
+        f"agent/codex/{snapshot_slug}",
+        f"agent/{snapshot_slug}",
+        f"gx/{snapshot_slug}",
+        f"subbranch/{snapshot_slug}",
+        f"bot/{snapshot_slug}",
+    )
+    candidates: list[str] = []
+    seen: set[str] = set()
+
+    for prefix in preferred_prefixes:
+        for branch in all_branches:
+            normalized_branch = branch.lower()
+            if normalized_branch == prefix or normalized_branch.startswith(f"{prefix}-"):
+                if branch not in seen:
+                    seen.add(branch)
+                    candidates.append(branch)
+
+    for branch in all_branches:
+        normalized_branch = branch.lower()
+        if snapshot_slug not in normalized_branch:
+            continue
+        if not _BOT_BRANCH_PATTERN.search(branch):
+            continue
+        if branch not in seen:
+            seen.add(branch)
+            candidates.append(branch)
+
+    return candidates
+
+
+def _path_is_within(path: Path, root: Path) -> bool:
+    try:
+        path.resolve().relative_to(root.resolve())
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def _resolve_branch_for_path(cwd: Path, worktree_branches: Sequence[tuple[Path, str]]) -> str | None:
+    for worktree_path, branch in worktree_branches:
+        if _path_is_within(cwd, worktree_path):
+            return branch
+    return None
+
+
+def _read_process_cwd(pid: int) -> Path | None:
+    try:
+        return Path(os.readlink(f"/proc/{pid}/cwd")).resolve()
+    except OSError:
+        return None
 
 
 def _extract_first_url(value: str) -> str | None:

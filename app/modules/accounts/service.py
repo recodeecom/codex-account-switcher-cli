@@ -45,6 +45,7 @@ from app.modules.accounts.live_usage_overrides import (
     apply_local_live_usage_overrides,
     remember_terminated_cli_session_snapshots,
 )
+from app.modules.accounts.live_session_continuity_cache import apply_live_session_continuity
 from app.modules.accounts.live_usage_persistence import persist_live_usage_overrides
 from app.modules.accounts.mappers import build_account_summaries, build_account_usage_trends
 from app.modules.accounts.request_usage_fallback import merge_request_usage_with_runtime_fallback
@@ -246,6 +247,15 @@ class AccountsService:
             codex_session_task_previews_by_account=codex_session_task_previews_by_account,
             live_quota_debug_by_account=live_quota_debug_by_account,
             now=now,
+        )
+        await apply_live_session_continuity(
+            account_ids=account_ids,
+            codex_auth_by_account=codex_auth_by_account,
+            codex_live_session_counts_by_account=codex_live_session_counts_by_account,
+            codex_tracked_session_counts_by_account=codex_tracked_session_counts_by_account,
+            codex_current_task_preview_by_account=codex_current_task_preview_by_account,
+            codex_last_task_preview_by_account=codex_last_task_preview_by_account,
+            codex_session_task_previews_by_account=codex_session_task_previews_by_account,
         )
 
         return build_account_summaries(

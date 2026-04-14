@@ -15,12 +15,29 @@ from app.core.crypto import TokenEncryptor
 from app.core.utils.time import naive_utc_to_epoch, utcnow
 from app.db.models import Account, AccountStatus
 from app.db.session import SessionLocal
+from app.modules.accounts.live_session_continuity_cache import LiveSessionContinuitySignal
 from app.modules.accounts.repository import AccountsRepository
 from app.modules.request_logs.repository import RequestLogsRepository
 from app.core.usage.models import RateLimitPayload, UsagePayload, UsageWindow
 from app.modules.usage.repository import UsageRepository
 
 pytestmark = pytest.mark.integration
+
+
+class _InMemorySessionContinuityCache:
+    def __init__(self) -> None:
+        self._signals_by_account: dict[str, LiveSessionContinuitySignal] = {}
+
+    async def load(self, account_ids: list[str]) -> dict[str, LiveSessionContinuitySignal]:
+        return {
+            account_id: self._signals_by_account[account_id]
+            for account_id in account_ids
+            if account_id in self._signals_by_account
+        }
+
+    async def store(self, signals: list[LiveSessionContinuitySignal]) -> None:
+        for signal in signals:
+            self._signals_by_account[signal.account_id] = signal
 
 
 def _make_account(account_id: str, email: str, plan_type: str = "plus") -> Account:
@@ -308,6 +325,80 @@ async def test_dashboard_overview_combines_data(async_client, db_setup):
     # At least one trend point should have non-zero request count
     request_values = [p["v"] for p in trends["requests"]]
     assert any(v > 0 for v in request_values)
+
+
+@pytest.mark.asyncio
+async def test_dashboard_overview_recovers_recent_session_signal_from_continuity_cache(
+    async_client,
+    db_setup,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    now = utcnow().replace(microsecond=0)
+    cache = _InMemorySessionContinuityCache()
+    monkeypatch.setattr(
+        "app.modules.accounts.live_session_continuity_cache.get_live_session_continuity_cache",
+        lambda: cache,
+    )
+
+    async with SessionLocal() as session:
+        accounts_repo = AccountsRepository(session)
+        await accounts_repo.upsert(_make_account("acc_cache", "cache@example.com"))
+        await session.execute(
+            text(
+                """
+                INSERT INTO sticky_sessions (
+                    key, account_id, kind, created_at, updated_at, task_preview, task_updated_at
+                )
+                VALUES (
+                    :session_key, :account_id, :kind, :created_at, :updated_at, :task_preview, :task_updated_at
+                )
+                """
+            ),
+            {
+                "session_key": "dashboard-cache-session",
+                "account_id": "acc_cache",
+                "kind": "codex_session",
+                "created_at": now - timedelta(minutes=2),
+                "updated_at": now - timedelta(minutes=1),
+                "task_preview": "keep working account during reload",
+                "task_updated_at": now - timedelta(minutes=1),
+            },
+        )
+        await session.commit()
+
+    first_response = await async_client.get("/api/dashboard/overview")
+    assert first_response.status_code == 200
+    first_payload = first_response.json()
+    first_account = next(item for item in first_payload["accounts"] if item["accountId"] == "acc_cache")
+    assert first_account["codexTrackedSessionCount"] == 1
+    assert first_account["codexCurrentTaskPreview"] == "keep working account during reload"
+
+    async with SessionLocal() as session:
+        await session.execute(
+            text(
+                """
+                UPDATE sticky_sessions
+                SET updated_at = :stale_updated_at,
+                    task_preview = NULL,
+                    task_updated_at = NULL
+                WHERE account_id = :account_id AND kind = :kind
+                """
+            ),
+            {
+                "stale_updated_at": now - timedelta(hours=3),
+                "account_id": "acc_cache",
+                "kind": "codex_session",
+            },
+        )
+        await session.commit()
+
+    second_response = await async_client.get("/api/dashboard/overview")
+    assert second_response.status_code == 200
+    second_payload = second_response.json()
+    second_account = next(item for item in second_payload["accounts"] if item["accountId"] == "acc_cache")
+    assert second_account["codexTrackedSessionCount"] == 1
+    assert second_account["codexCurrentTaskPreview"] == "keep working account during reload"
+    assert second_account["codexAuth"]["hasLiveSession"] is True
 
 
 @pytest.mark.asyncio

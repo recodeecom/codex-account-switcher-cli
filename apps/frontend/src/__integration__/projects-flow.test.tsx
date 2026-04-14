@@ -54,6 +54,10 @@ describe("projects flow integration", () => {
       "recodee.com",
     );
     await user.type(
+      within(createDialog).getByPlaceholderText("https://github.com/owner/repo"),
+      "github.com/webu-pro/recodee-core",
+    );
+    await user.type(
       within(createDialog).getByPlaceholderText("/absolute/path/to/project"),
       "/home/deadpool/projects/recodee-core",
     );
@@ -66,6 +70,7 @@ describe("projects flow integration", () => {
     expect(await screen.findByText("recodee-core")).toBeInTheDocument();
     expect(screen.getByText("Main dashboard project")).toBeInTheDocument();
     expect(screen.getByText("https://recodee.com/")).toBeInTheDocument();
+    expect(screen.getByText("https://github.com/webu-pro/recodee-core")).toBeInTheDocument();
     expect(screen.getByText("/home/deadpool/projects/recodee-core")).toBeInTheDocument();
     expect(screen.getByTestId("project-plan-count-project_1")).toHaveTextContent("0 plans");
     expect(screen.getAllByText("—").length).toBeGreaterThan(0);
@@ -79,6 +84,11 @@ describe("projects flow integration", () => {
     await user.type(
       within(editDialog).getByPlaceholderText("https://project-domain.com (optional)"),
       "recodee.dev",
+    );
+    await user.clear(within(editDialog).getByPlaceholderText("https://github.com/owner/repo (optional)"));
+    await user.type(
+      within(editDialog).getByPlaceholderText("https://github.com/owner/repo (optional)"),
+      "https://github.com/webu-pro/recodee-core-v2",
     );
     await user.clear(within(editDialog).getByPlaceholderText("Optional description (max 512 characters)"));
     await user.type(
@@ -100,6 +110,7 @@ describe("projects flow integration", () => {
     expect(await screen.findByText("recodee-core-v2")).toBeInTheDocument();
     expect(screen.getByText("Updated project details")).toBeInTheDocument();
     expect(screen.getByText("https://recodee.dev/")).toBeInTheDocument();
+    expect(screen.getByText("https://github.com/webu-pro/recodee-core-v2")).toBeInTheDocument();
     expect(screen.getByText("/home/deadpool/projects/recodee-core-v2")).toBeInTheDocument();
     expect(screen.getByText("feature/recodee-core-v2")).toBeInTheDocument();
     expect(screen.queryByText("recodee-core")).not.toBeInTheDocument();

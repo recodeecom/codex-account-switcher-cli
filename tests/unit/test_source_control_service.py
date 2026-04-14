@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import subprocess
+from types import SimpleNamespace
 from pathlib import Path
 
 import pytest
 
+import app.modules.source_control.service as source_control_service
 from app.modules.source_control.service import (
     SourceControlBotSnapshot,
     SourceControlError,
@@ -83,3 +85,51 @@ def test_build_preview_rejects_missing_project_path(tmp_path: Path) -> None:
     with pytest.raises(SourceControlError, match="Project path does not exist"):
         service.build_preview(project_path=str(tmp_path / "missing"), bots=[])
 
+
+def test_build_preview_includes_active_snapshot_sessions_with_worktree_branch_mapping(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _init_repo(tmp_path)
+    snapshot_name = "admin@kozponthiusbolt.hu--dup-2"
+    snapshot_branch = "agent/codex/admin-kozponthiusbolt-hu--dup-2"
+
+    _git(repo, "checkout", "-b", snapshot_branch)
+    (repo / "snapshot.txt").write_text("snapshot\n", encoding="utf-8")
+    _git(repo, "add", "snapshot.txt")
+    _git(repo, "commit", "-m", "Add snapshot branch")
+    _git(repo, "checkout", "main")
+
+    snapshot_worktree = tmp_path / "snapshot-worktree"
+    _git(repo, "worktree", "add", str(snapshot_worktree), snapshot_branch)
+
+    monkeypatch.setattr(
+        source_control_service,
+        "read_live_codex_process_session_attribution",
+        lambda: SimpleNamespace(
+            counts_by_snapshot={snapshot_name: 1},
+            mapped_session_pids_by_snapshot={snapshot_name: [101]},
+        ),
+    )
+    monkeypatch.setattr(
+        source_control_service,
+        "read_runtime_live_session_counts_by_snapshot",
+        lambda: {snapshot_name: 1},
+    )
+    monkeypatch.setattr(
+        source_control_service,
+        "_read_process_cwd",
+        lambda pid: snapshot_worktree if pid == 101 else None,
+    )
+
+    service = SourceControlService()
+    preview = service.build_preview(project_path=str(repo), bots=[])
+
+    matching_entries = [
+        entry
+        for entry in preview.gx_bots
+        if entry.source == "snapshot" and entry.snapshot_name == snapshot_name
+    ]
+    assert matching_entries
+    assert matching_entries[0].matched_branch == snapshot_branch
+    assert matching_entries[0].session_count == 1

@@ -10,6 +10,11 @@ services:
       WATCHFILES_FORCE_POLLING: "true"
       # Allow containerized backend to inspect host Codex processes for live session mapping.
       CODEX_LB_PROC_ROOT: /host_proc
+      # Keep Working now/session continuity during Python reload windows.
+      CODEX_LB_DASHBOARD_SESSION_CONTINUITY_REDIS_URL: redis://session-redis:6379/0
+    depends_on:
+      session-redis:
+        condition: service_healthy
     ports:
       - "2455:2455"
     command:
@@ -58,6 +63,15 @@ services:
       - ./frontend:/app:rw
       - ./logs:/var/log/codex-lb:rw
       - codex-lb-frontend-node-modules:/app/node_modules
+
+  session-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   medusa-redis:
     image: redis:7-alpine

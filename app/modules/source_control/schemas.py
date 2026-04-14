@@ -56,6 +56,9 @@ class SourceControlBotSyncEntry(DashboardModel):
     matched_branch: str | None = None
     in_sync: bool = False
     branch_candidates: list[str] = Field(default_factory=list)
+    source: Literal["agent", "snapshot"] = "agent"
+    snapshot_name: str | None = None
+    session_count: int = 0
 
 
 class SourceControlPullRequestPreview(DashboardModel):

@@ -29,6 +29,7 @@ from app.core.resilience.memory_monitor import configure as configure_memory_mon
 from app.core.usage.refresh_scheduler import build_usage_refresh_scheduler
 from app.db.session import SessionLocal, close_db, init_background_db, init_db
 from app.modules.accounts import api as accounts_api
+from app.modules.accounts.live_session_continuity_cache import close_live_session_continuity_cache
 from app.modules.agents import api as agents_api
 from app.modules.api_keys import api as api_keys_api
 from app.modules.audit import api as audit_api
@@ -281,6 +282,7 @@ async def lifespan(app: FastAPI):
             finally:
                 shutdown_state.reset()
                 mark_process_dead()
+                await close_live_session_continuity_cache()
                 await close_db()
 
 

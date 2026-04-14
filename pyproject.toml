@@ -25,6 +25,7 @@ dependencies = [
   "pyotp>=2.9.0",
   "python-dotenv>=1.2.1",
   "python-multipart>=0.0.21",
+  "redis>=6.0.0",
   "segno>=1.6.6",
   "sqlalchemy>=2.0.45",
   "websockets>=16.0",

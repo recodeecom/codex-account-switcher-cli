@@ -52,6 +52,9 @@ export const SourceControlBotSyncEntrySchema = z.object({
   matchedBranch: z.string().nullable().optional(),
   inSync: z.boolean().default(false),
   branchCandidates: z.array(z.string()).default([]),
+  source: z.enum(["agent", "snapshot"]).default("agent"),
+  snapshotName: z.string().nullable().optional(),
+  sessionCount: z.number().int().min(0).default(0),
 });
 
 export const SourceControlPullRequestSchema = z.object({

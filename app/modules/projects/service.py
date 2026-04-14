@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import asyncio
+import os
 import re
+import shutil
+import subprocess
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -16,6 +20,7 @@ class ProjectEntryLike(Protocol):
     name: str
     description: str | None
     project_url: str | None
+    github_repo_url: str | None
     project_path: str | None
     sandbox_mode: str
     git_branch: str | None
@@ -42,6 +47,7 @@ class ProjectsRepositoryPort(Protocol):
         name: str,
         description: str | None,
         project_url: str | None,
+        github_repo_url: str | None,
         project_path: str | None,
         sandbox_mode: str,
         git_branch: str | None,
@@ -53,6 +59,7 @@ class ProjectsRepositoryPort(Protocol):
         name: str,
         description: str | None,
         project_url: str | None,
+        github_repo_url: str | None,
         project_path: str | None,
         sandbox_mode: str,
         git_branch: str | None,
@@ -70,6 +77,7 @@ class ProjectValidationError(ValueError):
             "invalid_project_name",
             "invalid_project_description",
             "invalid_project_url",
+            "invalid_project_github_repo_url",
             "invalid_project_path",
             "invalid_project_sandbox",
             "invalid_project_branch",
@@ -93,6 +101,7 @@ class ProjectEntryData:
     name: str
     description: str | None
     project_url: str | None
+    github_repo_url: str | None
     project_path: str | None
     sandbox_mode: str
     git_branch: str | None
@@ -122,6 +131,17 @@ DEFAULT_SANDBOX_MODE = "workspace-write"
 ALLOWED_SANDBOX_MODES = ("read-only", "workspace-write", "danger-full-access")
 _WINDOWS_DRIVE_ABSOLUTE_PATH_PATTERN = re.compile(r"^[A-Za-z]:[\\/]")
 _GIT_BRANCH_PATTERN = re.compile(r"^[A-Za-z0-9._/-]+$")
+_GIT_REMOTE_SCP_PATTERN = re.compile(r"^(?:ssh://)?git@([^:]+):(.+)$", flags=re.IGNORECASE)
+_GITHUB_REPO_PATH_PATTERN = re.compile(r"^/([^/\s]+)/([^/\s]+?)(?:\.git)?/?$")
+_GIT_COMMAND_TIMEOUT_SECONDS = 2.5
+
+
+@dataclass(frozen=True, slots=True)
+class AutoDiscoveredGitProject:
+    name: str
+    project_path: str
+    git_branch: str | None
+    github_repo_url: str | None
 
 
 class ProjectsService:
@@ -129,44 +149,23 @@ class ProjectsService:
         self._repository = repository
 
     async def list_projects(self) -> ProjectsListData:
+        await self._sync_auto_discovered_projects()
         rows = await self._repository.list_entries()
-        entries = [
-            ProjectEntryData(
-                id=row.id,
-                name=row.name,
-                description=row.description,
-                project_url=row.project_url,
-                project_path=normalize_stored_project_path(row.project_path),
-                sandbox_mode=row.sandbox_mode,
-                git_branch=row.git_branch,
-                created_at=row.created_at,
-                updated_at=row.updated_at,
-            )
-            for row in rows
-        ]
+        entries = [self._to_project_entry_data(row) for row in rows]
         return ProjectsListData(entries=entries)
 
     async def get_project(self, project_id: str) -> ProjectEntryData | None:
         row = await self._repository.get_entry(project_id)
         if row is None:
             return None
-        return ProjectEntryData(
-            id=row.id,
-            name=row.name,
-            description=row.description,
-            project_url=row.project_url,
-            project_path=normalize_stored_project_path(row.project_path),
-            sandbox_mode=row.sandbox_mode,
-            git_branch=row.git_branch,
-            created_at=row.created_at,
-            updated_at=row.updated_at,
-        )
+        return self._to_project_entry_data(row)
 
     async def add_project(
         self,
         name: str,
         description: str | None,
         project_url: str | None,
+        github_repo_url: str | None,
         project_path: str | None,
         sandbox_mode: str | None,
         git_branch: str | None,
@@ -174,6 +173,7 @@ class ProjectsService:
         normalized_name = normalize_project_name(name)
         normalized_description = normalize_project_description(description)
         normalized_project_url = normalize_project_url(project_url)
+        normalized_github_repo_url = normalize_github_repo_url(github_repo_url)
         normalized_project_path = normalize_project_path(project_path)
         normalized_sandbox_mode = normalize_sandbox_mode(sandbox_mode)
         normalized_git_branch = normalize_git_branch(git_branch)
@@ -188,6 +188,7 @@ class ProjectsService:
                 normalized_name,
                 normalized_description,
                 normalized_project_url,
+                normalized_github_repo_url,
                 normalized_project_path,
                 normalized_sandbox_mode,
                 normalized_git_branch,
@@ -199,17 +200,7 @@ class ProjectsService:
                 raise ProjectPathExistsError("Project path is already linked to another project") from exc
             raise
 
-        return ProjectEntryData(
-            id=row.id,
-            name=row.name,
-            description=row.description,
-            project_url=row.project_url,
-            project_path=normalize_stored_project_path(row.project_path),
-            sandbox_mode=row.sandbox_mode,
-            git_branch=row.git_branch,
-            created_at=row.created_at,
-            updated_at=row.updated_at,
-        )
+        return self._to_project_entry_data(row)
 
     async def update_project(
         self,
@@ -217,6 +208,7 @@ class ProjectsService:
         name: str,
         description: str | None,
         project_url: str | None,
+        github_repo_url: str | None,
         project_path: str | None,
         sandbox_mode: str | None,
         git_branch: str | None,
@@ -224,6 +216,7 @@ class ProjectsService:
         normalized_name = normalize_project_name(name)
         normalized_description = normalize_project_description(description)
         normalized_project_url = normalize_project_url(project_url)
+        normalized_github_repo_url = normalize_github_repo_url(github_repo_url)
         normalized_project_path = normalize_project_path(project_path)
         normalized_sandbox_mode = normalize_sandbox_mode(sandbox_mode)
         normalized_git_branch = normalize_git_branch(git_branch)
@@ -240,6 +233,7 @@ class ProjectsService:
                 normalized_name,
                 normalized_description,
                 normalized_project_url,
+                normalized_github_repo_url,
                 normalized_project_path,
                 normalized_sandbox_mode,
                 normalized_git_branch,
@@ -254,22 +248,13 @@ class ProjectsService:
         if row is None:
             return None
 
-        return ProjectEntryData(
-            id=row.id,
-            name=row.name,
-            description=row.description,
-            project_url=row.project_url,
-            project_path=normalize_stored_project_path(row.project_path),
-            sandbox_mode=row.sandbox_mode,
-            git_branch=row.git_branch,
-            created_at=row.created_at,
-            updated_at=row.updated_at,
-        )
+        return self._to_project_entry_data(row)
 
     async def remove_project(self, project_id: str) -> bool:
         return await self._repository.delete(project_id)
 
     async def list_project_plan_links(self) -> ProjectPlanLinksData:
+        await self._sync_auto_discovered_projects()
         rows = await self._repository.list_entries()
         entries: list[ProjectPlanLinkData] = []
 
@@ -323,6 +308,87 @@ class ProjectsService:
 
         return ProjectPlanLinksData(entries=entries)
 
+    def _to_project_entry_data(self, row: ProjectEntryLike) -> ProjectEntryData:
+        return ProjectEntryData(
+            id=row.id,
+            name=row.name,
+            description=row.description,
+            project_url=row.project_url,
+            github_repo_url=row.github_repo_url,
+            project_path=normalize_stored_project_path(row.project_path),
+            sandbox_mode=row.sandbox_mode,
+            git_branch=row.git_branch,
+            created_at=row.created_at,
+            updated_at=row.updated_at,
+        )
+
+    async def _sync_auto_discovered_projects(self) -> None:
+        if not _is_auto_discovery_enabled():
+            return
+        discovered_projects = await asyncio.to_thread(discover_active_codex_git_projects)
+        if not discovered_projects:
+            return
+
+        rows = list(await self._repository.list_entries())
+        existing_by_path: dict[str, ProjectEntryLike] = {}
+        reserved_names = {row.name.strip().lower() for row in rows if row.name.strip()}
+        for row in rows:
+            normalized_path = normalize_stored_project_path(row.project_path)
+            if normalized_path:
+                existing_by_path[normalized_path] = row
+
+        for discovered in discovered_projects:
+            normalized_path = normalize_project_path(discovered.project_path)
+            if not normalized_path:
+                continue
+
+            existing = existing_by_path.get(normalized_path)
+            if existing is None:
+                candidate_name = _resolve_unique_project_name(discovered.name, reserved_names)
+                reserved_names.add(candidate_name.strip().lower())
+                try:
+                    created = await self._repository.add(
+                        candidate_name,
+                        None,
+                        None,
+                        discovered.github_repo_url,
+                        normalized_path,
+                        DEFAULT_SANDBOX_MODE,
+                        discovered.git_branch,
+                    )
+                except ProjectRepositoryConflictError:
+                    continue
+                existing_by_path[normalized_path] = created
+                continue
+
+            next_git_branch = discovered.git_branch or existing.git_branch
+            next_github_repo_url = existing.github_repo_url
+            if not next_github_repo_url and discovered.github_repo_url:
+                next_github_repo_url = discovered.github_repo_url
+
+            if (
+                normalize_stored_project_path(existing.project_path) == normalized_path
+                and existing.git_branch == next_git_branch
+                and existing.github_repo_url == next_github_repo_url
+            ):
+                continue
+
+            try:
+                updated = await self._repository.update(
+                    existing.id,
+                    existing.name,
+                    existing.description,
+                    existing.project_url,
+                    next_github_repo_url,
+                    normalized_path,
+                    existing.sandbox_mode,
+                    next_git_branch,
+                )
+            except ProjectRepositoryConflictError:
+                continue
+            if updated is not None:
+                existing_by_path[normalized_path] = updated
+
 
 def normalize_project_name(value: str) -> str:
     normalized = value.strip()
@@ -371,6 +437,44 @@ def normalize_project_url(value: str | None) -> str | None:
             code="invalid_project_url",
         )
     return normalized
+
+
+def normalize_github_repo_url(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    if not normalized:
+        return None
+    if len(normalized) > 2048:
+        raise ProjectValidationError(
+            "GitHub repo URL must be 2048 characters or fewer",
+            code="invalid_project_github_repo_url",
+        )
+
+    normalized_url = _normalize_remote_to_https_url(normalized) or normalized
+    parsed = urlparse(normalized_url)
+    if not parsed.scheme and not parsed.netloc:
+        normalized_url = f"https://{normalized_url}"
+        parsed = urlparse(normalized_url)
+    if parsed.scheme not in {"http", "https"}:
+        raise ProjectValidationError(
+            "GitHub repo URL must be a valid github.com URL",
+            code="invalid_project_github_repo_url",
+        )
+    if parsed.netloc.lower() not in {"github.com", "www.github.com"}:
+        raise ProjectValidationError(
+            "GitHub repo URL must use github.com",
+            code="invalid_project_github_repo_url",
+        )
+
+    match = _GITHUB_REPO_PATH_PATTERN.match(parsed.path.strip())
+    if match is None:
+        raise ProjectValidationError(
+            "GitHub repo URL must include owner and repository",
+            code="invalid_project_github_repo_url",
+        )
+    owner, repo = match.groups()
+    return f"https://github.com/{owner}/{repo}"
 
 
 def normalize_project_path(value: str | None) -> str | None:
@@ -498,3 +602,220 @@ def _safe_path_mtime(path: Path) -> float:
         return path.stat().st_mtime
     except OSError:
         return 0.0
+
+
+def discover_active_codex_git_projects() -> list[AutoDiscoveredGitProject]:
+    proc_root = Path("/proc")
+    if not proc_root.exists() or not proc_root.is_dir():
+        return []
+
+    repo_roots: dict[str, Path] = {}
+    for pid_dir in proc_root.iterdir():
+        if not pid_dir.is_dir() or not pid_dir.name.isdigit():
+            continue
+        command = _read_process_cmdline(pid_dir)
+        if not _looks_like_codex_cli_command(command):
+            continue
+        cwd = _read_process_cwd(pid_dir)
+        if cwd is None:
+            continue
+        repo_root = _resolve_git_repo_root(cwd)
+        if repo_root is None:
+            continue
+        repo_roots[str(repo_root)] = repo_root
+
+    discovered: list[AutoDiscoveredGitProject] = []
+    for repo_root in sorted(repo_roots.values(), key=lambda value: str(value).lower()):
+        branch = _resolve_git_branch(repo_root)
+        github_repo_url = _resolve_github_repo_url(repo_root)
+        discovered.append(
+            AutoDiscoveredGitProject(
+                name=repo_root.name or "project",
+                project_path=str(repo_root),
+                git_branch=branch,
+                github_repo_url=github_repo_url,
+            )
+        )
+    return discovered
+
+
+def _read_process_cmdline(pid_dir: Path) -> list[str]:
+    cmdline_path = pid_dir / "cmdline"
+    try:
+        raw = cmdline_path.read_bytes()
+    except OSError:
+        return []
+    return [part for part in raw.decode("utf-8", errors="ignore").split("\x00") if part.strip()]
+
+
+def _looks_like_codex_cli_command(command: list[str]) -> bool:
+    codex_index: int | None = None
+    for index, part in enumerate(command[:5]):
+        if Path(part).name.lower() == "codex":
+            codex_index = index
+            break
+    if codex_index is None:
+        return False
+
+    for arg in command[codex_index + 1 :]:
+        normalized = arg.strip().lower()
+        if not normalized or normalized.startswith("-"):
+            continue
+        return normalized != "app-server"
+    return True
+
+
+def _read_process_cwd(pid_dir: Path) -> Path | None:
+    cwd_link = pid_dir / "cwd"
+    try:
+        return Path(os.readlink(cwd_link)).resolve()
+    except OSError:
+        return None
+
+
+def _resolve_git_repo_root(cwd: Path) -> Path | None:
+    output = _run_git(repo_hint=cwd, args=["rev-parse", "--show-toplevel"])
+    if not output:
+        return None
+    try:
+        return Path(output).expanduser().resolve()
+    except OSError:
+        return None
+
+
+def _resolve_git_branch(repo_root: Path) -> str | None:
+    output = _run_git(repo_hint=repo_root, args=["rev-parse", "--abbrev-ref", "HEAD"])
+    if not output or output == "HEAD":
+        return None
+    try:
+        return normalize_git_branch(output)
+    except ProjectValidationError:
+        return None
+
+
+def _resolve_github_repo_url(repo_root: Path) -> str | None:
+    origin_remote = _run_git(repo_hint=repo_root, args=["remote", "get-url", "origin"])
+    origin_candidate = _normalize_remote_to_https_url(origin_remote) if origin_remote else None
+    github_repo_url = _extract_github_repo_url(origin_candidate)
+    if github_repo_url:
+        return github_repo_url
+
+    gh_bin = shutil.which("gh")
+    if not gh_bin:
+        return None
+    gh_url = _run_command(
+        [gh_bin, "repo", "view", "--json", "url", "--jq", ".url"],
+        cwd=repo_root,
+        timeout_seconds=_GIT_COMMAND_TIMEOUT_SECONDS,
+        env_overrides={"GH_PROMPT_DISABLED": "1"},
+    )
+    if not gh_url:
+        return None
+    return _extract_github_repo_url(gh_url)
+
+
+def _run_git(*, repo_hint: Path, args: list[str]) -> str | None:
+    git_bin = shutil.which("git")
+    if not git_bin:
+        return None
+    return _run_command(
+        [git_bin, "-C", str(repo_hint), *args],
+        cwd=repo_hint,
+        timeout_seconds=_GIT_COMMAND_TIMEOUT_SECONDS,
+    )
+
+
+def _run_command(
+    command: list[str],
+    *,
+    cwd: Path,
+    timeout_seconds: float,
+    env_overrides: dict[str, str] | None = None,
+) -> str | None:
+    env = None
+    if env_overrides:
+        env = os.environ.copy()
+        env.update(env_overrides)
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=cwd,
+            env=env,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if completed.returncode != 0:
+        return None
+    output = completed.stdout.strip()
+    return output or None
+
+
+def _normalize_remote_to_https_url(remote: str) -> str | None:
+    normalized = remote.strip()
+    if not normalized:
+        return None
+
+    scp_match = _GIT_REMOTE_SCP_PATTERN.match(normalized)
+    if scp_match is not None:
+        host, path = scp_match.groups()
+        return f"https://{host}/{path.lstrip('/')}"
+
+    parsed = urlparse(normalized)
+    if parsed.scheme and parsed.netloc:
+        host = parsed.hostname or parsed.netloc
+        if not host:
+            return None
+        path = parsed.path or ""
+        if not path:
+            return None
+        return f"https://{host}{path}"
+
+    if "/" in normalized and "." in normalized and " " not in normalized:
+        return f"https://{normalized.lstrip('/')}"
+    return None
+
+
+def _extract_github_repo_url(candidate: str | None) -> str | None:
+    if not candidate:
+        return None
+    normalized = candidate.strip()
+    if not normalized:
+        return None
+    parsed = urlparse(normalized)
+    if not parsed.scheme and not parsed.netloc:
+        normalized = f"https://{normalized}"
+        parsed = urlparse(normalized)
+    host = parsed.netloc.lower()
+    if host not in {"github.com", "www.github.com"}:
+        return None
+    match = _GITHUB_REPO_PATH_PATTERN.match(parsed.path.strip())
+    if match is None:
+        return None
+    owner, repo = match.groups()
+    return f"https://github.com/{owner}/{repo}"
+
+
+def _resolve_unique_project_name(base_name: str, reserved_names: set[str]) -> str:
+    collapsed = " ".join(base_name.strip().split())
+    normalized_base = collapsed or "project"
+    if len(normalized_base) > 128:
+        normalized_base = normalized_base[:128].rstrip(" -_.") or "project"
+    candidate = normalized_base
+    suffix = 2
+    while candidate.lower() in reserved_names:
+        candidate = f"{normalized_base}-{suffix}"
+        if len(candidate) > 128:
+            candidate = f"{normalized_base[:120].rstrip(' -_.')}-{suffix}"
+        suffix += 1
+    return candidate
+
+
+def _is_auto_discovery_enabled() -> bool:
+    raw = os.environ.get("CODEX_LB_PROJECTS_AUTO_DISCOVER_ENABLED")
+    if raw is not None:
+        return raw.strip().lower() in {"1", "true", "yes", "on"}
+    return os.environ.get("PYTEST_CURRENT_TEST") is None

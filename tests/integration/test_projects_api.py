@@ -23,6 +23,7 @@ async def test_projects_api_crud_and_validation(async_client):
             "name": "recodee-core",
             "description": "Main dashboard project",
             "projectUrl": "marvahome.com",
+            "githubRepoUrl": "github.com/webu-pro/recodee",
             "projectPath": "/home/deadpool/projects/recodee-core",
             "sandboxMode": "workspace-write",
             "gitBranch": "feature/recodee-core",
@@ -33,6 +34,7 @@ async def test_projects_api_crud_and_validation(async_client):
     assert created_payload["name"] == "recodee-core"
     assert created_payload["description"] == "Main dashboard project"
     assert created_payload["projectUrl"] == "https://marvahome.com"
+    assert created_payload["githubRepoUrl"] == "https://github.com/webu-pro/recodee"
     assert created_payload["projectPath"] == "/home/deadpool/projects/recodee-core"
     assert created_payload["sandboxMode"] == "workspace-write"
     assert created_payload["gitBranch"] == "feature/recodee-core"
@@ -50,6 +52,7 @@ async def test_projects_api_crud_and_validation(async_client):
             "name": "ops",
             "description": "Operations project",
             "projectUrl": "https://ops.example.com",
+            "githubRepoUrl": "https://github.com/webu-pro/ops",
             "projectPath": "/home/deadpool/projects/ops",
             "sandboxMode": "read-only",
             "gitBranch": None,
@@ -64,6 +67,7 @@ async def test_projects_api_crud_and_validation(async_client):
             "name": "recodee-core-v2",
             "description": "Updated description",
             "projectUrl": "recodee.com",
+            "githubRepoUrl": "git@github.com:webu-pro/recodee-v2.git",
             "projectPath": "/home/deadpool/projects/recodee-core-v2",
             "sandboxMode": "danger-full-access",
             "gitBranch": "feature/recodee-core-v2",
@@ -75,6 +79,7 @@ async def test_projects_api_crud_and_validation(async_client):
     assert updated_payload["name"] == "recodee-core-v2"
     assert updated_payload["description"] == "Updated description"
     assert updated_payload["projectUrl"] == "https://recodee.com"
+    assert updated_payload["githubRepoUrl"] == "https://github.com/webu-pro/recodee-v2"
     assert updated_payload["projectPath"] == "/home/deadpool/projects/recodee-core-v2"
     assert updated_payload["sandboxMode"] == "danger-full-access"
     assert updated_payload["gitBranch"] == "feature/recodee-core-v2"
@@ -185,6 +190,13 @@ async def test_projects_api_crud_and_validation(async_client):
     assert invalid_url.status_code == 400
     assert invalid_url.json()["error"]["code"] == "invalid_project_url"
 
+    invalid_github_url = await async_client.post(
+        "/api/projects",
+        json={"name": "valid-name", "description": "desc", "githubRepoUrl": "https://gitlab.com/webu-pro/recodee"},
+    )
+    assert invalid_github_url.status_code == 400
+    assert invalid_github_url.json()["error"]["code"] == "invalid_project_github_repo_url"
+
     invalid_sandbox = await async_client.post(
         "/api/projects",
         json={"name": "valid-name", "description": "desc", "sandboxMode": "invalid"},
@@ -227,6 +239,7 @@ async def test_projects_api_defaults_sandbox_mode(async_client):
     assert created.status_code == 200
     payload = created.json()
     assert payload["projectUrl"] is None
+    assert payload["githubRepoUrl"] is None
     assert payload["projectPath"] is None
     assert payload["sandboxMode"] == "workspace-write"
     assert payload["gitBranch"] is None
@@ -394,3 +407,30 @@ async def test_projects_api_plan_links_scans_project_paths(async_client, tmp_pat
     assert entries[second_id]["planCount"] == 0
     assert entries[second_id]["latestPlanSlug"] is None
     assert entries[second_id]["latestPlanUpdatedAt"] is None
+
+
+@pytest.mark.asyncio
+async def test_projects_api_auto_discovers_codex_git_repositories(async_client, monkeypatch):
+    from app.modules.projects.service import AutoDiscoveredGitProject
+
+    monkeypatch.setenv("CODEX_LB_PROJECTS_AUTO_DISCOVER_ENABLED", "true")
+    monkeypatch.setattr(
+        "app.modules.projects.service.discover_active_codex_git_projects",
+        lambda: [
+            AutoDiscoveredGitProject(
+                name="recodee",
+                project_path="/home/deadpool/Documents/recodee",
+                git_branch="dev",
+                github_repo_url="https://github.com/webu-pro/recodee",
+            )
+        ],
+    )
+
+    listed = await async_client.get("/api/projects")
+    assert listed.status_code == 200
+    entries = listed.json()["entries"]
+    assert len(entries) == 1
+    assert entries[0]["name"] == "recodee"
+    assert entries[0]["projectPath"] == "/home/deadpool/Documents/recodee"
+    assert entries[0]["gitBranch"] == "dev"
+    assert entries[0]["githubRepoUrl"] == "https://github.com/webu-pro/recodee"

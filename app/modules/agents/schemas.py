@@ -3,7 +3,14 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
+from pydantic import Field
+
 from app.modules.shared.schemas import DashboardModel
+
+
+class AgentEnvironmentVariable(DashboardModel):
+    key: str
+    value: str
 
 
 class AgentEntry(DashboardModel):
@@ -16,6 +23,7 @@ class AgentEntry(DashboardModel):
     instructions: str
     max_concurrent_tasks: int
     avatar_data_url: str | None = None
+    environment_variables: list[AgentEnvironmentVariable] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 
@@ -32,6 +40,7 @@ class AgentCreateRequest(DashboardModel):
     instructions: str | None = None
     max_concurrent_tasks: int | None = None
     avatar_data_url: str | None = None
+    environment_variables: list[AgentEnvironmentVariable] | None = None
 
 
 class AgentUpdateRequest(DashboardModel):
@@ -43,3 +52,4 @@ class AgentUpdateRequest(DashboardModel):
     instructions: str | None = None
     max_concurrent_tasks: int | None = None
     avatar_data_url: str | None = None
+    environment_variables: list[AgentEnvironmentVariable] | None = None

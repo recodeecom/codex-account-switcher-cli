@@ -43,6 +43,7 @@ async def create_agent(
             instructions=payload.instructions,
             max_concurrent_tasks=payload.max_concurrent_tasks,
             avatar_data_url=payload.avatar_data_url,
+            environment_variables=payload.environment_variables,
         )
     except AgentValidationError as exc:
         raise DashboardBadRequestError(str(exc), code=exc.code) from exc
@@ -69,6 +70,7 @@ async def update_agent(
             instructions=payload.instructions,
             max_concurrent_tasks=payload.max_concurrent_tasks,
             avatar_data_url=payload.avatar_data_url,
+            environment_variables=payload.environment_variables,
         )
     except AgentValidationError as exc:
         raise DashboardBadRequestError(str(exc), code=exc.code) from exc

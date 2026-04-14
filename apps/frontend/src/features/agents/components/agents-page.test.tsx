@@ -69,6 +69,7 @@ describe("AgentsPage", () => {
       instructions: "",
       maxConcurrentTasks: 6,
       avatarDataUrl: null,
+      environmentVariables: [],
       createdAt: NOW,
       updatedAt: NOW,
     });
@@ -83,6 +84,7 @@ describe("AgentsPage", () => {
       instructions: payload.instructions ?? "",
       maxConcurrentTasks: payload.maxConcurrentTasks ?? 6,
       avatarDataUrl: payload.avatarDataUrl ?? null,
+      environmentVariables: payload.environmentVariables ?? [],
       createdAt: NOW,
       updatedAt: NOW,
     }));
@@ -141,6 +143,7 @@ describe("AgentsPage", () => {
               instructions: "",
               maxConcurrentTasks: 6,
               avatarDataUrl: null,
+              environmentVariables: [],
               createdAt: NOW,
               updatedAt: NOW,
             },
@@ -170,6 +173,7 @@ describe("AgentsPage", () => {
     expect(screen.getByRole("tab", { name: "Instructions" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Skills" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Tasks" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Environment" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Settings" })).toBeInTheDocument();
     expect(screen.getByText("No instructions set")).toBeInTheDocument();
   });
@@ -185,6 +189,10 @@ describe("AgentsPage", () => {
     await user.click(screen.getByRole("tab", { name: "Tasks" }));
     expect(screen.getByText("Task Queue")).toBeInTheDocument();
     expect(screen.getByText("No tasks in queue")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "Environment" }));
+    expect(screen.getByText("Environment Variables")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add variable" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("tab", { name: "Settings" }));
     expect(screen.getByText("Click to upload avatar")).toBeInTheDocument();
@@ -295,6 +303,28 @@ describe("AgentsPage", () => {
         expect.objectContaining({
           payload: expect.objectContaining({
             avatarDataUrl: "data:image/png;base64,aGVsbG8=",
+          }),
+        }),
+      );
+    });
+  });
+
+  it("saves agent environment variables from environment tab", async () => {
+    const user = userEvent.setup({ delay: null });
+    renderWithProviders(<AgentsPage />);
+
+    await user.click(screen.getByRole("tab", { name: "Environment" }));
+    await user.click(screen.getByRole("button", { name: "Add" }));
+
+    await user.type(screen.getByPlaceholderText("KEY"), "ANTHROPIC_API_KEY");
+    await user.type(screen.getByPlaceholderText("value"), "secret-key");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(updateMutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          payload: expect.objectContaining({
+            environmentVariables: [{ key: "ANTHROPIC_API_KEY", value: "secret-key" }],
           }),
         }),
       );

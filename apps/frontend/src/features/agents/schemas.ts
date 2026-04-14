@@ -2,6 +2,10 @@ import { z } from "zod";
 
 export const AgentStatusSchema = z.enum(["idle", "active"]);
 export const AgentVisibilitySchema = z.enum(["workspace", "private"]);
+export const AgentEnvironmentVariableSchema = z.object({
+  key: z.string().min(1).max(128),
+  value: z.string().max(4_000),
+});
 
 export const AgentEntrySchema = z.object({
   id: z.string().min(1),
@@ -13,6 +17,7 @@ export const AgentEntrySchema = z.object({
   instructions: z.string(),
   maxConcurrentTasks: z.number().int().min(1).max(50),
   avatarDataUrl: z.string().nullable().optional(),
+  environmentVariables: z.array(AgentEnvironmentVariableSchema).default([]),
   createdAt: z.string().datetime({ offset: true }),
   updatedAt: z.string().datetime({ offset: true }),
 });
@@ -29,6 +34,7 @@ export const AgentCreateRequestSchema = z.object({
   instructions: z.string().max(50_000).optional(),
   maxConcurrentTasks: z.number().int().min(1).max(50).optional(),
   avatarDataUrl: z.string().nullable().optional(),
+  environmentVariables: z.array(AgentEnvironmentVariableSchema).optional(),
 });
 
 export const AgentUpdateRequestSchema = z.object({
@@ -40,9 +46,11 @@ export const AgentUpdateRequestSchema = z.object({
   instructions: z.string().max(50_000).optional(),
   maxConcurrentTasks: z.number().int().min(1).max(50).optional(),
   avatarDataUrl: z.string().nullable().optional(),
+  environmentVariables: z.array(AgentEnvironmentVariableSchema).optional(),
 });
 
 export type AgentEntry = z.infer<typeof AgentEntrySchema>;
 export type AgentsResponse = z.infer<typeof AgentsResponseSchema>;
 export type AgentCreateRequest = z.input<typeof AgentCreateRequestSchema>;
 export type AgentUpdateRequest = z.input<typeof AgentUpdateRequestSchema>;
+export type AgentEnvironmentVariable = z.infer<typeof AgentEnvironmentVariableSchema>;

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import json
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -21,8 +22,14 @@ class AgentEntryLike(Protocol):
     instructions: str
     max_concurrent_tasks: int
     avatar_data_url: str | None
+    environment_variables_json: str | None
     created_at: datetime
     updated_at: datetime
+
+
+class AgentEnvironmentVariableLike(Protocol):
+    key: str
+    value: str
 
 
 class AgentsRepositoryPort(Protocol):
@@ -41,6 +48,7 @@ class AgentsRepositoryPort(Protocol):
         instructions: str,
         max_concurrent_tasks: int,
         avatar_data_url: str | None,
+        environment_variables_json: str,
     ) -> AgentEntryLike: ...
 
     async def update(
@@ -55,6 +63,7 @@ class AgentsRepositoryPort(Protocol):
         instructions: str,
         max_concurrent_tasks: int,
         avatar_data_url: str | None,
+        environment_variables_json: str,
     ) -> AgentEntryLike | None: ...
 
     async def delete(self, agent_id: str) -> bool: ...
@@ -74,6 +83,7 @@ class AgentValidationError(ValueError):
             "invalid_agent_instructions",
             "invalid_agent_max_concurrent_tasks",
             "invalid_agent_avatar",
+            "invalid_agent_environment_variables",
         ],
     ) -> None:
         self.code = code
@@ -82,6 +92,12 @@ class AgentValidationError(ValueError):
 
 class AgentNameExistsError(ValueError):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class AgentEnvironmentVariableData:
+    key: str
+    value: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,6 +111,7 @@ class AgentEntryData:
     instructions: str
     max_concurrent_tasks: int
     avatar_data_url: str | None
+    environment_variables: list[AgentEnvironmentVariableData]
     created_at: datetime
     updated_at: datetime
 
@@ -114,10 +131,14 @@ MAX_RUNTIME_LENGTH = 255
 MAX_INSTRUCTIONS_LENGTH = 50_000
 MAX_NAME_LENGTH = 128
 MAX_DESCRIPTION_LENGTH = 512
+MAX_ENVIRONMENT_VARIABLE_COUNT = 64
+MAX_ENVIRONMENT_VARIABLE_KEY_LENGTH = 128
+MAX_ENVIRONMENT_VARIABLE_VALUE_LENGTH = 4_000
 _AVATAR_DATA_URL_RE = re.compile(
     r"^data:(image/(?:png|jpeg|jpg|webp|gif));base64,([A-Za-z0-9+/=\\s]+)$",
     re.IGNORECASE,
 )
+_ENVIRONMENT_VARIABLE_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 class AgentsService:
@@ -143,6 +164,7 @@ class AgentsService:
         instructions: str | None,
         max_concurrent_tasks: int | None,
         avatar_data_url: str | None,
+        environment_variables: Sequence[AgentEnvironmentVariableLike] | None,
     ) -> AgentEntryData:
         normalized_name = normalize_agent_name(name)
         normalized_description = normalize_agent_description(description)
@@ -151,6 +173,8 @@ class AgentsService:
         normalized_instructions = normalize_agent_instructions(instructions)
         normalized_max_concurrent_tasks = normalize_agent_max_concurrent_tasks(max_concurrent_tasks)
         normalized_avatar_data_url = normalize_agent_avatar_data_url(avatar_data_url)
+        normalized_environment_variables = normalize_agent_environment_variables(environment_variables)
+        serialized_environment_variables = serialize_agent_environment_variables(normalized_environment_variables)
 
         if await self._repository.exists_name(normalized_name):
             raise AgentNameExistsError("Agent name already exists")
@@ -165,6 +189,7 @@ class AgentsService:
                 instructions=normalized_instructions,
                 max_concurrent_tasks=normalized_max_concurrent_tasks,
                 avatar_data_url=normalized_avatar_data_url,
+                environment_variables_json=serialized_environment_variables,
             )
         except AgentRepositoryConflictError as exc:
             if exc.field == "name":
@@ -185,6 +210,7 @@ class AgentsService:
         instructions: str | None,
         max_concurrent_tasks: int | None,
         avatar_data_url: str | None,
+        environment_variables: Sequence[AgentEnvironmentVariableLike] | None,
     ) -> AgentEntryData | None:
         normalized_name = normalize_agent_name(name)
         normalized_status = normalize_agent_status(status)
@@ -194,6 +220,8 @@ class AgentsService:
         normalized_instructions = normalize_agent_instructions(instructions)
         normalized_max_concurrent_tasks = normalize_agent_max_concurrent_tasks(max_concurrent_tasks)
         normalized_avatar_data_url = normalize_agent_avatar_data_url(avatar_data_url)
+        normalized_environment_variables = normalize_agent_environment_variables(environment_variables)
+        serialized_environment_variables = serialize_agent_environment_variables(normalized_environment_variables)
 
         try:
             row = await self._repository.update(
@@ -206,6 +234,7 @@ class AgentsService:
                 instructions=normalized_instructions,
                 max_concurrent_tasks=normalized_max_concurrent_tasks,
                 avatar_data_url=normalized_avatar_data_url,
+                environment_variables_json=serialized_environment_variables,
             )
         except AgentRepositoryConflictError as exc:
             if exc.field == "name":
@@ -231,6 +260,7 @@ class AgentsService:
                 instructions="",
                 max_concurrent_tasks=DEFAULT_MAX_CONCURRENT_TASKS,
                 avatar_data_url=None,
+                environment_variables_json=serialize_agent_environment_variables([]),
             )
         except AgentRepositoryConflictError:
             # Another process inserted the bootstrap row concurrently.
@@ -240,6 +270,7 @@ class AgentsService:
 def _to_entry_data(row: AgentEntryLike) -> AgentEntryData:
     status: Literal["idle", "active"] = "active" if row.status == "active" else "idle"
     visibility: Literal["workspace", "private"] = "private" if row.visibility == "private" else "workspace"
+    environment_variables = deserialize_agent_environment_variables(row.environment_variables_json)
     return AgentEntryData(
         id=row.id,
         name=row.name,
@@ -250,6 +281,7 @@ def _to_entry_data(row: AgentEntryLike) -> AgentEntryData:
         instructions=row.instructions,
         max_concurrent_tasks=row.max_concurrent_tasks,
         avatar_data_url=row.avatar_data_url,
+        environment_variables=environment_variables,
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
@@ -344,6 +376,97 @@ def normalize_agent_max_concurrent_tasks(value: int | None) -> int:
             code="invalid_agent_max_concurrent_tasks",
         )
     return value
+
+
+def normalize_agent_environment_variables(
+    value: Sequence[AgentEnvironmentVariableLike] | None,
+) -> list[AgentEnvironmentVariableData]:
+    if value is None:
+        return []
+    if len(value) > MAX_ENVIRONMENT_VARIABLE_COUNT:
+        raise AgentValidationError(
+            f"Agent environment variables must be {MAX_ENVIRONMENT_VARIABLE_COUNT} entries or fewer",
+            code="invalid_agent_environment_variables",
+        )
+
+    normalized: list[AgentEnvironmentVariableData] = []
+    seen_keys: set[str] = set()
+    for entry in value:
+        key = entry.key.strip()
+        env_value = entry.value
+
+        if not key:
+            raise AgentValidationError(
+                "Environment variable key is required",
+                code="invalid_agent_environment_variables",
+            )
+        if len(key) > MAX_ENVIRONMENT_VARIABLE_KEY_LENGTH:
+            raise AgentValidationError(
+                f"Environment variable key must be {MAX_ENVIRONMENT_VARIABLE_KEY_LENGTH} characters or fewer",
+                code="invalid_agent_environment_variables",
+            )
+        if not _ENVIRONMENT_VARIABLE_KEY_RE.match(key):
+            raise AgentValidationError(
+                "Environment variable key must start with a letter/underscore and use only letters, numbers, and underscores",
+                code="invalid_agent_environment_variables",
+            )
+        if len(env_value) > MAX_ENVIRONMENT_VARIABLE_VALUE_LENGTH:
+            raise AgentValidationError(
+                f"Environment variable value must be {MAX_ENVIRONMENT_VARIABLE_VALUE_LENGTH} characters or fewer",
+                code="invalid_agent_environment_variables",
+            )
+        if key in seen_keys:
+            raise AgentValidationError(
+                f"Duplicate environment variable key: {key}",
+                code="invalid_agent_environment_variables",
+            )
+
+        seen_keys.add(key)
+        normalized.append(AgentEnvironmentVariableData(key=key, value=env_value))
+
+    return normalized
+
+
+def serialize_agent_environment_variables(value: Sequence[AgentEnvironmentVariableData]) -> str:
+    payload = [{"key": entry.key, "value": entry.value} for entry in value]
+    return json.dumps(payload, ensure_ascii=True, separators=(",", ":"))
+
+
+def deserialize_agent_environment_variables(raw: str | None) -> list[AgentEnvironmentVariableData]:
+    if raw is None:
+        return []
+    serialized = raw.strip()
+    if not serialized:
+        return []
+    try:
+        parsed = json.loads(serialized)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(parsed, list):
+        return []
+
+    environment_variables: list[AgentEnvironmentVariableData] = []
+    seen_keys: set[str] = set()
+    for entry in parsed:
+        if not isinstance(entry, dict):
+            continue
+        key = entry.get("key")
+        env_value = entry.get("value")
+        if not isinstance(key, str) or not isinstance(env_value, str):
+            continue
+        normalized_key = key.strip()
+        if (
+            not normalized_key
+            or len(normalized_key) > MAX_ENVIRONMENT_VARIABLE_KEY_LENGTH
+            or not _ENVIRONMENT_VARIABLE_KEY_RE.match(normalized_key)
+        ):
+            continue
+        if normalized_key in seen_keys or len(env_value) > MAX_ENVIRONMENT_VARIABLE_VALUE_LENGTH:
+            continue
+        seen_keys.add(normalized_key)
+        environment_variables.append(AgentEnvironmentVariableData(key=normalized_key, value=env_value))
+
+    return environment_variables
 
 
 def normalize_agent_avatar_data_url(value: str | None) -> str | None:

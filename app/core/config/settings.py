@@ -140,6 +140,11 @@ class Settings(BaseSettings):
     bulkhead_proxy_limit: int = 200
     bulkhead_dashboard_limit: int = 50
 
+    dashboard_session_continuity_redis_url: str | None = None
+    dashboard_session_continuity_key_prefix: str = "codex-lb:dashboard-session-continuity:v1"
+    dashboard_session_continuity_ttl_seconds: int = Field(default=600, gt=0)
+    dashboard_session_continuity_socket_timeout_seconds: float = Field(default=0.35, gt=0)
+
     memory_warning_threshold_mb: int = 0
     memory_reject_threshold_mb: int = 0
 

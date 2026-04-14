@@ -305,6 +305,7 @@ class Project(Base):
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     project_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    github_repo_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     project_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     sandbox_mode: Mapped[str] = mapped_column(
         String(64),
@@ -386,6 +387,12 @@ class SwitchboardAgent(Base):
         nullable=False,
     )
     avatar_data_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    environment_variables_json: Mapped[str] = mapped_column(
+        Text,
+        default="[]",
+        server_default=text("'[]'"),
+        nullable=False,
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,

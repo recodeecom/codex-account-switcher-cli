@@ -16,6 +16,7 @@ from app.modules.accounts.codex_auth_switcher import (
 from app.modules.accounts.codex_runtime_usage import read_local_codex_runtime_usage_summary_by_snapshot
 from app.modules.accounts.live_usage_overrides import apply_local_live_usage_overrides
 from app.modules.accounts.live_usage_persistence import persist_live_usage_overrides
+from app.modules.accounts.live_session_continuity_cache import apply_live_session_continuity
 from app.modules.accounts.mappers import build_account_summaries
 from app.modules.accounts.request_usage_fallback import merge_request_usage_with_runtime_fallback
 from app.modules.accounts.schemas import (
@@ -146,6 +147,15 @@ class DashboardService:
                 live_quota_debug_by_account=live_quota_debug_by_account,
                 now=now,
             )
+        await apply_live_session_continuity(
+            account_ids=account_ids,
+            codex_auth_by_account=codex_auth_by_account,
+            codex_live_session_counts_by_account=codex_live_session_counts_by_account,
+            codex_tracked_session_counts_by_account=codex_tracked_session_counts_by_account,
+            codex_current_task_preview_by_account=codex_current_task_preview_by_account,
+            codex_last_task_preview_by_account=codex_last_task_preview_by_account,
+            codex_session_task_previews_by_account=codex_session_task_previews_by_account,
+        )
 
         account_summaries = build_account_summaries(
             accounts=accounts,

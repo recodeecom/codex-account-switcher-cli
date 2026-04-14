@@ -42,6 +42,7 @@ type ProjectDraft = {
   name: string;
   description: string;
   projectUrl: string;
+  githubRepoUrl: string;
   projectPath: string;
   sandboxMode: ProjectSandboxMode;
   gitBranch: string;
@@ -52,6 +53,7 @@ function getEmptyProjectDraft(): ProjectDraft {
     name: "",
     description: "",
     projectUrl: "",
+    githubRepoUrl: "",
     projectPath: "",
     sandboxMode: DEFAULT_SANDBOX_MODE,
     gitBranch: "",
@@ -63,6 +65,7 @@ function draftFromProject(entry: ProjectEntry): ProjectDraft {
     name: entry.name,
     description: entry.description ?? "",
     projectUrl: entry.projectUrl ?? "",
+    githubRepoUrl: entry.githubRepoUrl ?? "",
     projectPath: entry.projectPath ?? "",
     sandboxMode: entry.sandboxMode,
     gitBranch: entry.gitBranch ?? "",
@@ -205,6 +208,15 @@ function CreateProjectDialog({
               disabled={disabled}
             />
             <input
+              value={draft.githubRepoUrl}
+              onChange={(event) => {
+                onDraftChange((current) => ({ ...current, githubRepoUrl: event.target.value }));
+              }}
+              placeholder="https://github.com/owner/repo"
+              className="w-full border-0 bg-transparent p-0 text-sm text-indigo-200/90 placeholder:text-indigo-200/45 focus-visible:outline-none"
+              disabled={disabled}
+            />
+            <input
               value={draft.projectPath}
               onChange={(event) => {
                 onDraftChange((current) => ({ ...current, projectPath: event.target.value }));
@@ -282,7 +294,7 @@ function ProjectDialog({
         </DialogHeader>
 
         <div className="space-y-3 px-5 py-4">
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-3">
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Project name</Label>
               <Input
@@ -303,6 +315,18 @@ function ProjectDialog({
                   onDraftChange((current) => ({ ...current, projectUrl: event.target.value }));
                 }}
                 placeholder="https://project-domain.com (optional)"
+                className="h-10 rounded-xl text-xs"
+                disabled={formDisabled}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">GitHub repo</Label>
+              <Input
+                value={draft.githubRepoUrl}
+                onChange={(event) => {
+                  onDraftChange((current) => ({ ...current, githubRepoUrl: event.target.value }));
+                }}
+                placeholder="https://github.com/owner/repo (optional)"
                 className="h-10 rounded-xl text-xs"
                 disabled={formDisabled}
               />
@@ -471,6 +495,7 @@ export function ProjectsPage() {
       name,
       description: createDraft.description.trim() || null,
       projectUrl: createDraft.projectUrl.trim() || null,
+      githubRepoUrl: createDraft.githubRepoUrl.trim() || null,
       projectPath: createDraft.projectPath.trim() || null,
       sandboxMode: createDraft.sandboxMode,
       gitBranch: createDraft.gitBranch.trim() || null,
@@ -506,6 +531,7 @@ export function ProjectsPage() {
         name,
         description: editDraft.description.trim() || null,
         projectUrl: editDraft.projectUrl.trim() || null,
+        githubRepoUrl: editDraft.githubRepoUrl.trim() || null,
         projectPath: editDraft.projectPath.trim() || null,
         sandboxMode: editDraft.sandboxMode,
         gitBranch: editDraft.gitBranch.trim() || null,
@@ -569,10 +595,11 @@ export function ProjectsPage() {
             </div>
           ) : (
             <div className="min-h-0 flex-1 overflow-auto">
-              <div className="min-w-[1420px]">
-                <div className="sticky top-0 z-[1] grid h-9 grid-cols-[minmax(220px,1.5fr)_minmax(220px,1.3fr)_minmax(220px,1.7fr)_150px_170px_180px_110px_220px] items-center gap-3 border-b border-border/65 bg-background/95 px-5 text-[11px] uppercase tracking-[0.08em] text-muted-foreground backdrop-blur-sm">
+              <div className="min-w-[1620px]">
+                <div className="sticky top-0 z-[1] grid h-9 grid-cols-[minmax(220px,1.4fr)_minmax(210px,1.2fr)_minmax(230px,1.2fr)_minmax(220px,1.5fr)_150px_170px_180px_110px_220px] items-center gap-3 border-b border-border/65 bg-background/95 px-5 text-[11px] uppercase tracking-[0.08em] text-muted-foreground backdrop-blur-sm">
                   <span>Name</span>
                   <span>URL</span>
+                  <span>GitHub</span>
                   <span>Path</span>
                   <span>Sandbox</span>
                   <span>Branch</span>
@@ -584,7 +611,7 @@ export function ProjectsPage() {
                 {entries.map((entry) => (
                   <div
                     key={entry.id}
-                    className="group/row grid min-h-12 grid-cols-[minmax(220px,1.5fr)_minmax(220px,1.3fr)_minmax(220px,1.7fr)_150px_170px_180px_110px_220px] items-center gap-3 border-b border-border/45 px-5 py-2 text-sm transition-colors hover:bg-accent/35"
+                    className="group/row grid min-h-12 grid-cols-[minmax(220px,1.4fr)_minmax(210px,1.2fr)_minmax(230px,1.2fr)_minmax(220px,1.5fr)_150px_170px_180px_110px_220px] items-center gap-3 border-b border-border/45 px-5 py-2 text-sm transition-colors hover:bg-accent/35"
                   >
                     <div className="min-w-0">
                       <p className="truncate font-medium">{entry.name}</p>
@@ -600,6 +627,21 @@ export function ProjectsPage() {
                           className="text-cyan-300 underline-offset-2 hover:text-cyan-200 hover:underline"
                         >
                           {entry.projectUrl}
+                        </a>
+                      ) : (
+                        "—"
+                      )}
+                    </span>
+
+                    <span className="truncate text-xs text-muted-foreground">
+                      {entry.githubRepoUrl ? (
+                        <a
+                          href={entry.githubRepoUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-indigo-300 underline-offset-2 hover:text-indigo-200 hover:underline"
+                        >
+                          {entry.githubRepoUrl}
                         </a>
                       ) : (
                         "—"

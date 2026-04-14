@@ -6,8 +6,11 @@ import {
   Camera,
   Circle,
   Download,
+  Eye,
+  EyeOff,
   FileText,
   Globe,
+  Key,
   ListTodo,
   Lock,
   MoreHorizontal,
@@ -48,7 +51,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useAgents } from "@/features/agents/hooks/use-agents";
-import type { AgentEntry } from "@/features/agents/schemas";
+import type { AgentEntry, AgentEnvironmentVariable } from "@/features/agents/schemas";
 import type { AccountSummary } from "@/features/accounts/schemas";
 import { useDashboard } from "@/features/dashboard/hooks/use-dashboard";
 import { listStickySessions } from "@/features/sticky-sessions/api";
@@ -56,7 +59,7 @@ import type { UnmappedCliSession } from "@/features/sticky-sessions/schemas";
 import { cn } from "@/lib/utils";
 import { hasActiveCliSessionSignal } from "@/utils/account-working";
 
-type AgentTab = "instructions" | "skills" | "tasks" | "settings";
+type AgentTab = "instructions" | "skills" | "tasks" | "environment" | "settings";
 type AgentVisibility = "workspace" | "private";
 type SkillDialogTab = "create" | "import";
 
@@ -331,6 +334,33 @@ function ensureRuntimeOptionPresent(
   return [current, ...options];
 }
 
+function sanitizeEnvironmentVariables(
+  value: AgentEntry["environmentVariables"] | null | undefined,
+): AgentEnvironmentVariable[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.map((entry) => {
+    const key = typeof entry?.key === "string" ? entry.key : "";
+    const rawValue = typeof entry?.value === "string" ? entry.value : "";
+    return {
+      key,
+      value: rawValue,
+    };
+  });
+}
+
+function toPersistedEnvironmentVariables(
+  value: AgentEntry["environmentVariables"] | null | undefined,
+): AgentEnvironmentVariable[] {
+  return sanitizeEnvironmentVariables(value)
+    .map((entry) => ({
+      key: entry.key.trim(),
+      value: entry.value,
+    }))
+    .filter((entry) => entry.key.length > 0 || entry.value.length > 0);
+}
+
 function sanitizeAgent(agent: AgentEntry): AgentEntry {
   return {
     ...agent,
@@ -341,6 +371,7 @@ function sanitizeAgent(agent: AgentEntry): AgentEntry {
         ? Math.min(50, Math.max(1, Math.round(agent.maxConcurrentTasks)))
         : DEFAULT_MAX_CONCURRENT_TASKS,
     avatarDataUrl: agent.avatarDataUrl ?? null,
+    environmentVariables: sanitizeEnvironmentVariables(agent.environmentVariables),
   };
 }
 
@@ -390,6 +421,7 @@ export function AgentsPage() {
   const [skillNameDraft, setSkillNameDraft] = useState("");
   const [skillDescriptionDraft, setSkillDescriptionDraft] = useState("");
   const [skillImportUrlDraft, setSkillImportUrlDraft] = useState("");
+  const [revealedEnvironmentValues, setRevealedEnvironmentValues] = useState<Record<string, boolean>>({});
   const [confirmArchiveOpen, setConfirmArchiveOpen] = useState(false);
 
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
@@ -456,6 +488,9 @@ export function AgentsPage() {
     [runtimeOptions, createRuntimeOption],
   );
   const selectedAgentSkills = selectedAgent ? (skillsByAgentId[selectedAgent.id] ?? []) : [];
+  const selectedAgentEnvironmentVariables = selectedAgent
+    ? sanitizeEnvironmentVariables(selectedAgent.environmentVariables)
+    : [];
   const canCreateSkill = skillNameDraft.trim().length > 0;
   const canImportSkill = skillImportUrlDraft.trim().length > 0;
 
@@ -485,6 +520,7 @@ export function AgentsPage() {
         instructions: agent.instructions,
         maxConcurrentTasks: agent.maxConcurrentTasks,
         avatarDataUrl: agent.avatarDataUrl,
+        environmentVariables: toPersistedEnvironmentVariables(agent.environmentVariables),
       },
     });
     setAgentDrafts((current) => {
@@ -512,6 +548,7 @@ export function AgentsPage() {
       instructions: "",
       maxConcurrentTasks: DEFAULT_MAX_CONCURRENT_TASKS,
       avatarDataUrl: createDraft.avatarDataUrl,
+      environmentVariables: [],
     });
 
     setSelectedAgentId(created.id);
@@ -618,6 +655,55 @@ export function AgentsPage() {
         [selectedAgent.id]: currentSkills.filter((skill) => skill.id !== skillId),
       };
     });
+  };
+  const getEnvironmentValueVisibilityKey = (agentId: string, index: number) => `${agentId}:${index}`;
+  const handleAddEnvironmentVariable = () => {
+    updateSelectedAgent((agent) => ({
+      ...agent,
+      environmentVariables: [...sanitizeEnvironmentVariables(agent.environmentVariables), { key: "", value: "" }],
+    }));
+  };
+  const handleUpdateEnvironmentVariable = (
+    index: number,
+    field: "key" | "value",
+    value: string,
+  ) => {
+    updateSelectedAgent((agent) => ({
+      ...agent,
+      environmentVariables: sanitizeEnvironmentVariables(agent.environmentVariables).map((entry, entryIndex) =>
+        entryIndex === index ? { ...entry, [field]: value } : entry,
+      ),
+    }));
+  };
+  const handleRemoveEnvironmentVariable = (index: number) => {
+    if (!selectedAgent) {
+      return;
+    }
+    const visibilityKey = getEnvironmentValueVisibilityKey(selectedAgent.id, index);
+    updateSelectedAgent((agent) => ({
+      ...agent,
+      environmentVariables: sanitizeEnvironmentVariables(agent.environmentVariables).filter(
+        (_entry, entryIndex) => entryIndex !== index,
+      ),
+    }));
+    setRevealedEnvironmentValues((current) => {
+      if (!current[visibilityKey]) {
+        return current;
+      }
+      const next = { ...current };
+      delete next[visibilityKey];
+      return next;
+    });
+  };
+  const handleToggleEnvironmentValueVisibility = (index: number) => {
+    if (!selectedAgent) {
+      return;
+    }
+    const visibilityKey = getEnvironmentValueVisibilityKey(selectedAgent.id, index);
+    setRevealedEnvironmentValues((current) => ({
+      ...current,
+      [visibilityKey]: !current[visibilityKey],
+    }));
   };
   const handleAddCodexCliSkills = () => {
     if (!selectedAgent) {
@@ -796,6 +882,10 @@ export function AgentsPage() {
                         <ListTodo className="h-3.5 w-3.5" aria-hidden="true" />
                         Tasks
                       </TabsTrigger>
+                      <TabsTrigger className="gap-1.5 px-2.5 text-xs" value="environment">
+                        <Key className="h-3.5 w-3.5" aria-hidden="true" />
+                        Environment
+                      </TabsTrigger>
                       <TabsTrigger className="gap-1.5 px-2.5 text-xs" value="settings">
                         <Settings className="h-3.5 w-3.5" aria-hidden="true" />
                         Settings
@@ -960,6 +1050,127 @@ export function AgentsPage() {
                         <p className="mt-3 text-sm text-slate-300">No tasks in queue</p>
                         <p className="mt-1 text-xs text-slate-500">Assign an issue to this agent to get started.</p>
                       </div>
+                    </div>
+                  ) : null}
+
+                  {activeTab === "environment" ? (
+                    <div className="max-w-2xl space-y-4">
+                      <div className="flex flex-wrap items-end justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-100">Environment Variables</p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            Injected into the agent process at launch (e.g. ANTHROPIC_API_KEY, ANTHROPIC_BASE_URL).
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-8 gap-1.5 border-white/[0.12] bg-transparent px-3 text-xs"
+                            onClick={handleAddEnvironmentVariable}
+                            disabled={isBusy}
+                          >
+                            <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                            Add
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="h-8 gap-1.5 px-3 text-xs"
+                            disabled={isBusy}
+                            onClick={async () => {
+                              await persistAgent(selectedAgent);
+                              toast.success("Agent environment variables saved");
+                            }}
+                          >
+                            <Save className="h-3.5 w-3.5" aria-hidden="true" />
+                            Save
+                          </Button>
+                        </div>
+                      </div>
+
+                      {selectedAgentEnvironmentVariables.length === 0 ? (
+                        <div className="flex min-h-[190px] flex-col items-center justify-center rounded-lg border border-dashed border-white/[0.12] bg-white/[0.01] px-6 py-10 text-center">
+                          <Key className="h-8 w-8 text-slate-500/70" aria-hidden="true" />
+                          <p className="mt-3 text-sm text-slate-300">No environment variables configured</p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            Add runtime-specific keys for this agent only.
+                          </p>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="mt-4 h-8 gap-1.5 border-white/[0.12] bg-transparent px-3 text-xs"
+                            onClick={handleAddEnvironmentVariable}
+                            disabled={isBusy}
+                          >
+                            <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                            Add variable
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {selectedAgentEnvironmentVariables.map((entry, index) => {
+                            const visibilityKey = `${selectedAgent.id}:${index}`;
+                            const isValueVisible = Boolean(revealedEnvironmentValues[visibilityKey]);
+                            return (
+                              <div
+                                key={`${selectedAgent.id}-env-${index}`}
+                                className="grid gap-2 rounded-lg border border-white/[0.12] bg-white/[0.02] p-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
+                              >
+                                <Input
+                                  value={entry.key}
+                                  onChange={(event) => {
+                                    handleUpdateEnvironmentVariable(index, "key", event.target.value);
+                                  }}
+                                  placeholder="KEY"
+                                  className="border-white/[0.12] bg-white/[0.03] text-sm text-slate-100 placeholder:text-slate-500"
+                                />
+                                <div className="relative">
+                                  <Input
+                                    type={isValueVisible ? "text" : "password"}
+                                    value={entry.value}
+                                    onChange={(event) => {
+                                      handleUpdateEnvironmentVariable(index, "value", event.target.value);
+                                    }}
+                                    placeholder="value"
+                                    className="pr-10 border-white/[0.12] bg-white/[0.03] text-sm text-slate-100 placeholder:text-slate-500"
+                                  />
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="absolute top-1/2 right-1 h-7 w-7 -translate-y-1/2 text-slate-400 hover:bg-white/[0.08] hover:text-slate-200"
+                                    onClick={() => {
+                                      handleToggleEnvironmentValueVisibility(index);
+                                    }}
+                                    aria-label={isValueVisible ? "Hide value" : "Show value"}
+                                  >
+                                    {isValueVisible ? (
+                                      <EyeOff className="h-3.5 w-3.5" aria-hidden="true" />
+                                    ) : (
+                                      <Eye className="h-3.5 w-3.5" aria-hidden="true" />
+                                    )}
+                                  </Button>
+                                </div>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-9 w-9 text-slate-400 hover:bg-white/[0.08] hover:text-red-300"
+                                  onClick={() => {
+                                    handleRemoveEnvironmentVariable(index);
+                                  }}
+                                  aria-label={`Remove environment variable ${entry.key || index + 1}`}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                                </Button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   ) : null}
 

@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from typing import cast
 from typing import Literal
 
-from sqlalchemy import Table, select
+from sqlalchemy import Table, select, text
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -41,6 +41,7 @@ class AgentsRepository:
         instructions: str,
         max_concurrent_tasks: int,
         avatar_data_url: str | None,
+        environment_variables_json: str,
     ) -> SwitchboardAgent:
         await self._ensure_agents_table()
         row = SwitchboardAgent(
@@ -52,6 +53,7 @@ class AgentsRepository:
             instructions=instructions,
             max_concurrent_tasks=max_concurrent_tasks,
             avatar_data_url=avatar_data_url,
+            environment_variables_json=environment_variables_json,
         )
         self._session.add(row)
         try:
@@ -74,6 +76,7 @@ class AgentsRepository:
         instructions: str,
         max_concurrent_tasks: int,
         avatar_data_url: str | None,
+        environment_variables_json: str,
     ) -> SwitchboardAgent | None:
         await self._ensure_agents_table()
         row = await self._session.get(SwitchboardAgent, agent_id)
@@ -88,6 +91,7 @@ class AgentsRepository:
         row.instructions = instructions
         row.max_concurrent_tasks = max_concurrent_tasks
         row.avatar_data_url = avatar_data_url
+        row.environment_variables_json = environment_variables_json
 
         try:
             await self._session.commit()
@@ -108,9 +112,13 @@ class AgentsRepository:
 
     async def _ensure_agents_table(self) -> None:
         try:
-            await self._session.execute(select(SwitchboardAgent.id).limit(1))
+            await self._session.execute(select(SwitchboardAgent.id, SwitchboardAgent.environment_variables_json).limit(1))
             return
         except OperationalError as exc:
+            if _is_missing_agents_environment_variables_column_error(exc):
+                await self._session.rollback()
+                await self._repair_agents_environment_variables_column()
+                return
             if not _is_missing_agents_table_error(exc):
                 raise
             await self._session.rollback()
@@ -121,6 +129,12 @@ class AgentsRepository:
                 tables=[cast(Table, SwitchboardAgent.__table__)],
                 checkfirst=True,
             )
+        )
+        await self._session.commit()
+
+    async def _repair_agents_environment_variables_column(self) -> None:
+        await self._session.execute(
+            text("ALTER TABLE switchboard_agents ADD COLUMN environment_variables_json TEXT NOT NULL DEFAULT '[]'")
         )
         await self._session.commit()
 
@@ -138,4 +152,13 @@ def _is_missing_agents_table_error(exc: OperationalError) -> bool:
         "no such table: switchboard_agents" in message
         or ('relation "switchboard_agents" does not exist' in message)
         or ("relation 'switchboard_agents' does not exist" in message)
+    )
+
+
+def _is_missing_agents_environment_variables_column_error(exc: OperationalError) -> bool:
+    message = str(getattr(exc, "orig", exc)).lower()
+    return (
+        "no such column: switchboard_agents.environment_variables_json" in message
+        or 'column "environment_variables_json" does not exist' in message
+        or "column switchboard_agents.environment_variables_json does not exist" in message
     )

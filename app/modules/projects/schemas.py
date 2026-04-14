@@ -11,6 +11,7 @@ class ProjectEntry(DashboardModel):
     name: str
     description: str | None
     project_url: str | None
+    github_repo_url: str | None
     project_path: str | None
     sandbox_mode: Literal["read-only", "workspace-write", "danger-full-access"]
     git_branch: str | None
@@ -37,6 +38,7 @@ class ProjectCreateRequest(DashboardModel):
     name: str
     description: str | None = None
     project_url: str | None = None
+    github_repo_url: str | None = None
     project_path: str | None = None
     sandbox_mode: str | None = None
     git_branch: str | None = None
@@ -46,6 +48,7 @@ class ProjectUpdateRequest(DashboardModel):
     name: str
     description: str | None = None
     project_url: str | None = None
+    github_repo_url: str | None = None
     project_path: str | None = None
     sandbox_mode: str | None = None
     git_branch: str | None = None
