@@ -1,10 +1,11 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { AccountMenu } from "@/components/layout/account-menu";
 import { useMedusaCustomerAuthStore } from "@/features/medusa-customer-auth/hooks/use-medusa-customer-auth";
 import { useMedusaAdminAuthStore } from "@/features/medusa-auth/hooks/use-medusa-admin-auth";
+import { usePrivacyStore } from "@/hooks/use-privacy";
 import { renderWithProviders } from "@/test/utils";
 
 describe("AccountMenu component", () => {
@@ -31,6 +32,7 @@ describe("AccountMenu component", () => {
       logout: () => undefined,
       clearError: () => undefined,
     });
+    usePrivacyStore.setState({ blurred: false });
   });
 
   it("hides signed-out Medusa menu state when no admin session exists", async () => {
@@ -134,6 +136,58 @@ describe("AccountMenu component", () => {
       expect(trigger).toHaveTextContent(
         "Active Codex account: primary@example.com",
       );
+    });
+  });
+
+  it("blurs top-right login and active Codex emails when privacy mode is enabled", async () => {
+    const user = userEvent.setup({ delay: null });
+
+    useMedusaCustomerAuthStore.setState({
+      customer: {
+        id: "cust_123",
+        email: "customer@recodee.com",
+        first_name: "Customer",
+        last_name: "User",
+        phone: null,
+      },
+    });
+
+    const { queryClient } = renderWithProviders(<AccountMenu onLogout={() => undefined} />);
+    queryClient.setQueryData(["dashboard", "overview"], {
+      accounts: [
+        {
+          accountId: "account_123",
+          email: "primary@example.com",
+          status: "active",
+          codexLiveSessionCount: 0,
+          codexTrackedSessionCount: 0,
+          codexSessionCount: 0,
+          codexAuth: {
+            hasSnapshot: true,
+            snapshotName: "primary@example.com",
+            activeSnapshotName: "primary@example.com",
+            isActiveSnapshot: true,
+            hasLiveSession: false,
+            expectedSnapshotName: "primary@example.com",
+            snapshotNameMatchesEmail: true,
+          },
+        },
+      ],
+    });
+
+    await waitFor(() => {
+      const trigger = screen.getByRole("button", { name: "Open account menu" });
+      expect(within(trigger).getByText("customer@recodee.com")).toBeInTheDocument();
+      expect(within(trigger).getByText("Active Codex account: primary@example.com")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Open account menu" }));
+    await user.click(screen.getByRole("menuitem", { name: "Hide sensitive values" }));
+
+    await waitFor(() => {
+      const trigger = screen.getByRole("button", { name: "Open account menu" });
+      expect(within(trigger).getByText("customer@recodee.com")).toHaveClass("privacy-blur");
+      expect(within(trigger).getByText("Active Codex account: primary@example.com")).toHaveClass("privacy-blur");
     });
   });
 });
