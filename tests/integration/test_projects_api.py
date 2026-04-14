@@ -270,11 +270,11 @@ async def test_projects_api_open_folder(async_client, monkeypatch):
     assert created.status_code == 200
     project_id = created.json()["id"]
 
-    def _fake_open(_path: str) -> str:
-        return "code"
+    def _fake_open(_path: str) -> tuple[str, bool]:
+        return "code", False
 
     monkeypatch.setattr(
-        "app.modules.projects.api.open_project_folder_in_editor",
+        "app.modules.projects.api.open_project_folder_in_editor_with_status",
         _fake_open,
     )
 
@@ -282,6 +282,36 @@ async def test_projects_api_open_folder(async_client, monkeypatch):
     assert opened.status_code == 200
     assert opened.json() == {
         "status": "opened",
+        "projectPath": "/home/deadpool/Documents/recodee",
+        "target": "vscode",
+        "editor": "code",
+    }
+
+
+@pytest.mark.asyncio
+async def test_projects_api_open_folder_reports_already_open(async_client, monkeypatch):
+    created = await async_client.post(
+        "/api/projects",
+        json={
+            "name": "open-folder-already-open-project",
+            "projectPath": "/home/deadpool/Documents/recodee",
+        },
+    )
+    assert created.status_code == 200
+    project_id = created.json()["id"]
+
+    def _fake_open(_path: str) -> tuple[str, bool]:
+        return "code", True
+
+    monkeypatch.setattr(
+        "app.modules.projects.api.open_project_folder_in_editor_with_status",
+        _fake_open,
+    )
+
+    opened = await async_client.post(f"/api/projects/{project_id}/open-folder")
+    assert opened.status_code == 200
+    assert opened.json() == {
+        "status": "already_open",
         "projectPath": "/home/deadpool/Documents/recodee",
         "target": "vscode",
         "editor": "code",

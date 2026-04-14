@@ -42,6 +42,24 @@ def test_open_project_folder_in_editor_resolves_documents_shorthand_to_existing_
     assert launched == [["/usr/bin/code", "-n", str(target_folder)]]
 
 
+def test_open_project_folder_in_editor_with_status_reports_already_open_without_launch(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    target_folder = tmp_path / "docs" / "repo"
+    target_folder.mkdir(parents=True, exist_ok=True)
+
+    launched: list[list[str]] = []
+    monkeypatch.setattr(editor, "_resolve_executable", lambda name: "/usr/bin/code" if name == "code" else None)
+    monkeypatch.setattr(editor, "_spawn_detached", lambda argv: launched.append(argv))
+    monkeypatch.setattr(editor, "_is_path_already_open_in_editor", lambda *_args, **_kwargs: True)
+
+    selected_editor, already_open = editor.open_project_folder_in_editor_with_status(str(target_folder))
+
+    assert selected_editor == "code"
+    assert already_open is True
+    assert launched == []
+
+
 def test_open_project_folder_in_file_manager_resolves_documents_shorthand_to_existing_root(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

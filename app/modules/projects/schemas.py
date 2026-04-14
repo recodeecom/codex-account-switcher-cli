@@ -64,7 +64,7 @@ class ProjectOpenFolderRequest(DashboardModel):
 
 
 class ProjectOpenFolderResponse(DashboardModel):
-    status: str
+    status: Literal["opened", "already_open"]
     project_path: str
     target: Literal["vscode", "file-manager"] = "vscode"
     editor: str | None = None

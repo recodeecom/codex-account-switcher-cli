@@ -171,4 +171,47 @@ describe("projects flow integration", () => {
     expect(screen.getByTestId("project-plan-count-project_live_1")).toHaveTextContent("3 plans");
     expect(screen.getByTestId("project-plan-count-project_live_1")).toHaveTextContent("2 successful");
   });
+
+  it("shows an already-open toast when VSCode is already open for the project", async () => {
+    const user = userEvent.setup({ delay: null });
+
+    server.use(
+      http.post("http://localhost:9000/store/customers/me", () => HttpResponse.json({ customer: {} })),
+      http.get("/api/projects", () =>
+        HttpResponse.json({
+          entries: [
+            {
+              id: "project_open_1",
+              name: "recodee",
+              description: "core project",
+              projectUrl: "https://recodee.com",
+              githubRepoUrl: "https://github.com/webu-pro/recodee",
+              projectPath: "/home/deadpool/Documents/recodee",
+              sandboxMode: "workspace-write",
+              gitBranch: "dev",
+              createdAt: new Date("2026-04-14T08:00:00Z").toISOString(),
+              updatedAt: new Date("2026-04-14T08:00:00Z").toISOString(),
+            },
+          ],
+        }),
+      ),
+      http.get("/api/projects/plan-links", () => HttpResponse.json({ entries: [] })),
+      http.post("/api/projects/:projectId/open-folder", async ({ request }) => {
+        const payload = await request.json();
+        return HttpResponse.json({
+          status: "already_open",
+          projectPath: "/home/deadpool/Documents/recodee",
+          target: typeof payload === "object" && payload && "target" in payload ? payload.target : "vscode",
+          editor: "code",
+        });
+      }),
+    );
+
+    window.history.pushState({}, "", "/projects");
+    renderWithProviders(<App />);
+
+    await user.click(await screen.findByRole("button", { name: "Open VSCode" }));
+
+    expect(await screen.findByText("Project folder is already open in VSCode")).toBeInTheDocument();
+  });
 });

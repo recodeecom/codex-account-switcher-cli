@@ -56,7 +56,7 @@ export const ProjectOpenFolderRequestSchema = z.object({
 });
 
 export const ProjectOpenFolderResponseSchema = z.object({
-  status: z.string().min(1),
+  status: z.enum(["opened", "already_open"]),
   projectPath: z.string().min(1),
   target: ProjectOpenFolderTargetSchema.default("vscode"),
   editor: z.string().nullable().optional(),

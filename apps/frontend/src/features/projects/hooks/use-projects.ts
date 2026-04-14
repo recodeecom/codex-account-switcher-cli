@@ -84,6 +84,10 @@ export function useProjects(activeWorkspaceId: string | null = null) {
       openProjectFolder(projectId, target),
     onSuccess: (payload) => {
       const targetLabel = payload.target === "file-manager" ? "file manager" : "VSCode";
+      if (payload.target === "vscode" && payload.status === "already_open") {
+        toast.success("Project folder is already open in VSCode");
+        return;
+      }
       toast.success(`Opened project folder in ${targetLabel}`);
     },
     onError: (error: Error) => {

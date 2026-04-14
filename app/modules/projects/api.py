@@ -7,7 +7,7 @@ from app.core.exceptions import DashboardBadRequestError, DashboardConflictError
 from app.dependencies import ProjectsContext, get_projects_context
 from app.modules.projects.editor import (
     ProjectEditorLaunchError,
-    open_project_folder_in_editor,
+    open_project_folder_in_editor_with_status,
     open_project_folder_in_file_manager,
 )
 from app.modules.projects.schemas import (
@@ -183,13 +183,15 @@ async def open_project_folder(
     try:
         if payload.target == "file-manager":
             editor = open_project_folder_in_file_manager(project.project_path)
+            status = "opened"
         else:
-            editor = open_project_folder_in_editor(project.project_path)
+            editor, already_open = open_project_folder_in_editor_with_status(project.project_path)
+            status = "already_open" if already_open else "opened"
     except ProjectEditorLaunchError as exc:
         raise DashboardBadRequestError(str(exc), code=exc.code) from exc
 
     return ProjectOpenFolderResponse(
-        status="opened",
+        status=status,
         project_path=project.project_path,
         target=payload.target,
         editor=editor,
