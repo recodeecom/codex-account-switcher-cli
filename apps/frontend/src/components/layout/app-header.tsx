@@ -141,6 +141,13 @@ const HEADER_COPY_BY_PREFIX: Array<{ prefix: string; copy: HeaderCopy }> = [
       description: "Create, organize, and edit skill files for your runtime workflows.",
     },
   },
+  {
+    prefix: "/source-control",
+    copy: {
+      title: "Review commit preview and GX bot branch sync.",
+      description: "Use the VS Code-style panel with official commit metadata and bot branch alignment.",
+    },
+  },
 ];
 
 function resolveHeaderCopy(pagePath: string | undefined): HeaderCopy {

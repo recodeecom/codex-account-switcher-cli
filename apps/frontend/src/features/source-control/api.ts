@@ -1,13 +1,45 @@
-import { get } from "@/lib/api-client";
+import { get, post } from "@/lib/api-client";
 
-import { SourceControlPreviewResponseSchema } from "@/features/source-control/schemas";
+import {
+  SourceControlBranchDetailsResponseSchema,
+  SourceControlCreatePullRequestResponseSchema,
+  SourceControlMergePullRequestResponseSchema,
+  SourceControlPreviewResponseSchema,
+} from "@/features/source-control/schemas";
 
 const SOURCE_CONTROL_PREVIEW_PATH = "/api/source-control/preview";
+const SOURCE_CONTROL_BRANCH_DETAILS_PATH = "/api/source-control/branch-details";
+const SOURCE_CONTROL_CREATE_PULL_REQUEST_PATH = "/api/source-control/pr/create";
+const SOURCE_CONTROL_MERGE_PULL_REQUEST_PATH = "/api/source-control/pr/merge";
 
 type SourceControlPreviewOptions = {
   projectId?: string | null;
   branchLimit?: number;
   changedFileLimit?: number;
+};
+
+type SourceControlBranchDetailsOptions = {
+  projectId?: string | null;
+  branch: string;
+  changedFileLimit?: number;
+};
+
+type SourceControlCreatePullRequestInput = {
+  projectId?: string | null;
+  branch: string;
+  baseBranch?: string | null;
+  title?: string | null;
+  body?: string | null;
+  draft?: boolean;
+};
+
+type SourceControlMergePullRequestInput = {
+  projectId?: string | null;
+  branch: string;
+  pullRequestNumber?: number | null;
+  baseBranch?: string | null;
+  deleteBranch?: boolean;
+  squash?: boolean;
 };
 
 export function getSourceControlPreview(options: SourceControlPreviewOptions = {}) {
@@ -26,3 +58,51 @@ export function getSourceControlPreview(options: SourceControlPreviewOptions = {
   return get(`${SOURCE_CONTROL_PREVIEW_PATH}${suffix}`, SourceControlPreviewResponseSchema);
 }
 
+export function getSourceControlBranchDetails(options: SourceControlBranchDetailsOptions) {
+  const searchParams = new URLSearchParams();
+  searchParams.set("branch", options.branch);
+  if (options.projectId) {
+    searchParams.set("projectId", options.projectId);
+  }
+  if (typeof options.changedFileLimit === "number") {
+    searchParams.set("changedFileLimit", String(options.changedFileLimit));
+  }
+  return get(
+    `${SOURCE_CONTROL_BRANCH_DETAILS_PATH}?${searchParams.toString()}`,
+    SourceControlBranchDetailsResponseSchema,
+  );
+}
+
+export function createSourceControlPullRequest(input: SourceControlCreatePullRequestInput) {
+  return post(
+    SOURCE_CONTROL_CREATE_PULL_REQUEST_PATH,
+    SourceControlCreatePullRequestResponseSchema,
+    {
+      body: {
+        projectId: input.projectId ?? null,
+        branch: input.branch,
+        baseBranch: input.baseBranch ?? null,
+        title: input.title ?? null,
+        body: input.body ?? null,
+        draft: Boolean(input.draft),
+      },
+    },
+  );
+}
+
+export function mergeSourceControlPullRequest(input: SourceControlMergePullRequestInput) {
+  return post(
+    SOURCE_CONTROL_MERGE_PULL_REQUEST_PATH,
+    SourceControlMergePullRequestResponseSchema,
+    {
+      body: {
+        projectId: input.projectId ?? null,
+        branch: input.branch,
+        pullRequestNumber: input.pullRequestNumber ?? null,
+        baseBranch: input.baseBranch ?? null,
+        deleteBranch: input.deleteBranch ?? true,
+        squash: Boolean(input.squash),
+      },
+    },
+  );
+}

@@ -9,6 +9,7 @@ from app.modules.shared.schemas import DashboardModel
 
 MergeState = Literal["merged", "ready", "diverged", "behind", "unknown"]
 BotStatus = Literal["idle", "active"]
+PullRequestState = Literal["open", "merged", "closed"]
 
 
 class SourceControlChangedFile(DashboardModel):
@@ -57,6 +58,17 @@ class SourceControlBotSyncEntry(DashboardModel):
     branch_candidates: list[str] = Field(default_factory=list)
 
 
+class SourceControlPullRequestPreview(DashboardModel):
+    number: int
+    title: str
+    state: PullRequestState = "open"
+    head_branch: str
+    base_branch: str
+    url: str | None = None
+    author: str | None = None
+    is_draft: bool = False
+
+
 class SourceControlPreviewResponse(DashboardModel):
     repository_root: str
     project_path: str | None = None
@@ -70,4 +82,51 @@ class SourceControlPreviewResponse(DashboardModel):
     merge_preview: list[SourceControlMergePreviewEntry] = Field(default_factory=list)
     worktrees: list[SourceControlWorktreeEntry] = Field(default_factory=list)
     gx_bots: list[SourceControlBotSyncEntry] = Field(default_factory=list)
+    pull_requests: list[SourceControlPullRequestPreview] = Field(default_factory=list)
     quick_actions: list[str] = Field(default_factory=list)
+
+
+class SourceControlBranchDetailsResponse(DashboardModel):
+    repository_root: str
+    project_path: str | None = None
+    branch: str
+    base_branch: str
+    merge_state: MergeState
+    ahead: int = 0
+    behind: int = 0
+    changed_files: list[SourceControlChangedFile] = Field(default_factory=list)
+    linked_bots: list[str] = Field(default_factory=list)
+    pull_request: SourceControlPullRequestPreview | None = None
+
+
+class SourceControlCreatePullRequestRequest(DashboardModel):
+    project_id: str | None = None
+    branch: str
+    base_branch: str | None = None
+    title: str | None = None
+    body: str | None = None
+    draft: bool = False
+
+
+class SourceControlCreatePullRequestResponse(DashboardModel):
+    status: Literal["created"]
+    branch: str
+    base_branch: str
+    pull_request: SourceControlPullRequestPreview | None = None
+    message: str
+
+
+class SourceControlMergePullRequestRequest(DashboardModel):
+    project_id: str | None = None
+    branch: str
+    pull_request_number: int | None = None
+    base_branch: str | None = None
+    delete_branch: bool = True
+    squash: bool = False
+
+
+class SourceControlMergePullRequestResponse(DashboardModel):
+    status: Literal["merged"]
+    branch: str
+    pull_request_number: int | None = None
+    message: str

@@ -54,6 +54,17 @@ export const SourceControlBotSyncEntrySchema = z.object({
   branchCandidates: z.array(z.string()).default([]),
 });
 
+export const SourceControlPullRequestSchema = z.object({
+  number: z.number().int().positive(),
+  title: z.string().min(1),
+  state: z.enum(["open", "merged", "closed"]).default("open"),
+  headBranch: z.string().min(1),
+  baseBranch: z.string().min(1),
+  url: z.string().url().nullable().optional(),
+  author: z.string().nullable().optional(),
+  isDraft: z.boolean().default(false),
+});
+
 export const SourceControlPreviewResponseSchema = z.object({
   repositoryRoot: z.string().min(1),
   projectPath: z.string().nullable().optional(),
@@ -67,9 +78,38 @@ export const SourceControlPreviewResponseSchema = z.object({
   mergePreview: z.array(SourceControlMergePreviewEntrySchema).default([]),
   worktrees: z.array(SourceControlWorktreeEntrySchema).default([]),
   gxBots: z.array(SourceControlBotSyncEntrySchema).default([]),
+  pullRequests: z.array(SourceControlPullRequestSchema).default([]),
   quickActions: z.array(z.string()).default([]),
+});
+
+export const SourceControlBranchDetailsResponseSchema = z.object({
+  repositoryRoot: z.string().min(1),
+  projectPath: z.string().nullable().optional(),
+  branch: z.string().min(1),
+  baseBranch: z.string().min(1),
+  mergeState: SourceControlMergeStateSchema,
+  ahead: z.number().int().min(0).default(0),
+  behind: z.number().int().min(0).default(0),
+  changedFiles: z.array(SourceControlChangedFileSchema).default([]),
+  linkedBots: z.array(z.string()).default([]),
+  pullRequest: SourceControlPullRequestSchema.nullable().optional(),
+});
+
+export const SourceControlCreatePullRequestResponseSchema = z.object({
+  status: z.literal("created"),
+  branch: z.string().min(1),
+  baseBranch: z.string().min(1),
+  pullRequest: SourceControlPullRequestSchema.nullable().optional(),
+  message: z.string().min(1),
+});
+
+export const SourceControlMergePullRequestResponseSchema = z.object({
+  status: z.literal("merged"),
+  branch: z.string().min(1),
+  pullRequestNumber: z.number().int().positive().nullable().optional(),
+  message: z.string().min(1),
 });
 
 export type SourceControlPreviewResponse = z.infer<typeof SourceControlPreviewResponseSchema>;
 export type SourceControlMergeState = z.infer<typeof SourceControlMergeStateSchema>;
-
+export type SourceControlBranchDetailsResponse = z.infer<typeof SourceControlBranchDetailsResponseSchema>;

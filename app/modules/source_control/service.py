@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 import subprocess
 from dataclasses import dataclass
@@ -9,10 +10,14 @@ from typing import Literal, Sequence
 from app.core.utils.time import utcnow
 from app.modules.source_control.schemas import (
     SourceControlBotSyncEntry,
+    SourceControlBranchDetailsResponse,
     SourceControlBranchPreview,
     SourceControlChangedFile,
     SourceControlCommitPreview,
+    SourceControlCreatePullRequestResponse,
+    SourceControlMergePullRequestResponse,
     SourceControlMergePreviewEntry,
+    SourceControlPullRequestPreview,
     SourceControlPreviewResponse,
     SourceControlWorktreeEntry,
 )
@@ -20,6 +25,7 @@ from app.modules.source_control.schemas import (
 _GIT_TIMEOUT_SECONDS = 4
 _BOT_BRANCH_PATTERN = re.compile(r"^(?:agent[/_-]|gx[/_-]|bot[/_-]|worker[/_-]|subbranch[/_-])", re.IGNORECASE)
 _SLUG_NON_ALNUM_PATTERN = re.compile(r"[^a-z0-9]+")
+_FIRST_URL_PATTERN = re.compile(r"https?://\S+")
 
 
 class SourceControlError(RuntimeError):
@@ -137,6 +143,8 @@ class SourceControlService:
                     )
                 )
 
+        pull_requests = self._list_pull_requests(repo_root=repo_root, base_branch=base_branch)
+
         quick_actions = [
             "git status --short",
             "git log --oneline --decorate -n 8",
@@ -160,7 +168,193 @@ class SourceControlService:
             merge_preview=merge_preview,
             worktrees=worktrees,
             gx_bots=gx_bots,
+            pull_requests=pull_requests,
             quick_actions=quick_actions,
+        )
+
+    def build_branch_details(
+        self,
+        *,
+        project_path: str | None,
+        bots: Sequence[SourceControlBotSnapshot],
+        branch: str,
+        changed_file_limit: int = 240,
+    ) -> SourceControlBranchDetailsResponse:
+        target_branch = branch.strip()
+        if not target_branch:
+            raise SourceControlError(
+                "Branch is required.",
+                code="source_control_git_failed",
+            )
+        repo_root = self._resolve_repository_root(project_path)
+        active_branch = self._resolve_active_branch(repo_root)
+        all_branches = self._list_local_branches(repo_root)
+        if target_branch not in all_branches:
+            raise SourceControlError(
+                f"Branch not found: {target_branch}",
+                code="source_control_git_failed",
+            )
+        base_branch = self._resolve_base_branch(repo_root=repo_root, active_branch=active_branch, all_branches=all_branches)
+        branch_preview = self._build_branch_preview(
+            repo_root=repo_root,
+            branch=target_branch,
+            active_branch=active_branch,
+            base_branch=base_branch,
+        )
+        changed_files = self._list_branch_changes(
+            repo_root=repo_root,
+            branch=target_branch,
+            base_branch=base_branch,
+            limit=max(1, changed_file_limit),
+        )
+
+        pull_requests = self._list_pull_requests(repo_root=repo_root, base_branch=base_branch)
+        pull_request = next((entry for entry in pull_requests if entry.head_branch == target_branch), None)
+
+        linked_bots: list[str] = []
+        for bot in bots:
+            matched = self._match_bot_to_branch(bot_name=bot.name, all_branches=all_branches)
+            if matched == target_branch:
+                linked_bots.append(bot.name)
+
+        return SourceControlBranchDetailsResponse(
+            repository_root=str(repo_root),
+            project_path=project_path,
+            branch=target_branch,
+            base_branch=base_branch,
+            merge_state=branch_preview.merge_state,
+            ahead=branch_preview.ahead,
+            behind=branch_preview.behind,
+            changed_files=changed_files,
+            linked_bots=linked_bots,
+            pull_request=pull_request,
+        )
+
+    def create_pull_request(
+        self,
+        *,
+        project_path: str | None,
+        branch: str,
+        base_branch: str | None = None,
+        title: str | None = None,
+        body: str | None = None,
+        draft: bool = False,
+    ) -> SourceControlCreatePullRequestResponse:
+        target_branch = branch.strip()
+        if not target_branch:
+            raise SourceControlError("Branch is required.", code="source_control_git_failed")
+
+        repo_root = self._resolve_repository_root(project_path)
+        all_branches = self._list_local_branches(repo_root)
+        if target_branch not in all_branches:
+            raise SourceControlError(f"Branch not found: {target_branch}", code="source_control_git_failed")
+
+        active_branch = self._resolve_active_branch(repo_root)
+        resolved_base_branch = (base_branch or "").strip()
+        if not resolved_base_branch:
+            resolved_base_branch = self._resolve_base_branch(
+                repo_root=repo_root,
+                active_branch=active_branch,
+                all_branches=all_branches,
+            )
+
+        args = [
+            "pr",
+            "create",
+            "--head",
+            target_branch,
+            "--base",
+            resolved_base_branch,
+        ]
+        normalized_title = (title or "").strip()
+        normalized_body = (body or "").strip()
+        if normalized_title:
+            args.extend(["--title", normalized_title])
+            if normalized_body:
+                args.extend(["--body", normalized_body])
+            else:
+                args.extend(["--body", ""])
+        elif normalized_body:
+            args.extend(["--fill", "--body", normalized_body])
+        else:
+            args.append("--fill")
+        if draft:
+            args.append("--draft")
+
+        output = self._run_gh(args, cwd=repo_root, allow_failure=False)
+        pull_requests = self._list_pull_requests(repo_root=repo_root, base_branch=resolved_base_branch)
+        pull_request = next((entry for entry in pull_requests if entry.head_branch == target_branch), None)
+        if pull_request is None:
+            url = _extract_first_url(output)
+            if url:
+                pull_request = SourceControlPullRequestPreview(
+                    number=0,
+                    title=normalized_title or f"PR for {target_branch}",
+                    state="open",
+                    head_branch=target_branch,
+                    base_branch=resolved_base_branch,
+                    url=url,
+                    author=None,
+                    is_draft=draft,
+                )
+
+        return SourceControlCreatePullRequestResponse(
+            status="created",
+            branch=target_branch,
+            base_branch=resolved_base_branch,
+            pull_request=pull_request,
+            message="Pull request created.",
+        )
+
+    def merge_pull_request(
+        self,
+        *,
+        project_path: str | None,
+        branch: str,
+        pull_request_number: int | None = None,
+        base_branch: str | None = None,
+        delete_branch: bool = True,
+        squash: bool = False,
+    ) -> SourceControlMergePullRequestResponse:
+        target_branch = branch.strip()
+        if not target_branch:
+            raise SourceControlError("Branch is required.", code="source_control_git_failed")
+
+        repo_root = self._resolve_repository_root(project_path)
+        all_branches = self._list_local_branches(repo_root)
+        active_branch = self._resolve_active_branch(repo_root)
+        resolved_base_branch = (base_branch or "").strip()
+        if not resolved_base_branch:
+            resolved_base_branch = self._resolve_base_branch(
+                repo_root=repo_root,
+                active_branch=active_branch,
+                all_branches=all_branches,
+            )
+
+        pr_number = pull_request_number
+        if pr_number is None:
+            pull_requests = self._list_pull_requests(repo_root=repo_root, base_branch=resolved_base_branch)
+            matched_pull_request = next((entry for entry in pull_requests if entry.head_branch == target_branch), None)
+            if matched_pull_request is None:
+                raise SourceControlError(
+                    f"No open pull request found for branch: {target_branch}",
+                    code="source_control_git_failed",
+                )
+            pr_number = matched_pull_request.number
+
+        args = ["pr", "merge", str(pr_number), "--squash" if squash else "--merge"]
+        if delete_branch:
+            args.append("--delete-branch")
+        self._run_gh(args, cwd=repo_root, allow_failure=False)
+
+        if target_branch in all_branches and target_branch != active_branch:
+            self._run_git(["branch", "-D", target_branch], cwd=repo_root, allow_failure=True)
+
+        return SourceControlMergePullRequestResponse(
+            status="merged",
+            branch=target_branch,
+            pull_request_number=pr_number,
+            message="Pull request merged.",
         )
 
     def _resolve_repository_hint(self, project_path: str | None) -> Path:
@@ -177,6 +371,10 @@ class SourceControlService:
                 code="source_control_invalid_path",
             )
         return candidate
+
+    def _resolve_repository_root(self, project_path: str | None) -> Path:
+        repo_hint = self._resolve_repository_hint(project_path)
+        return Path(self._run_git(["rev-parse", "--show-toplevel"], cwd=repo_hint)).resolve()
 
     def _resolve_active_branch(self, repo_root: Path) -> str:
         branch = self._run_git(["rev-parse", "--abbrev-ref", "HEAD"], cwd=repo_root, allow_failure=True).strip()
@@ -315,6 +513,111 @@ class SourceControlService:
             merge_state=merge_state,
         )
 
+    def _list_pull_requests(self, *, repo_root: Path, base_branch: str) -> list[SourceControlPullRequestPreview]:
+        raw = self._run_gh(
+            [
+                "pr",
+                "list",
+                "--state",
+                "open",
+                "--base",
+                base_branch,
+                "--json",
+                "number,title,state,headRefName,baseRefName,url,isDraft,author",
+                "--limit",
+                "20",
+            ],
+            cwd=repo_root,
+            allow_failure=True,
+        )
+        if not raw:
+            return []
+
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            return []
+        if not isinstance(payload, list):
+            return []
+
+        previews: list[SourceControlPullRequestPreview] = []
+        for entry in payload:
+            if not isinstance(entry, dict):
+                continue
+            number = entry.get("number")
+            title = str(entry.get("title") or "").strip()
+            if not isinstance(number, int) or not title:
+                continue
+
+            state_value = str(entry.get("state") or "OPEN").strip().lower()
+            if state_value == "merged":
+                normalized_state: Literal["open", "merged", "closed"] = "merged"
+            elif state_value == "closed":
+                normalized_state = "closed"
+            else:
+                normalized_state = "open"
+
+            head_branch = str(entry.get("headRefName") or "").strip()
+            if not head_branch:
+                continue
+            base_value = str(entry.get("baseRefName") or base_branch).strip()
+            base_value = base_value or base_branch
+
+            author = None
+            author_payload = entry.get("author")
+            if isinstance(author_payload, dict):
+                author_login = author_payload.get("login")
+                if isinstance(author_login, str) and author_login.strip():
+                    author = author_login.strip()
+
+            url = entry.get("url")
+            url_value = str(url).strip() if isinstance(url, str) and url.strip() else None
+            is_draft = bool(entry.get("isDraft"))
+
+            previews.append(
+                SourceControlPullRequestPreview(
+                    number=number,
+                    title=title,
+                    state=normalized_state,
+                    head_branch=head_branch,
+                    base_branch=base_value,
+                    url=url_value,
+                    author=author,
+                    is_draft=is_draft,
+                )
+            )
+        return previews
+
+    def _list_branch_changes(
+        self,
+        *,
+        repo_root: Path,
+        branch: str,
+        base_branch: str,
+        limit: int,
+    ) -> list[SourceControlChangedFile]:
+        if branch == base_branch:
+            return []
+        output = self._run_git(
+            ["diff", "--name-status", f"{base_branch}...{branch}"],
+            cwd=repo_root,
+            allow_failure=True,
+        )
+        rows = [line for line in output.splitlines() if line.strip()]
+        parsed: list[SourceControlChangedFile] = []
+        for row in rows:
+            entry = _parse_diff_changed_file(row)
+            if entry is None:
+                continue
+            parsed.append(entry)
+            if len(parsed) >= limit:
+                break
+        return parsed
+
+    def _match_bot_to_branch(self, *, bot_name: str, all_branches: Sequence[str]) -> str | None:
+        candidates = _candidate_branches_for_bot(bot_name)
+        return next((branch for branch in candidates if branch in all_branches), None)
+
     def _ahead_behind(self, *, repo_root: Path, base_branch: str, branch: str) -> tuple[int, int]:
         raw = self._run_git(
             ["rev-list", "--left-right", "--count", f"{base_branch}...{branch}"],
@@ -383,6 +686,34 @@ class SourceControlService:
             code="source_control_git_failed",
         )
 
+    def _run_gh(self, args: list[str], *, cwd: Path, allow_failure: bool = False) -> str:
+        try:
+            completed = subprocess.run(
+                ["gh", *args],
+                cwd=str(cwd),
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=_GIT_TIMEOUT_SECONDS,
+            )
+        except (OSError, subprocess.SubprocessError):
+            if allow_failure:
+                return ""
+            raise SourceControlError(
+                "Failed to execute gh command.",
+                code="source_control_git_failed",
+            )
+
+        stdout = completed.stdout.rstrip("\n")
+        if completed.returncode == 0:
+            return stdout
+        if allow_failure:
+            return ""
+        raise SourceControlError(
+            f"GitHub CLI command failed: gh {' '.join(args)}",
+            code="source_control_git_failed",
+        )
+
 
 def _parse_changed_file(line: str) -> SourceControlChangedFile | None:
     if len(line) < 3:
@@ -399,6 +730,24 @@ def _parse_changed_file(line: str) -> SourceControlChangedFile | None:
         code=code.upper(),
         staged=(x not in {" ", "."}),
         unstaged=(y not in {" ", "."}),
+    )
+
+
+def _parse_diff_changed_file(line: str) -> SourceControlChangedFile | None:
+    if not line.strip():
+        return None
+    parts = line.split("\t")
+    if len(parts) < 2:
+        return None
+    code = parts[0].strip().upper() or "?"
+    path = parts[-1].strip()
+    if not path:
+        return None
+    return SourceControlChangedFile(
+        path=path,
+        code=code,
+        staged=True,
+        unstaged=False,
     )
 
 
@@ -431,6 +780,13 @@ def _candidate_branches_for_bot(bot_name: str) -> list[str]:
         f"bot/{slug}",
         slug,
     ]
+
+
+def _extract_first_url(value: str) -> str | None:
+    match = _FIRST_URL_PATTERN.search(value or "")
+    if not match:
+        return None
+    return match.group(0).strip()
 
 
 def _parse_iso_datetime(value: str):

@@ -6,19 +6,17 @@ import { renderWithProviders } from "@/test/utils";
 import { SourceControlPage } from "./source-control-page";
 
 describe("SourceControlPage", () => {
-  it("renders commit, merge, and gx bot sync previews", async () => {
+  it("renders branch-focused source control preview with PR actions", async () => {
     renderWithProviders(<SourceControlPage />);
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Source Control" })).toBeInTheDocument();
-      expect(screen.getByText("Commit preview")).toBeInTheDocument();
-      expect(screen.getByText("Merge preview")).toBeInTheDocument();
-      expect(screen.getByText("GX bot sync")).toBeInTheDocument();
+      expect(screen.getByText("Current codex branches")).toBeInTheDocument();
+      expect(screen.getByText("Current GX bot statuses")).toBeInTheDocument();
+      expect(screen.getByText("Pull request status")).toBeInTheDocument();
     });
 
-    expect(screen.getByText("feat(source-control): add gx bot commit + merge preview panel")).toBeInTheDocument();
     expect(screen.getByText("Master Agent")).toBeInTheDocument();
-    expect(screen.getByText("Runtime Guardrail Bot")).toBeInTheDocument();
-    expect(screen.getByText("git checkout agent/demo-source-control")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Merge PR (gh)" })).toBeInTheDocument();
   });
 });

@@ -20,11 +20,13 @@ export default function AuthenticatedLayout({ children }: { children: ReactNode 
   const isAgentsRoute = pathname === "/agents";
   const isIssuesRoute = pathname === "/issues";
   const isRuntimesRoute = pathname === "/runtimes";
+  const isSourceControlRoute = pathname === "/source-control";
   const isSkillsRoute = pathname === "/skills";
   const isSettingsRoute = pathname === "/settings";
   const isFullBleedRoute =
     isPlansRoute
     || isRuntimesRoute
+    || isSourceControlRoute
     || isSkillsRoute
     || isAgentsRoute
     || isSettingsRoute
@@ -47,6 +49,7 @@ export default function AuthenticatedLayout({ children }: { children: ReactNode 
             className={cn(
               "w-full flex-1",
               isRuntimesRoute
+                || isSourceControlRoute
                 || isSkillsRoute
                 || isAgentsRoute
                 || isIssuesRoute
