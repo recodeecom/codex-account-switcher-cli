@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ChevronRight, Folder, FolderOpen, Github, Globe, Maximize2, Minimize2, Minus, Plus, X } from "lucide-react";
+import { ChevronRight, Folder, FolderOpen, Github, Globe, Maximize2, Minimize2, Minus, Pencil, Plus, Trash2, X } from "lucide-react";
 
 import { AlertMessage } from "@/components/alert-message";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -74,22 +74,6 @@ function draftFromProject(entry: ProjectEntry): ProjectDraft {
   };
 }
 
-function formatRelativeDate(value: string): string {
-  const diffMs = Date.now() - new Date(value).getTime();
-  const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-  if (days < 1) {
-    return "Today";
-  }
-  if (days === 1) {
-    return "1d ago";
-  }
-  if (days < 30) {
-    return `${days}d ago`;
-  }
-  const months = Math.floor(days / 30);
-  return `${months}mo ago`;
-}
-
 function resolveSandboxBadgeClass(mode: ProjectSandboxMode): string {
   if (mode === "danger-full-access") {
     return "border-red-500/35 bg-red-500/10 text-red-200";
@@ -111,21 +95,38 @@ function VsCodeIcon({ className }: { className?: string }) {
   return (
     <span
       className={cn(
-        "inline-flex h-3.5 w-3.5 items-center justify-center overflow-hidden rounded-[2px] bg-[#161b22]",
+        "inline-flex h-3.5 w-3.5 items-center justify-center overflow-hidden rounded-[2px] bg-[#0f1728]",
+        className,
+      )}
+      aria-hidden="true"
+    >
+      <img src="/vscode.svg" alt="" className="h-full w-full object-contain" />
+    </span>
+  );
+}
+
+function PlansIcon({ className }: { className?: string }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex h-3.5 w-3.5 items-center justify-center overflow-hidden rounded-[2px] bg-[#131123]",
         className,
       )}
       aria-hidden="true"
     >
       <svg viewBox="0 0 16 16" className="h-full w-full" xmlns="http://www.w3.org/2000/svg">
-        <path
-          fill="#2489CA"
-          d="M11.6 1.4c.3-.2.8 0 .8.4v12.4c0 .4-.5.6-.8.4L5.1 9 2.9 10.7 1.4 9.8l1.9-1.8-1.9-1.8 1.5-.9L5.1 7l6.5-5.6Z"
-        />
-        <path fill="#1070B3" d="M12.4 3.2 7.4 8l5 4.8V3.2Z" />
-        <path fill="#3C99D4" d="M5.1 7 7.7 8 5.1 9V7Z" />
+        <path fill="#6D77FF" d="M2 3.5A1.5 1.5 0 0 1 3.5 2h9A1.5 1.5 0 0 1 14 3.5v9a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 12.5v-9Z" />
+        <path fill="#A8B0FF" d="M4 4h8v2H4V4Zm0 3h8v1H4V7Zm0 2h5v1H4V9Zm0 2h7v1H4v-1Z" />
       </svg>
     </span>
   );
+}
+
+function clickFromInteractiveElement(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) {
+    return false;
+  }
+  return Boolean(target.closest("button,a,input,select,textarea,[role='button']"));
 }
 
 type ProjectDialogProps = {
@@ -465,6 +466,7 @@ export function ProjectsPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [editProjectId, setEditProjectId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<ProjectDraft>(() => getEmptyProjectDraft());
+  const [activeRowId, setActiveRowId] = useState<string | null>(null);
   const {
     projectsQuery,
     planLinksQuery,
@@ -546,6 +548,7 @@ export function ProjectsPage() {
     setEditOpen(false);
     setEditProjectId(null);
     setEditDraft(getEmptyProjectDraft());
+    setActiveRowId(null);
   };
 
   const handleEditSave = async () => {
@@ -627,7 +630,7 @@ export function ProjectsPage() {
           ) : (
             <div className="min-h-0 flex-1 overflow-auto">
               <div className="min-w-0">
-                <div className="sticky top-0 z-[1] grid h-9 grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,0.85fr)_minmax(0,0.8fr)_minmax(0,1fr)_minmax(0,0.65fr)_minmax(0,1.45fr)] items-center gap-3 border-b border-border/65 bg-background/95 px-5 text-[11px] uppercase tracking-[0.08em] text-muted-foreground backdrop-blur-sm">
+                <div className="sticky top-0 z-[1] grid h-9 grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.08fr)_minmax(0,0.82fr)_minmax(0,0.75fr)_minmax(0,0.92fr)_minmax(0,2.45fr)] items-center gap-3 border-b border-border/65 bg-background/95 px-5 text-[11px] uppercase tracking-[0.08em] text-muted-foreground backdrop-blur-sm">
                   <span>Name</span>
                   <span>URL</span>
                   <span>GitHub</span>
@@ -635,14 +638,22 @@ export function ProjectsPage() {
                   <span>Sandbox</span>
                   <span>Branch</span>
                   <span>Plans</span>
-                  <span>Updated</span>
                   <span className="text-right">Actions</span>
                 </div>
 
                 {entries.map((entry) => (
                   <div
                     key={entry.id}
-                    className="group/row grid min-h-12 grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,0.85fr)_minmax(0,0.8fr)_minmax(0,1fr)_minmax(0,0.65fr)_minmax(0,1.45fr)] items-center gap-3 border-b border-border/45 px-5 py-2 text-sm transition-colors hover:bg-accent/35"
+                    onClick={(event) => {
+                      if (clickFromInteractiveElement(event.target)) {
+                        return;
+                      }
+                      setActiveRowId((current) => (current === entry.id ? null : entry.id));
+                    }}
+                    className={cn(
+                      "group/row grid min-h-16 grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.08fr)_minmax(0,0.82fr)_minmax(0,0.75fr)_minmax(0,0.92fr)_minmax(0,2.45fr)] items-center gap-3 border-b border-border/45 px-5 py-0 text-sm transition-colors",
+                      activeRowId === entry.id ? "bg-accent/45" : "hover:bg-accent/35",
+                    )}
                   >
                     <div className="min-w-0">
                       <p className="truncate font-medium">{entry.name}</p>
@@ -740,26 +751,23 @@ export function ProjectsPage() {
                       })()}
                     </div>
 
-                    <span className="text-xs text-muted-foreground tabular-nums">
-                      {formatRelativeDate(entry.updatedAt)}
-                    </span>
-
-                    <div className="flex flex-wrap items-center justify-end gap-1.5">
+                    <div className="flex h-full min-h-12 flex-nowrap items-center justify-end whitespace-nowrap">
                       <Button
                         type="button"
                         size="sm"
                         variant="ghost"
-                        className="h-7 rounded-md px-2 text-xs"
+                        className="h-11 rounded-r-none rounded-l-md px-3 text-xs"
                         onClick={() => navigate(`/projects/plans?projectId=${encodeURIComponent(entry.id)}`)}
                         disabled={busy}
                       >
-                        Open plans
+                        <PlansIcon className="mr-1" />
+                        Plans
                       </Button>
                       <Button
                         type="button"
                         size="sm"
                         variant="ghost"
-                        className="h-7 rounded-md px-2 text-xs"
+                        className="h-11 rounded-none px-3 text-xs"
                         onClick={() => {
                           void openFolderMutation.mutateAsync({
                             projectId: entry.id,
@@ -769,13 +777,13 @@ export function ProjectsPage() {
                         disabled={busy || !entry.projectPath || openFolderBusyProjectId === entry.id}
                       >
                         <VsCodeIcon className="mr-1" />
-                        Open VSCode
+                        VSCode
                       </Button>
                       <Button
                         type="button"
                         size="sm"
                         variant="ghost"
-                        className="h-7 rounded-md px-2 text-xs"
+                        className="h-11 w-11 rounded-none px-0 text-xs"
                         onClick={() => {
                           void openFolderMutation.mutateAsync({
                             projectId: entry.id,
@@ -783,30 +791,41 @@ export function ProjectsPage() {
                           });
                         }}
                         disabled={busy || !entry.projectPath || openFolderBusyProjectId === entry.id}
+                        title="Open folder"
                       >
-                        <FolderOpen className="mr-1 h-3.5 w-3.5" />
-                        Open folder
+                        <FolderOpen className="h-4 w-4" />
                       </Button>
                       <Button
                         type="button"
                         size="sm"
                         variant="ghost"
-                        className="h-7 rounded-md px-2 text-xs"
+                        className="h-11 w-11 rounded-l-none rounded-r-md px-0 text-xs"
                         onClick={() => handleEditStart(entry)}
                         disabled={busy}
+                        title="Edit"
                       >
-                        Edit
+                        <Pencil className="h-4 w-4" />
                       </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 rounded-md px-2 text-xs text-red-300 hover:text-red-200"
-                        onClick={() => deleteDialog.show({ id: entry.id, name: entry.name })}
-                        disabled={busy}
+                      <div
+                        className={cn(
+                          "overflow-hidden transition-all duration-200 ease-out",
+                          activeRowId === entry.id
+                            ? "max-w-[150px] translate-x-0 opacity-100"
+                            : "pointer-events-none max-w-0 translate-x-2 opacity-0",
+                        )}
                       >
-                        Delete
-                      </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="h-11 rounded-l-none rounded-r-md border-y border-r border-red-400/30 bg-red-500/10 px-3 text-xs font-semibold text-red-200 hover:bg-red-500/25 hover:text-red-100"
+                          onClick={() => deleteDialog.show({ id: entry.id, name: entry.name })}
+                          disabled={busy}
+                        >
+                          <Trash2 className="mr-1 h-4 w-4" />
+                          Delete
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -875,6 +894,7 @@ export function ProjectsPage() {
           const target = deleteDialog.data;
           void deleteMutation.mutateAsync(target.id).then(() => {
             deleteDialog.hide();
+            setActiveRowId(null);
             if (editProjectId === target.id) {
               handleEditCancel();
             }
