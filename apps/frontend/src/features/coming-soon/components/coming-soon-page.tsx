@@ -76,8 +76,9 @@ type InfoItem = {
 type AgentToolItem = {
   name: string;
   description: string;
-  badge: string;
-  badgeClassName: string;
+  logoSrc: string;
+  logoAlt: string;
+  logoClassName?: string;
 };
 
 const WHAT_IT_DOES: InfoItem[] = [
@@ -118,65 +119,40 @@ const AGENT_TOOL_ITEMS: AgentToolItem[] = [
   {
     name: "Codex",
     description: "Ship tasks end-to-end with autonomous coding loops.",
-    badge: "CX",
-    badgeClassName:
-      "bg-gradient-to-br from-cyan-400/35 to-blue-500/25 text-cyan-100",
+    logoSrc: "/agent-logos/codex.svg",
+    logoAlt: "Codex logo",
   },
   {
     name: "Claude",
     description: "Run parallel reasoning for architecture and critiques.",
-    badge: "CL",
-    badgeClassName:
-      "bg-gradient-to-br from-amber-400/35 to-orange-500/25 text-amber-100",
+    logoSrc: "/agent-logos/claude.svg",
+    logoAlt: "Claude logo",
   },
   {
     name: "OpenAI",
     description: "Power API workflows with model routing and tool calls.",
-    badge: "OA",
-    badgeClassName:
-      "bg-gradient-to-br from-emerald-400/35 to-cyan-500/25 text-emerald-100",
+    logoSrc: "/openai.svg",
+    logoAlt: "OpenAI logo",
+    logoClassName: "brightness-0 invert",
   },
   {
     name: "Open WebUI",
     description: "Bring local/self-hosted model frontends into one flow.",
-    badge: "OW",
-    badgeClassName:
-      "bg-gradient-to-br from-indigo-400/35 to-blue-500/25 text-indigo-100",
+    logoSrc: "/agent-logos/openwebui.png",
+    logoAlt: "Open WebUI logo",
   },
   {
     name: "Gemini",
     description: "Add fast multimodal checks for docs, code, and UI.",
-    badge: "GM",
-    badgeClassName:
-      "bg-gradient-to-br from-violet-400/35 to-fuchsia-500/25 text-violet-100",
+    logoSrc: "/agent-logos/gemini.svg",
+    logoAlt: "Gemini logo",
   },
   {
     name: "OpenRouter",
     description: "Switch providers without rewriting your task pipeline.",
-    badge: "OR",
-    badgeClassName:
-      "bg-gradient-to-br from-sky-400/35 to-cyan-500/25 text-sky-100",
-  },
-  {
-    name: "Cursor",
-    description: "Pair coding sessions with repo context and fast edits.",
-    badge: "CU",
-    badgeClassName:
-      "bg-gradient-to-br from-zinc-300/35 to-zinc-500/25 text-zinc-100",
-  },
-  {
-    name: "Aider",
-    description: "Patch files from terminal prompts with git-native flow.",
-    badge: "AI",
-    badgeClassName:
-      "bg-gradient-to-br from-rose-400/35 to-red-500/25 text-rose-100",
-  },
-  {
-    name: "Ollama",
-    description: "Keep privacy-first local models available when offline.",
-    badge: "OL",
-    badgeClassName:
-      "bg-gradient-to-br from-teal-400/35 to-emerald-500/25 text-teal-100",
+    logoSrc: "/agent-logos/openrouter.svg",
+    logoAlt: "OpenRouter logo",
+    logoClassName: "brightness-0 invert",
   },
 ];
 
@@ -445,18 +421,22 @@ function DemoCardAnnotations() {
 
 function AgentToolsPanel() {
   return (
-    <div className="mx-auto w-full max-w-6xl rounded-[26px] border border-white/10 bg-black/20 p-5 shadow-[0_24px_70px_rgba(3,8,20,0.5)] sm:p-7">
-      <div className="grid gap-6 lg:grid-cols-[1.12fr_1.88fr] lg:gap-8">
-        <div className="space-y-3">
-          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-200/80">
+    <div
+      className="mx-auto w-full max-w-6xl px-1 py-3 sm:py-4"
+      data-testid="agent-tools-panel"
+    >
+      <div className="grid gap-8 lg:grid-cols-[1fr_1.8fr] lg:gap-10">
+        <div className="self-center space-y-3">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-200/80">
             Agent Stack
           </p>
-          <h3 className="text-3xl font-semibold tracking-tight text-zinc-100 sm:text-4xl">
-            Code with AI agents
+          <h3 className="text-4xl font-bold tracking-tight text-zinc-50 sm:text-[3.2rem] sm:leading-[1.05]">
+            Code with extensions
           </h3>
-          <p className="max-w-md text-base leading-8 text-zinc-300">
-            Use recodee with Codex, Claude, OpenAI, Open WebUI, and your
-            preferred coding tools in one workflow.
+          <p className="max-w-[34rem] text-[1.04rem] leading-9 text-zinc-300">
+            Extend your agents with tools from extensions and Model Context
+            Protocol servers. Or, build your own extension to power your
+            team&apos;s unique scenarios.
           </p>
         </div>
 
@@ -464,13 +444,16 @@ function AgentToolsPanel() {
           {AGENT_TOOL_ITEMS.map((item) => (
             <div
               key={item.name}
-              className="group rounded-2xl border border-white/10 bg-[#050b1b]/85 p-4 transition-colors duration-200 hover:border-cyan-200/30 hover:bg-[#081126]"
+              className="group rounded-2xl border border-white/10 bg-[#0a0f1b]/86 p-4 transition-colors duration-200 hover:border-cyan-200/28 hover:bg-[#0d1627]"
             >
-              <div className="flex items-start gap-3">
-                <span
-                  className={`mt-0.5 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-sm font-semibold tracking-[0.12em] ${item.badgeClassName}`}
-                >
-                  {item.badge}
+              <div className="flex items-start gap-4">
+                <span className="mt-0.5 inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#101b2e]/90 ring-1 ring-white/10">
+                  <img
+                    src={item.logoSrc}
+                    alt={item.logoAlt}
+                    className={`h-7 w-7 object-contain ${item.logoClassName ?? ""}`}
+                    loading="lazy"
+                  />
                 </span>
                 <div className="space-y-1.5">
                   <p className="text-lg font-semibold leading-6 text-zinc-100">

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
@@ -32,10 +32,16 @@ describe("ComingSoonPage", () => {
       }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "Code with AI agents", level: 3 }),
+      screen.getByRole("heading", { name: "Code with extensions", level: 3 }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Open WebUI")).toBeInTheDocument();
-    expect(screen.getByText("Ollama")).toBeInTheDocument();
+    const agentPanel = screen.getByTestId("agent-tools-panel");
+    expect(within(agentPanel).getByText("Open WebUI")).toBeInTheDocument();
+    expect(within(agentPanel).getByText("OpenRouter")).toBeInTheDocument();
+    expect(within(agentPanel).getByAltText("Codex logo")).toBeInTheDocument();
+    expect(within(agentPanel).getByAltText("OpenAI logo")).toBeInTheDocument();
+    expect(within(agentPanel).queryByText("Cursor")).not.toBeInTheDocument();
+    expect(within(agentPanel).queryByText("Aider")).not.toBeInTheDocument();
+    expect(within(agentPanel).queryByText("Ollama")).not.toBeInTheDocument();
     expect(
       screen.getByText("Stay in flow instead of babysitting status checks."),
     ).toBeInTheDocument();
