@@ -91,6 +91,7 @@ const EXPECTED_ENDPOINTS = [
 	"POST /api/projects",
 	"PUT /api/projects/:projectId",
 	"DELETE /api/projects/:projectId",
+	"POST /api/projects/pick-path",
 	"POST /api/projects/:projectId/open-folder",
 	// workspaces
 	"GET /api/workspaces",

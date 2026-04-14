@@ -57,6 +57,11 @@ describe("projects flow integration", () => {
       within(createDialog).getByPlaceholderText("https://github.com/owner/repo"),
       "github.com/webu-pro/recodee",
     );
+    await user.click(within(createDialog).getByRole("button", { name: "Select project folder" }));
+    expect(
+      await within(createDialog).findByDisplayValue("/home/deadpool/Documents"),
+    ).toBeInTheDocument();
+    await user.clear(within(createDialog).getByPlaceholderText("/absolute/path/to/project"));
     await user.type(
       within(createDialog).getByPlaceholderText("/absolute/path/to/project"),
       "/home/deadpool/projects/recodee-core",

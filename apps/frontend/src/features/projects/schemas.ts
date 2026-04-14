@@ -62,6 +62,11 @@ export const ProjectOpenFolderResponseSchema = z.object({
   editor: z.string().nullable().optional(),
 });
 
+export const ProjectPickPathResponseSchema = z.object({
+  status: z.enum(["selected", "cancelled"]),
+  path: z.string().nullable().default(null),
+});
+
 export const ProjectPlanLinkEntrySchema = z.object({
   projectId: z.string().min(1),
   planCount: z.number().int().min(0),
@@ -82,6 +87,7 @@ export type ProjectDeleteResponse = z.infer<typeof ProjectDeleteResponseSchema>;
 export type ProjectOpenFolderTarget = z.infer<typeof ProjectOpenFolderTargetSchema>;
 export type ProjectOpenFolderRequest = z.input<typeof ProjectOpenFolderRequestSchema>;
 export type ProjectOpenFolderResponse = z.infer<typeof ProjectOpenFolderResponseSchema>;
+export type ProjectPickPathResponse = z.infer<typeof ProjectPickPathResponseSchema>;
 export type ProjectSandboxMode = z.infer<typeof ProjectSandboxModeSchema>;
 export type ProjectPlanLinkEntry = z.infer<typeof ProjectPlanLinkEntrySchema>;
 export type ProjectPlanLinksResponse = z.infer<typeof ProjectPlanLinksResponseSchema>;

@@ -68,3 +68,8 @@ class ProjectOpenFolderResponse(DashboardModel):
     project_path: str
     target: Literal["vscode", "file-manager"] = "vscode"
     editor: str | None = None
+
+
+class ProjectPickPathResponse(DashboardModel):
+    status: Literal["selected", "cancelled"]
+    path: str | None = None

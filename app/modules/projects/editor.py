@@ -27,6 +27,20 @@ class ProjectEditorLaunchError(RuntimeError):
         super().__init__(message)
 
 
+class ProjectFolderPickerError(RuntimeError):
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: Literal[
+            "folder_picker_not_found",
+            "folder_picker_launch_failed",
+        ],
+    ) -> None:
+        self.code = code
+        super().__init__(message)
+
+
 def open_project_folder_in_editor(project_path: str) -> str | None:
     editor, _already_open = open_project_folder_in_editor_with_status(project_path)
     return editor
@@ -88,6 +102,54 @@ def open_project_folder_in_file_manager(project_path: str) -> str | None:
         detect_already_open=False,
     )
     return selected_manager
+
+
+def select_project_folder_path() -> str | None:
+    override = os.environ.get("CODEX_LB_PROJECT_FOLDER_PICKER_COMMAND", "").strip()
+    if override:
+        try:
+            override_argv = shlex.split(override)
+        except ValueError as exc:
+            raise ProjectFolderPickerError(
+                f"Invalid CODEX_LB_PROJECT_FOLDER_PICKER_COMMAND value: {exc}",
+                code="folder_picker_launch_failed",
+            ) from exc
+        if not override_argv:
+            raise ProjectFolderPickerError(
+                "CODEX_LB_PROJECT_FOLDER_PICKER_COMMAND is empty",
+                code="folder_picker_launch_failed",
+            )
+        return _run_folder_picker_command(override_argv)
+
+    candidates = _default_folder_picker_candidates()
+    tried: list[str] = []
+    launch_errors: list[str] = []
+    found_any = False
+
+    for candidate in candidates:
+        executable = _resolve_executable(candidate[0])
+        tried.append(candidate[0])
+        if executable is None:
+            continue
+        found_any = True
+        try:
+            selected = _run_folder_picker_command([executable, *candidate[1:]])
+            return selected
+        except ProjectFolderPickerError as exc:
+            launch_errors.append(str(exc))
+
+    if not found_any:
+        unique_tried = ", ".join(dict.fromkeys(tried))
+        raise ProjectFolderPickerError(
+            f"No supported folder picker command found in PATH (tried: {unique_tried}).",
+            code="folder_picker_not_found",
+        )
+
+    detail = "; ".join(launch_errors) if launch_errors else "Unknown launch error"
+    raise ProjectFolderPickerError(
+        f"Failed to open folder picker. {detail}",
+        code="folder_picker_launch_failed",
+    )
 
 
 def _resolve_existing_project_directory(project_path: str) -> Path:
@@ -260,6 +322,87 @@ def _default_file_manager_candidates() -> tuple[tuple[str, ...], ...]:
         ("xdg-open",),
         ("gio", "open"),
     )
+
+
+def _default_folder_picker_candidates() -> tuple[tuple[str, ...], ...]:
+    system = platform.system().lower()
+    if system == "darwin":
+        return (
+            (
+                "osascript",
+                "-e",
+                'POSIX path of (choose folder with prompt "Select project folder")',
+            ),
+        )
+    if system == "windows":
+        return (
+            (
+                "powershell",
+                "-NoProfile",
+                "-Command",
+                (
+                    "Add-Type -AssemblyName System.Windows.Forms; "
+                    "$dialog = New-Object System.Windows.Forms.FolderBrowserDialog; "
+                    "if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) "
+                    "{ Write-Output $dialog.SelectedPath; exit 0 } "
+                    "exit 1"
+                ),
+            ),
+        )
+    return (
+        ("zenity", "--file-selection", "--directory", "--title=Select project folder"),
+        ("kdialog", "--getexistingdirectory", str(Path.home())),
+        ("yad", "--file-selection", "--directory", "--title=Select project folder"),
+    )
+
+
+def _run_folder_picker_command(argv: list[str]) -> str | None:
+    try:
+        result = subprocess.run(
+            argv,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+    except Exception as exc:  # pragma: no cover - platform-specific launch failures
+        raise ProjectFolderPickerError(
+            f"{argv[0]}: {exc}",
+            code="folder_picker_launch_failed",
+        ) from exc
+
+    if result.returncode in {1, 130}:
+        return None
+
+    if result.returncode != 0:
+        stderr = result.stderr.strip()
+        stdout = result.stdout.strip()
+        detail = stderr or stdout or f"exit code {result.returncode}"
+        raise ProjectFolderPickerError(
+            f"{argv[0]}: {detail}",
+            code="folder_picker_launch_failed",
+        )
+
+    raw_selected = result.stdout.strip() or result.stderr.strip()
+    if not raw_selected:
+        return None
+
+    first_line = raw_selected.splitlines()[0].strip()
+    if not first_line:
+        return None
+
+    selected_path = Path(first_line).expanduser()
+    if not selected_path.is_absolute():
+        selected_path = selected_path.resolve()
+    if not selected_path.exists() or not selected_path.is_dir():
+        raise ProjectFolderPickerError(
+            f"Selected path is not an existing directory: {selected_path}",
+            code="folder_picker_launch_failed",
+        )
+
+    return str(selected_path)
 
 
 def _resolve_executable(name: str) -> str | None:

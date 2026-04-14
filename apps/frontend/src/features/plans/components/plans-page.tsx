@@ -228,6 +228,9 @@ function getRoleVisual(role: string): RoleVisual {
   };
 }
 
+const PLANS_COPY_BUTTON_CLASS_NAME =
+  "h-8 rounded-xl border-cyan-300/25 bg-[linear-gradient(180deg,rgba(14,28,50,0.92)_0%,rgba(8,16,33,0.92)_100%)] text-zinc-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] hover:border-cyan-300/45 hover:bg-[linear-gradient(180deg,rgba(18,34,58,0.94)_0%,rgba(10,20,40,0.94)_100%)]";
+
 function checkpointStateBadgeClass(state: string): string {
   const normalizedState = state.trim().toLowerCase().replace(/\s+/g, "_");
 
@@ -1007,12 +1010,12 @@ export function PlansPage() {
         >
           {!isDetailFullWidth ? (
             <div className="rounded-xl border border-border/60 bg-card/60 p-3" data-testid="plans-list-panel">
-              <Table>
+              <Table className="table-fixed">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[52%]">Plan</TableHead>
-                  <TableHead className="w-[18%]">Status</TableHead>
-                  <TableHead className="w-[30%] text-right">Created / Updated</TableHead>
+                  <TableHead className="w-[46%]">Plan</TableHead>
+                  <TableHead className="w-[20%]">Status</TableHead>
+                  <TableHead className="w-[34%] text-right">Created / Updated</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1040,7 +1043,7 @@ export function PlansPage() {
                         setSelectedSlug(entry.slug);
                       }}
                     >
-                      <TableCell className="align-top">
+                      <TableCell className="align-top whitespace-normal">
                         <div className="space-y-1.5">
                           <p className="truncate font-medium">{entry.title}</p>
                           <p className="truncate text-xs text-muted-foreground">{entry.slug}</p>
@@ -1062,19 +1065,19 @@ export function PlansPage() {
                               {rowAttachmentCount} attachment{rowAttachmentCount > 1 ? "s" : ""}
                             </p>
                           ) : null}
-                          <div className="space-y-1">
-                            <Progress value={entry.overallProgress.percentComplete} className="h-1.5" />
+                          <div className="max-w-[16rem] space-y-1">
+                            <Progress value={entry.overallProgress.percentComplete} className="h-1" />
                             <p className="text-[11px] text-muted-foreground">{progressLabel}</p>
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell className="align-top">
+                      <TableCell className="align-top whitespace-normal">
                         <Badge variant="outline" className={cn(statusBadge.className)}>
                           {statusBadge.label}
                         </Badge>
                       </TableCell>
-                      <TableCell className="align-top text-right text-xs text-muted-foreground">
-                        <div className="space-y-1 whitespace-nowrap">
+                      <TableCell className="align-top whitespace-normal text-right text-xs text-muted-foreground">
+                        <div className="space-y-1">
                           <div className="space-y-0.5">
                             <p className="text-[10px] uppercase tracking-wide text-muted-foreground/90">Created</p>
                             <p>{createdAt.date}</p>

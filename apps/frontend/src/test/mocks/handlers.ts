@@ -2764,6 +2764,13 @@ export const handlers = [
 		});
 	}),
 
+	http.post("/api/projects/pick-path", () => {
+		return HttpResponse.json({
+			status: "selected",
+			path: "/home/deadpool/Documents",
+		});
+	}),
+
 	http.post("/api/projects/:projectId/open-folder", async ({ params, request }) => {
 		const projectId = String(params.projectId);
 		const payload = await parseJsonBody(

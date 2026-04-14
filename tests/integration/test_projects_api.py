@@ -352,6 +352,36 @@ async def test_projects_api_open_folder_in_file_manager(async_client, monkeypatc
 
 
 @pytest.mark.asyncio
+async def test_projects_api_pick_path_returns_selected_path(async_client, monkeypatch):
+    monkeypatch.setattr(
+        "app.modules.projects.api.select_project_folder_path",
+        lambda: "/home/deadpool/Documents/recodee",
+    )
+
+    picked = await async_client.post("/api/projects/pick-path")
+    assert picked.status_code == 200
+    assert picked.json() == {
+        "status": "selected",
+        "path": "/home/deadpool/Documents/recodee",
+    }
+
+
+@pytest.mark.asyncio
+async def test_projects_api_pick_path_reports_cancelled(async_client, monkeypatch):
+    monkeypatch.setattr(
+        "app.modules.projects.api.select_project_folder_path",
+        lambda: None,
+    )
+
+    picked = await async_client.post("/api/projects/pick-path")
+    assert picked.status_code == 200
+    assert picked.json() == {
+        "status": "cancelled",
+        "path": None,
+    }
+
+
+@pytest.mark.asyncio
 async def test_projects_api_recovers_when_projects_table_missing(async_client):
     async with engine.begin() as conn:
         await conn.execute(text("DROP TABLE IF EXISTS projects"))

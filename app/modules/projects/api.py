@@ -7,8 +7,10 @@ from app.core.exceptions import DashboardBadRequestError, DashboardConflictError
 from app.dependencies import ProjectsContext, get_projects_context
 from app.modules.projects.editor import (
     ProjectEditorLaunchError,
+    ProjectFolderPickerError,
     open_project_folder_in_editor_with_status,
     open_project_folder_in_file_manager,
+    select_project_folder_path,
 )
 from app.modules.projects.schemas import (
     ProjectCreateRequest,
@@ -17,6 +19,7 @@ from app.modules.projects.schemas import (
     ProjectOpenFolderRequest,
     ProjectPlanLinkEntry,
     ProjectPlanLinksResponse,
+    ProjectPickPathResponse,
     ProjectOpenFolderResponse,
     ProjectsResponse,
     ProjectUpdateRequest,
@@ -196,3 +199,16 @@ async def open_project_folder(
         target=payload.target,
         editor=editor,
     )
+
+
+@router.post("/pick-path", response_model=ProjectPickPathResponse)
+async def pick_project_path() -> ProjectPickPathResponse:
+    try:
+        selected_path = select_project_folder_path()
+    except ProjectFolderPickerError as exc:
+        raise DashboardBadRequestError(str(exc), code=exc.code) from exc
+
+    if selected_path is None:
+        return ProjectPickPathResponse(status="cancelled", path=None)
+
+    return ProjectPickPathResponse(status="selected", path=selected_path)

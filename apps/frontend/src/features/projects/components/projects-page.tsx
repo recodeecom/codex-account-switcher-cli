@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ChevronRight, Folder, FolderOpen, FolderTree, Github, Globe, Maximize2, Minimize2, Minus, Pencil, Plus, Trash2, X } from "lucide-react";
+import { ChevronRight, ExternalLink, Folder, FolderOpen, FolderTree, Github, Globe, Maximize2, Minimize2, Minus, Pencil, Plus, Trash2, X } from "lucide-react";
 
 import { AlertMessage } from "@/components/alert-message";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -9,12 +9,8 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
-  DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import {
   Select,
@@ -118,48 +114,81 @@ function clickFromInteractiveElement(target: EventTarget | null): boolean {
   return Boolean(target.closest("button,a,input,select,textarea,[role='button']"));
 }
 
-type ProjectDialogProps = {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  title: string;
-  description: string;
-  submitLabel: string;
-  draft: ProjectDraft;
-  onDraftChange: (updater: (current: ProjectDraft) => ProjectDraft) => void;
-  onSubmit: () => void;
-  disabled: boolean;
-};
-
-type CreateProjectDialogProps = {
+type ProjectComposerMode = "create" | "edit";
+type ProjectComposerDialogProps = {
+  mode: ProjectComposerMode;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   draft: ProjectDraft;
   onDraftChange: (updater: (current: ProjectDraft) => ProjectDraft) => void;
   onSubmit: () => void;
+  onPickProjectPath: () => Promise<void>;
   disabled: boolean;
   submitting: boolean;
+  pickingProjectPath: boolean;
   workspaceName: string;
 };
 
+const PLAN_STAGE_OPTIONS = ["Planned", "In Progress", "Blocked", "Done"] as const;
+const PRIORITY_OPTIONS = ["Low", "Medium", "High", "Urgent"] as const;
+const LEAD_OPTIONS = ["Lead", "Pair", "Review"] as const;
+
+function toNavigableHttpUrl(rawValue: string): string | null {
+  const trimmed = rawValue.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const candidate = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  try {
+    const parsed = new URL(candidate);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
+    }
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
 function CreateProjectDialog({
+  mode,
   open,
   onOpenChange,
   draft,
   onDraftChange,
   onSubmit,
+  onPickProjectPath,
   disabled,
   submitting,
+  pickingProjectPath,
   workspaceName,
-}: CreateProjectDialogProps) {
+}: ProjectComposerDialogProps) {
   const [expanded, setExpanded] = useState(false);
+  const [planStageIndex, setPlanStageIndex] = useState(0);
+  const [priorityIndex, setPriorityIndex] = useState(1);
+  const [leadIndex, setLeadIndex] = useState(0);
   const submitDisabled = disabled || draft.name.trim().length === 0;
+  const dialogTitle = mode === "create" ? "New project" : "Edit project";
+  const dialogDescription =
+    mode === "create"
+      ? "Create a reusable project context for Codex tasks."
+      : "Update project context details and sandbox settings.";
+  const githubHref = toNavigableHttpUrl(draft.githubRepoUrl);
+  const projectHref = toNavigableHttpUrl(draft.projectUrl);
+
+  const resetInlineState = () => {
+    setExpanded(false);
+    setPlanStageIndex(0);
+    setPriorityIndex(1);
+    setLeadIndex(0);
+  };
 
   return (
     <Dialog
       open={open}
       onOpenChange={(nextOpen) => {
         if (!nextOpen) {
-          setExpanded(false);
+          resetInlineState();
         }
         onOpenChange(nextOpen);
       }}
@@ -174,15 +203,15 @@ function CreateProjectDialog({
             : "!h-96 !w-full !max-w-4xl !-translate-y-1/2",
         )}
       >
-        <DialogTitle className="sr-only">New project</DialogTitle>
-        <DialogDescription className="sr-only">Create a reusable project context for Codex tasks.</DialogDescription>
+        <DialogTitle className="sr-only">{dialogTitle}</DialogTitle>
+        <DialogDescription className="sr-only">{dialogDescription}</DialogDescription>
 
         <div className="flex items-center justify-between border-b border-white/5 px-5 pb-2 pt-3">
           <div className="flex items-center gap-1.5 text-xs">
             <Folder className="size-3.5 text-amber-300" />
             <span className="text-muted-foreground">{workspaceName}</span>
             <ChevronRight className="size-3 text-muted-foreground/50" />
-            <span className="font-medium text-white">New project</span>
+            <span className="font-medium text-white">{dialogTitle}</span>
           </div>
           <div className="flex items-center gap-1">
             <button
@@ -214,180 +243,109 @@ function CreateProjectDialog({
               onChange={(event) => {
                 onDraftChange((current) => ({ ...current, name: event.target.value }));
               }}
-              placeholder="Project title"
+              placeholder={mode === "create" ? "Project title" : "Project name (e.g. recodee-core)"}
               className="w-full border-0 bg-transparent p-0 text-[2.6rem] font-semibold leading-tight tracking-tight text-white placeholder:text-white/45 focus-visible:outline-none"
               disabled={disabled}
             />
-            <input
-              value={draft.projectUrl}
-              onChange={(event) => {
-                onDraftChange((current) => ({ ...current, projectUrl: event.target.value }));
-              }}
-              placeholder="https://project-domain.com"
-              className="w-full border-0 bg-transparent p-0 text-base text-cyan-200/90 placeholder:text-cyan-200/45 focus-visible:outline-none"
-              disabled={disabled}
-            />
-            <input
-              value={draft.githubRepoUrl}
-              onChange={(event) => {
-                onDraftChange((current) => ({ ...current, githubRepoUrl: event.target.value }));
-              }}
-              placeholder="https://github.com/owner/repo"
-              className="w-full border-0 bg-transparent p-0 text-sm text-emerald-200/90 placeholder:text-emerald-200/45 focus-visible:outline-none"
-              disabled={disabled}
-            />
-            <input
-              value={draft.projectPath}
-              onChange={(event) => {
-                onDraftChange((current) => ({ ...current, projectPath: event.target.value }));
-              }}
-              placeholder="/absolute/path/to/project"
-              className="w-full border-0 bg-transparent p-0 text-sm font-mono text-muted-foreground/95 placeholder:text-muted-foreground/55 focus-visible:outline-none"
-              disabled={disabled}
-            />
-          </div>
-
-          <div className="min-h-0 flex-1 overflow-y-auto px-5">
-            <Textarea
-              value={draft.description}
-              onChange={(event) => {
-                onDraftChange((current) => ({ ...current, description: event.target.value }));
-              }}
-              placeholder="Add description..."
-              className="min-h-full resize-none border-0 bg-transparent px-0 text-2xl text-muted-foreground shadow-none outline-none placeholder:text-muted-foreground/80 focus-visible:ring-0"
-              disabled={disabled}
-              maxLength={512}
-            />
-          </div>
-
-          <div className="mt-auto flex flex-wrap items-end justify-between gap-3 border-t border-white/10 px-4 py-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/5 px-2.5 py-1 text-sm text-white/85">
-                <span className="size-2 rounded-full bg-zinc-300" />
-                Planned
-              </span>
-              <span className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/5 px-2.5 py-1 text-sm text-white/85">
-                <Minus className="size-3.5" />
-                Priority
-              </span>
-              <span className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/5 px-2.5 py-1 text-sm text-white/85">
-                Lead
-              </span>
-            </div>
-
-            <Button
-              type="button"
-              size="sm"
-              onClick={onSubmit}
-              disabled={submitDisabled}
-              className="h-9 rounded-lg bg-white/20 px-4 text-sm font-semibold text-white hover:bg-white/30"
-            >
-              {submitting ? "Creating…" : "Create Project"}
-            </Button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function ProjectDialog({
-  open,
-  onOpenChange,
-  title,
-  description,
-  submitLabel,
-  draft,
-  onDraftChange,
-  onSubmit,
-  disabled,
-}: ProjectDialogProps) {
-  const formDisabled = disabled;
-  const submitDisabled = formDisabled || draft.name.trim().length === 0;
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl border border-white/10 bg-[#020308]/95 p-0 text-foreground shadow-2xl backdrop-blur-sm">
-        <DialogHeader className="space-y-1 border-b border-border/55 px-5 py-4">
-          <DialogTitle className="text-base font-semibold tracking-tight">{title}</DialogTitle>
-          <DialogDescription className="text-xs text-muted-foreground">{description}</DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-3 px-5 py-4">
-          <div className="grid gap-3 sm:grid-cols-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Project name</Label>
-              <Input
-                value={draft.name}
-                onChange={(event) => {
-                  onDraftChange((current) => ({ ...current, name: event.target.value }));
-                }}
-                placeholder="Project name (e.g. recodee-core)"
-                className="h-10 rounded-xl text-xs"
-                disabled={formDisabled}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Project URL</Label>
-              <Input
+            <div className="flex items-center gap-2">
+              <input
                 value={draft.projectUrl}
                 onChange={(event) => {
                   onDraftChange((current) => ({ ...current, projectUrl: event.target.value }));
                 }}
-                placeholder="https://project-domain.com (optional)"
-                className="h-10 rounded-xl text-xs"
-                disabled={formDisabled}
+                placeholder={mode === "create" ? "https://project-domain.com" : "https://project-domain.com (optional)"}
+                className="w-full border-0 bg-transparent p-0 text-base text-cyan-200/90 placeholder:text-cyan-200/45 focus-visible:outline-none"
+                disabled={disabled}
               />
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7 shrink-0 text-cyan-200/80 hover:text-cyan-100"
+                disabled={disabled || !projectHref}
+                title="Open project URL"
+                aria-label="Open project URL in new tab"
+                onClick={() => {
+                  if (!projectHref) {
+                    return;
+                  }
+                  window.open(projectHref, "_blank", "noopener,noreferrer");
+                }}
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+              </Button>
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">GitHub repo</Label>
-              <Input
+            <div className="flex items-center gap-2">
+              <input
                 value={draft.githubRepoUrl}
                 onChange={(event) => {
                   onDraftChange((current) => ({ ...current, githubRepoUrl: event.target.value }));
                 }}
-                placeholder="https://github.com/owner/repo (optional)"
-                className="h-10 rounded-xl text-xs"
-                disabled={formDisabled}
+                placeholder={mode === "create" ? "https://github.com/owner/repo" : "https://github.com/owner/repo (optional)"}
+                className="w-full border-0 bg-transparent p-0 text-sm text-emerald-200/90 placeholder:text-emerald-200/45 focus-visible:outline-none"
+                disabled={disabled}
               />
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7 shrink-0 text-emerald-200/80 hover:text-emerald-100"
+                disabled={disabled || !githubHref}
+                title="Open GitHub repository"
+                aria-label="Open GitHub repository in new tab"
+                onClick={() => {
+                  if (!githubHref) {
+                    return;
+                  }
+                  window.open(githubHref, "_blank", "noopener,noreferrer");
+                }}
+              >
+                <Github className="h-3.5 w-3.5" />
+              </Button>
             </div>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_200px]">
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Absolute path</Label>
-              <Input
+            <div className="flex items-center gap-2">
+              <input
                 value={draft.projectPath}
                 onChange={(event) => {
                   onDraftChange((current) => ({ ...current, projectPath: event.target.value }));
                 }}
-                placeholder="Absolute project path (optional)"
-                className="h-10 rounded-xl text-xs"
-                disabled={formDisabled}
+                placeholder={mode === "create" ? "/absolute/path/to/project" : "Absolute project path (optional)"}
+                className="w-full border-0 bg-transparent p-0 text-sm font-mono text-muted-foreground/95 placeholder:text-muted-foreground/55 focus-visible:outline-none"
+                disabled={disabled}
               />
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7 shrink-0 text-muted-foreground/85 hover:text-foreground"
+                onClick={() => {
+                  void onPickProjectPath();
+                }}
+                disabled={disabled || pickingProjectPath}
+                title={pickingProjectPath ? "Selecting project folder..." : "Select project folder"}
+                aria-label="Select project folder"
+              >
+                <FolderOpen className="h-3.5 w-3.5" />
+              </Button>
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Git branch</Label>
-              <Input
+            <div className="grid gap-3 pt-1 sm:grid-cols-[minmax(0,1fr)_200px]">
+              <input
                 value={draft.gitBranch}
                 onChange={(event) => {
                   onDraftChange((current) => ({ ...current, gitBranch: event.target.value }));
                 }}
-                placeholder="Git branch (optional)"
-                className="h-10 rounded-xl text-xs"
-                disabled={formDisabled}
+                placeholder={mode === "create" ? "Git branch (optional)" : "Git branch (optional)"}
+                className="w-full border-0 bg-transparent p-0 text-sm font-mono text-slate-200/90 placeholder:text-slate-300/50 focus-visible:outline-none"
+                disabled={disabled}
               />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Sandbox mode</Label>
               <Select
                 value={draft.sandboxMode}
                 onValueChange={(value) => {
                   onDraftChange((current) => ({ ...current, sandboxMode: value as ProjectSandboxMode }));
                 }}
-                disabled={formDisabled}
+                disabled={disabled}
               >
-                <SelectTrigger className="h-10 rounded-xl text-xs">
+                <SelectTrigger className="h-8 rounded-md border-white/15 bg-white/[0.04] px-2 text-xs text-slate-100">
                   <SelectValue placeholder="Sandbox mode" />
                 </SelectTrigger>
                 <SelectContent>
@@ -401,41 +359,87 @@ function ProjectDialog({
             </div>
           </div>
 
-          <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Description</Label>
+          <div className="min-h-0 flex-1 overflow-y-auto px-5">
             <Textarea
               value={draft.description}
               onChange={(event) => {
                 onDraftChange((current) => ({ ...current, description: event.target.value }));
               }}
-              placeholder="Optional description (max 512 characters)"
-              className="min-h-24 rounded-xl text-xs"
-              disabled={formDisabled}
+              placeholder={mode === "create" ? "Add description..." : "Optional description (max 512 characters)"}
+              className="min-h-full resize-none border-0 bg-transparent px-0 text-2xl text-muted-foreground shadow-none outline-none placeholder:text-muted-foreground/80 focus-visible:ring-0"
+              disabled={disabled}
               maxLength={512}
             />
           </div>
-        </div>
 
-        <DialogFooter className="border-t border-border/55 px-5 py-3">
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={formDisabled}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            onClick={onSubmit}
-            disabled={submitDisabled}
-            className="rounded-lg"
-          >
-            {submitLabel}
-          </Button>
-        </DialogFooter>
+          <div className="mt-auto flex flex-wrap items-end justify-between gap-3 border-t border-white/10 px-4 py-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setPlanStageIndex((current) => (current + 1) % PLAN_STAGE_OPTIONS.length);
+                }}
+                className={cn(
+                  "inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-sm transition-colors hover:border-white/35",
+                  planStageIndex === 3
+                    ? "border-emerald-400/35 bg-emerald-500/15 text-emerald-100"
+                    : planStageIndex === 2
+                      ? "border-amber-400/35 bg-amber-500/15 text-amber-100"
+                      : planStageIndex === 1
+                        ? "border-sky-400/35 bg-sky-500/15 text-sky-100"
+                        : "border-white/12 bg-white/5 text-white/85",
+                )}
+                disabled={disabled}
+                title="Cycle plan status badge"
+              >
+                <span className="size-2 rounded-full bg-current/90" />
+                {PLAN_STAGE_OPTIONS[planStageIndex]}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPriorityIndex((current) => (current + 1) % PRIORITY_OPTIONS.length);
+                }}
+                className={cn(
+                  "inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-sm transition-colors hover:border-white/35",
+                  priorityIndex === 3
+                    ? "border-red-400/35 bg-red-500/15 text-red-100"
+                    : priorityIndex === 2
+                      ? "border-amber-400/35 bg-amber-500/15 text-amber-100"
+                      : priorityIndex === 1
+                        ? "border-sky-400/35 bg-sky-500/15 text-sky-100"
+                        : "border-white/12 bg-white/5 text-white/85",
+                )}
+                disabled={disabled}
+                title="Cycle priority badge"
+              >
+                <Minus className="size-3.5" />
+                {PRIORITY_OPTIONS[priorityIndex]}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setLeadIndex((current) => (current + 1) % LEAD_OPTIONS.length);
+                }}
+                className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/5 px-2.5 py-1 text-sm text-white/85 transition-colors hover:border-white/35"
+                disabled={disabled}
+                title="Cycle lead badge"
+              >
+                {LEAD_OPTIONS[leadIndex]}
+              </button>
+            </div>
+
+            <Button
+              type="button"
+              size="sm"
+              onClick={onSubmit}
+              disabled={submitDisabled}
+              className="h-9 rounded-lg bg-white/20 px-4 text-sm font-semibold text-white hover:bg-white/30"
+            >
+              {submitting ? (mode === "create" ? "Creating…" : "Saving…") : (mode === "create" ? "Create Project" : "Save")}
+            </Button>
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   );
@@ -463,6 +467,7 @@ export function ProjectsPage() {
     updateMutation,
     deleteMutation,
     openFolderMutation,
+    pickPathMutation,
   } = useProjects(activeWorkspaceId);
   const deleteDialog = useDialogState<{ id: string; name: string }>();
 
@@ -472,13 +477,15 @@ export function ProjectsPage() {
       || getErrorMessageOrNull(createMutation.error)
       || getErrorMessageOrNull(updateMutation.error)
       || getErrorMessageOrNull(deleteMutation.error)
-      || getErrorMessageOrNull(openFolderMutation.error),
+      || getErrorMessageOrNull(openFolderMutation.error)
+      || getErrorMessageOrNull(pickPathMutation.error),
     [
       projectsQuery.error,
       createMutation.error,
       updateMutation.error,
       deleteMutation.error,
       openFolderMutation.error,
+      pickPathMutation.error,
     ],
   );
   const displayMutationError = useMemo(() => {
@@ -562,6 +569,22 @@ export function ProjectsPage() {
     });
 
     handleEditCancel();
+  };
+
+  const handleCreatePathPick = async () => {
+    const payload = await pickPathMutation.mutateAsync();
+    if (payload.status !== "selected" || !payload.path) {
+      return;
+    }
+    setCreateDraft((current) => ({ ...current, projectPath: payload.path ?? "" }));
+  };
+
+  const handleEditPathPick = async () => {
+    const payload = await pickPathMutation.mutateAsync();
+    if (payload.status !== "selected" || !payload.path) {
+      return;
+    }
+    setEditDraft((current) => ({ ...current, projectPath: payload.path ?? "" }));
   };
 
   return (
@@ -838,6 +861,7 @@ export function ProjectsPage() {
       </div>
 
       <CreateProjectDialog
+        mode="create"
         open={createOpen}
         onOpenChange={(open) => {
           setCreateOpen(open);
@@ -852,12 +876,15 @@ export function ProjectsPage() {
         onSubmit={() => {
           void handleAdd();
         }}
+        onPickProjectPath={handleCreatePathPick}
         disabled={busy}
         submitting={createMutation.isPending}
+        pickingProjectPath={pickPathMutation.isPending}
         workspaceName={activeWorkspaceName}
       />
 
-      <ProjectDialog
+      <CreateProjectDialog
+        mode="edit"
         open={editOpen}
         onOpenChange={(open) => {
           if (!open) {
@@ -866,9 +893,6 @@ export function ProjectsPage() {
           }
           setEditOpen(open);
         }}
-        title="Edit project"
-        description="Update project context details and sandbox settings."
-        submitLabel={updateMutation.isPending ? "Saving…" : "Save"}
         draft={editDraft}
         onDraftChange={(updater) => {
           setEditDraft((current) => updater(current));
@@ -876,7 +900,11 @@ export function ProjectsPage() {
         onSubmit={() => {
           void handleEditSave();
         }}
+        onPickProjectPath={handleEditPathPick}
         disabled={busy || editProjectId == null}
+        submitting={updateMutation.isPending}
+        pickingProjectPath={pickPathMutation.isPending}
+        workspaceName={activeWorkspaceName}
       />
 
       <ConfirmDialog

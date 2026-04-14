@@ -7,6 +7,7 @@ import {
   listProjects,
   listProjectPlanLinks,
   openProjectFolder,
+  pickProjectPath,
   updateProject,
 } from "@/features/projects/api";
 import type {
@@ -95,6 +96,13 @@ export function useProjects(activeWorkspaceId: string | null = null) {
     },
   });
 
+  const pickPathMutation = useMutation({
+    mutationFn: () => pickProjectPath(),
+    onError: (error: Error) => {
+      toast.error(error.message || "Failed to open folder picker");
+    },
+  });
+
   return {
     projectsQuery,
     planLinksQuery,
@@ -102,5 +110,6 @@ export function useProjects(activeWorkspaceId: string | null = null) {
     updateMutation,
     deleteMutation,
     openFolderMutation,
+    pickPathMutation,
   };
 }

@@ -6,6 +6,7 @@ import {
   ProjectEntrySchema,
   ProjectOpenFolderRequestSchema,
   ProjectPlanLinksResponseSchema,
+  ProjectPickPathResponseSchema,
   ProjectOpenFolderResponseSchema,
   ProjectsResponseSchema,
   ProjectUpdateRequestSchema,
@@ -44,4 +45,8 @@ export function openProjectFolder(projectId: string, target: "vscode" | "file-ma
     ProjectOpenFolderResponseSchema,
     { body: validated },
   );
+}
+
+export function pickProjectPath() {
+  return post(`${PROJECTS_BASE_PATH}/pick-path`, ProjectPickPathResponseSchema);
 }
