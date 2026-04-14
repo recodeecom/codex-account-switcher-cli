@@ -400,7 +400,10 @@ async def test_projects_api_plan_links_scans_project_paths(async_client, tmp_pat
     alpha_summary = first_path / "openspec" / "plan" / "alpha-plan" / "summary.md"
     beta_summary = first_path / "openspec" / "plan" / "beta-plan" / "summary.md"
     ignored_notes = second_path / "openspec" / "plan" / "ignored-plan" / "notes.md"
-    alpha_summary.write_text("# Plan Summary: alpha-plan\n", encoding="utf-8")
+    alpha_summary.write_text(
+        "# Plan Summary: alpha-plan\n\n- **Status:** completed\n",
+        encoding="utf-8",
+    )
     beta_summary.write_text("# Plan Summary: beta-plan\n", encoding="utf-8")
     ignored_notes.write_text("No summary file means not a plan\n", encoding="utf-8")
 
@@ -435,10 +438,12 @@ async def test_projects_api_plan_links_scans_project_paths(async_client, tmp_pat
     entries = {entry["projectId"]: entry for entry in payload["entries"]}
 
     assert entries[first_id]["planCount"] == 2
+    assert entries[first_id]["completedPlanCount"] == 1
     assert entries[first_id]["latestPlanSlug"] == "beta-plan"
     assert isinstance(entries[first_id]["latestPlanUpdatedAt"], str)
 
     assert entries[second_id]["planCount"] == 0
+    assert entries[second_id]["completedPlanCount"] == 0
     assert entries[second_id]["latestPlanSlug"] is None
     assert entries[second_id]["latestPlanUpdatedAt"] is None
 

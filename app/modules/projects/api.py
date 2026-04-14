@@ -68,6 +68,7 @@ async def list_project_plan_links(
             ProjectPlanLinkEntry(
                 project_id=entry.project_id,
                 plan_count=entry.plan_count,
+                completed_plan_count=entry.completed_plan_count,
                 latest_plan_slug=entry.latest_plan_slug,
                 latest_plan_updated_at=entry.latest_plan_updated_at,
             )

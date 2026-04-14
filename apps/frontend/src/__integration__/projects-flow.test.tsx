@@ -73,8 +73,10 @@ describe("projects flow integration", () => {
     expect(screen.getByText("https://github.com/webu-pro/recodee")).toBeInTheDocument();
     expect(screen.getByText("/home/deadpool/projects/recodee-core")).toBeInTheDocument();
     expect(screen.getByTestId("project-plan-count-project_1")).toHaveTextContent("0 plans");
+    expect(screen.getByTestId("project-plan-count-project_1")).toHaveTextContent("0 successful");
     expect(screen.getAllByText("—").length).toBeGreaterThan(0);
     expect(screen.getAllByText("workspace-write").length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: "Open plans" }).length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "Open VSCode" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Open folder" })).toBeInTheDocument();
 
@@ -153,6 +155,7 @@ describe("projects flow integration", () => {
             {
               projectId: "project_live_1",
               planCount: 3,
+              completedPlanCount: 2,
               latestPlanSlug: "marva-release-rollout",
               latestPlanUpdatedAt: new Date("2026-04-14T09:00:00Z").toISOString(),
             },
@@ -165,8 +168,7 @@ describe("projects flow integration", () => {
     renderWithProviders(<App />);
 
     expect(await screen.findByText("marvahome")).toBeInTheDocument();
-    expect(screen.getByTestId("project-plan-count-project_live_1")).toHaveTextContent(
-      "3 plans • marva-release-rollout",
-    );
+    expect(screen.getByTestId("project-plan-count-project_live_1")).toHaveTextContent("3 plans");
+    expect(screen.getByTestId("project-plan-count-project_live_1")).toHaveTextContent("2 successful");
   });
 });

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ChevronRight, Folder, FolderOpen, Maximize2, Minimize2, Minus, Plus, X } from "lucide-react";
+import { ChevronRight, Folder, Maximize2, Minimize2, Minus, Plus, X } from "lucide-react";
 
 import { AlertMessage } from "@/components/alert-message";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
 import {
   Select,
   SelectContent,
@@ -28,6 +29,7 @@ import { useProjects } from "@/features/projects/hooks/use-projects";
 import type { ProjectEntry, ProjectSandboxMode } from "@/features/projects/schemas";
 import { useWorkspaces } from "@/features/workspaces/hooks/use-workspaces";
 import { useDialogState } from "@/hooks/use-dialog-state";
+import { useNavigate } from "@/lib/router-compat";
 import { cn } from "@/lib/utils";
 import { getErrorMessageOrNull } from "@/utils/errors";
 
@@ -96,6 +98,34 @@ function resolveSandboxBadgeClass(mode: ProjectSandboxMode): string {
     return "border-emerald-500/35 bg-emerald-500/10 text-emerald-200";
   }
   return "border-sky-500/35 bg-sky-500/10 text-sky-200";
+}
+
+function toPlanSuccessPercent(completedPlans: number, totalPlans: number): number {
+  if (totalPlans <= 0) {
+    return 0;
+  }
+  return Math.max(0, Math.min(100, Math.round((completedPlans / totalPlans) * 100)));
+}
+
+function VsCodeIcon({ className }: { className?: string }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex h-3.5 w-3.5 items-center justify-center overflow-hidden rounded-[2px] bg-[#161b22]",
+        className,
+      )}
+      aria-hidden="true"
+    >
+      <svg viewBox="0 0 16 16" className="h-full w-full" xmlns="http://www.w3.org/2000/svg">
+        <path
+          fill="#2489CA"
+          d="M11.6 1.4c.3-.2.8 0 .8.4v12.4c0 .4-.5.6-.8.4L5.1 9 2.9 10.7 1.4 9.8l1.9-1.8-1.9-1.8 1.5-.9L5.1 7l6.5-5.6Z"
+        />
+        <path fill="#1070B3" d="M12.4 3.2 7.4 8l5 4.8V3.2Z" />
+        <path fill="#3C99D4" d="M5.1 7 7.7 8 5.1 9V7Z" />
+      </svg>
+    </span>
+  );
 }
 
 type ProjectDialogProps = {
@@ -422,6 +452,7 @@ function ProjectDialog({
 }
 
 export function ProjectsPage() {
+  const navigate = useNavigate();
   const { workspacesQuery } = useWorkspaces();
   const activeWorkspace = useMemo(
     () => (workspacesQuery.data?.entries ?? []).find((entry) => entry.isActive) ?? null,
@@ -659,20 +690,26 @@ export function ProjectsPage() {
                     <span className="truncate font-mono text-xs text-muted-foreground">{entry.gitBranch || "—"}</span>
 
                     <div
-                      className="min-w-0 truncate text-xs text-muted-foreground"
+                      className="min-w-0 text-xs text-muted-foreground"
                       data-testid={`project-plan-count-${entry.id}`}
                     >
                       {(() => {
                         const link = projectPlanLinkById.get(entry.id);
-                        if (!link) {
-                          return "0 plans";
-                        }
-                        if (link.planCount === 0) {
-                          return "0 plans";
-                        }
-                        const latestSlug = link.latestPlanSlug ?? "latest plan";
-                        const pluralSuffix = link.planCount === 1 ? "" : "s";
-                        return `${link.planCount} plan${pluralSuffix} • ${latestSlug}`;
+                        const totalPlans = link?.planCount ?? 0;
+                        const completedPlans = Math.min(totalPlans, link?.completedPlanCount ?? 0);
+                        const completionPercent = toPlanSuccessPercent(completedPlans, totalPlans);
+                        const planLabel = `${totalPlans} plan${totalPlans === 1 ? "" : "s"}`;
+                        const successLabel = `${completedPlans} successful`;
+
+                        return (
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="truncate">{planLabel}</span>
+                              <span className="shrink-0 text-[11px] text-emerald-300/90">{successLabel}</span>
+                            </div>
+                            <Progress value={completionPercent} className="h-1.5 bg-white/10" />
+                          </div>
+                        );
                       })()}
                     </div>
 
@@ -686,6 +723,16 @@ export function ProjectsPage() {
                         size="sm"
                         variant="ghost"
                         className="h-7 rounded-md px-2 text-xs"
+                        onClick={() => navigate(`/projects/plans?projectId=${encodeURIComponent(entry.id)}`)}
+                        disabled={busy}
+                      >
+                        Open plans
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 rounded-md px-2 text-xs"
                         onClick={() => {
                           void openFolderMutation.mutateAsync({
                             projectId: entry.id,
@@ -694,7 +741,7 @@ export function ProjectsPage() {
                         }}
                         disabled={busy || !entry.projectPath || openFolderBusyProjectId === entry.id}
                       >
-                        <FolderOpen className="mr-1 h-3.5 w-3.5" />
+                        <VsCodeIcon className="mr-1" />
                         Open VSCode
                       </Button>
                       <Button

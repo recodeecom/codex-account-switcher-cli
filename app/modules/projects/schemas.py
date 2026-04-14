@@ -26,6 +26,7 @@ class ProjectsResponse(DashboardModel):
 class ProjectPlanLinkEntry(DashboardModel):
     project_id: str
     plan_count: int
+    completed_plan_count: int = 0
     latest_plan_slug: str | None
     latest_plan_updated_at: datetime | None
 
