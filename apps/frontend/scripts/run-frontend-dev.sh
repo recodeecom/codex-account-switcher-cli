@@ -119,6 +119,7 @@ wait_for_pid_exit() {
 
 ensure_frontend_dependencies() {
   needs_install=0
+  next_loader_path="${frontend_dir}/node_modules/next/dist/build/webpack/loaders/next-flight-client-entry-loader.js"
 
   if [ ! -d "${frontend_dir}/node_modules" ]; then
     needs_install=1
@@ -129,6 +130,11 @@ ensure_frontend_dependencies() {
   fi
 
   if [ ! -x "${frontend_dir}/node_modules/.bin/next" ] || [ ! -d "${frontend_dir}/node_modules/tailwindcss" ] || [ ! -d "${frontend_dir}/node_modules/@tailwindcss/postcss" ]; then
+    needs_install=1
+  fi
+
+  if [ ! -f "${next_loader_path}" ]; then
+    echo "[codex-lb] Missing Next internal loader (${next_loader_path}). Reinstalling dependencies."
     needs_install=1
   fi
 

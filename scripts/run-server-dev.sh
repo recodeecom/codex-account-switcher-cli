@@ -23,15 +23,17 @@ fi
 
 if [ -z "$python_bin" ]; then
   if [ -x "${repo_root}/.venv/bin/python" ]; then
-    python_bin="${repo_root}/.venv/bin/python"
+    set -- "${repo_root}/.venv/bin/python" -m uvicorn app.main:app --host 0.0.0.0 --port "$backend_port" --reload
+  elif command -v uv >/dev/null 2>&1; then
+    set -- uv run --project "$repo_root" python -m uvicorn app.main:app --host 0.0.0.0 --port "$backend_port" --reload
   elif command -v python3 >/dev/null 2>&1; then
-    python_bin="$(command -v python3)"
+    set -- "$(command -v python3)" -m uvicorn app.main:app --host 0.0.0.0 --port "$backend_port" --reload
   else
-    python_bin="$(command -v python)"
+    set -- "$(command -v python)" -m uvicorn app.main:app --host 0.0.0.0 --port "$backend_port" --reload
   fi
+else
+  set -- "$python_bin" -m uvicorn app.main:app --host 0.0.0.0 --port "$backend_port" --reload
 fi
-
-set -- "$python_bin" -m uvicorn app.main:app --host 0.0.0.0 --port "$backend_port" --reload
 for reload_dir in $(printf "%s" "$reload_dirs_raw" | tr ',:' ' '); do
   [ -n "$reload_dir" ] || continue
   case "$reload_dir" in
