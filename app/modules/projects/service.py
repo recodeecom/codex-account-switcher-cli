@@ -5,6 +5,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal, Protocol
+from urllib.parse import urlparse
 
 from app.modules.projects.repository import ProjectRepositoryConflictError
 
@@ -13,6 +14,7 @@ class ProjectEntryLike(Protocol):
     id: str
     name: str
     description: str | None
+    project_url: str | None
     project_path: str | None
     sandbox_mode: str
     git_branch: str | None
@@ -23,12 +25,15 @@ class ProjectEntryLike(Protocol):
 class ProjectsRepositoryPort(Protocol):
     async def list_entries(self) -> Sequence[ProjectEntryLike]: ...
 
+    async def get_entry(self, project_id: str) -> ProjectEntryLike | None: ...
+
     async def exists_name(self, name: str) -> bool: ...
 
     async def add(
         self,
         name: str,
         description: str | None,
+        project_url: str | None,
         project_path: str | None,
         sandbox_mode: str,
         git_branch: str | None,
@@ -39,6 +44,7 @@ class ProjectsRepositoryPort(Protocol):
         project_id: str,
         name: str,
         description: str | None,
+        project_url: str | None,
         project_path: str | None,
         sandbox_mode: str,
         git_branch: str | None,
@@ -55,6 +61,7 @@ class ProjectValidationError(ValueError):
         code: Literal[
             "invalid_project_name",
             "invalid_project_description",
+            "invalid_project_url",
             "invalid_project_path",
             "invalid_project_sandbox",
             "invalid_project_branch",
@@ -73,6 +80,7 @@ class ProjectEntryData:
     id: str
     name: str
     description: str | None
+    project_url: str | None
     project_path: str | None
     sandbox_mode: str
     git_branch: str | None
@@ -102,6 +110,7 @@ class ProjectsService:
                 id=row.id,
                 name=row.name,
                 description=row.description,
+                project_url=row.project_url,
                 project_path=row.project_path,
                 sandbox_mode=row.sandbox_mode,
                 git_branch=row.git_branch,
@@ -112,16 +121,34 @@ class ProjectsService:
         ]
         return ProjectsListData(entries=entries)
 
+    async def get_project(self, project_id: str) -> ProjectEntryData | None:
+        row = await self._repository.get_entry(project_id)
+        if row is None:
+            return None
+        return ProjectEntryData(
+            id=row.id,
+            name=row.name,
+            description=row.description,
+            project_url=row.project_url,
+            project_path=row.project_path,
+            sandbox_mode=row.sandbox_mode,
+            git_branch=row.git_branch,
+            created_at=row.created_at,
+            updated_at=row.updated_at,
+        )
+
     async def add_project(
         self,
         name: str,
         description: str | None,
+        project_url: str | None,
         project_path: str | None,
         sandbox_mode: str | None,
         git_branch: str | None,
     ) -> ProjectEntryData:
         normalized_name = normalize_project_name(name)
         normalized_description = normalize_project_description(description)
+        normalized_project_url = normalize_project_url(project_url)
         normalized_project_path = normalize_project_path(project_path)
         normalized_sandbox_mode = normalize_sandbox_mode(sandbox_mode)
         normalized_git_branch = normalize_git_branch(git_branch)
@@ -133,6 +160,7 @@ class ProjectsService:
             row = await self._repository.add(
                 normalized_name,
                 normalized_description,
+                normalized_project_url,
                 normalized_project_path,
                 normalized_sandbox_mode,
                 normalized_git_branch,
@@ -146,6 +174,7 @@ class ProjectsService:
             id=row.id,
             name=row.name,
             description=row.description,
+            project_url=row.project_url,
             project_path=row.project_path,
             sandbox_mode=row.sandbox_mode,
             git_branch=row.git_branch,
@@ -158,12 +187,14 @@ class ProjectsService:
         project_id: str,
         name: str,
         description: str | None,
+        project_url: str | None,
         project_path: str | None,
         sandbox_mode: str | None,
         git_branch: str | None,
     ) -> ProjectEntryData | None:
         normalized_name = normalize_project_name(name)
         normalized_description = normalize_project_description(description)
+        normalized_project_url = normalize_project_url(project_url)
         normalized_project_path = normalize_project_path(project_path)
         normalized_sandbox_mode = normalize_sandbox_mode(sandbox_mode)
         normalized_git_branch = normalize_git_branch(git_branch)
@@ -173,6 +204,7 @@ class ProjectsService:
                 project_id,
                 normalized_name,
                 normalized_description,
+                normalized_project_url,
                 normalized_project_path,
                 normalized_sandbox_mode,
                 normalized_git_branch,
@@ -189,6 +221,7 @@ class ProjectsService:
             id=row.id,
             name=row.name,
             description=row.description,
+            project_url=row.project_url,
             project_path=row.project_path,
             sandbox_mode=row.sandbox_mode,
             git_branch=row.git_branch,
@@ -219,6 +252,32 @@ def normalize_project_description(value: str | None) -> str | None:
         raise ProjectValidationError(
             "Project description must be 512 characters or fewer",
             code="invalid_project_description",
+        )
+    return normalized
+
+
+def normalize_project_url(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    if not normalized:
+        return None
+    if len(normalized) > 2048:
+        raise ProjectValidationError(
+            "Project URL must be 2048 characters or fewer",
+            code="invalid_project_url",
+        )
+
+    parsed = urlparse(normalized)
+    if not parsed.scheme and not parsed.netloc:
+        has_path_markers = normalized.startswith("/") or normalized.startswith("\\")
+        if "." in normalized and not has_path_markers and " " not in normalized:
+            normalized = f"https://{normalized}"
+            parsed = urlparse(normalized)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ProjectValidationError(
+            "Project URL must be a valid http/https URL",
+            code="invalid_project_url",
         )
     return normalized
 

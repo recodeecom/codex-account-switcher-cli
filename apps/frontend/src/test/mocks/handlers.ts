@@ -81,6 +81,7 @@ const ProjectCreatePayloadSchema = z
 	.object({
 		name: z.string().optional(),
 		description: z.string().nullable().optional(),
+		projectUrl: z.string().nullable().optional(),
 		projectPath: z.string().nullable().optional(),
 		sandboxMode: z.string().optional(),
 		gitBranch: z.string().nullable().optional(),
@@ -91,6 +92,7 @@ const ProjectUpdatePayloadSchema = z
 	.object({
 		name: z.string().optional(),
 		description: z.string().nullable().optional(),
+		projectUrl: z.string().nullable().optional(),
 		projectPath: z.string().nullable().optional(),
 		sandboxMode: z.string().optional(),
 		gitBranch: z.string().nullable().optional(),
@@ -202,6 +204,7 @@ type MockState = {
 		workspaceId: string;
 		name: string;
 		description: string | null;
+		projectUrl: string | null;
 		projectPath: string | null;
 		sandboxMode: "read-only" | "workspace-write" | "danger-full-access";
 		gitBranch: string | null;
@@ -778,6 +781,44 @@ function normalizeProjectPath(
 		};
 	}
 	return { ok: true, value: normalized };
+}
+
+function normalizeProjectUrl(
+	value: unknown,
+): { ok: true; value: string | null } | { ok: false; code: "invalid_project_url"; message: string } {
+	if (value == null) {
+		return { ok: true, value: null };
+	}
+	const normalized = String(value).trim();
+	if (!normalized) {
+		return { ok: true, value: null };
+	}
+	if (normalized.length > 2048) {
+		return {
+			ok: false,
+			code: "invalid_project_url",
+			message: "Project URL must be 2048 characters or fewer",
+		};
+	}
+	try {
+		const url = new URL(
+			/^https?:\/\//i.test(normalized) ? normalized : `https://${normalized}`,
+		);
+		if (url.protocol !== "http:" && url.protocol !== "https:") {
+			return {
+				ok: false,
+				code: "invalid_project_url",
+				message: "Project URL must be a valid http/https URL",
+			};
+		}
+		return { ok: true, value: url.toString() };
+	} catch {
+		return {
+			ok: false,
+			code: "invalid_project_url",
+			message: "Project URL must be a valid http/https URL",
+		};
+	}
 }
 
 function normalizeProjectSandboxMode(
@@ -1869,6 +1910,7 @@ export const handlers = [
 				id: entry.id,
 				name: entry.name,
 				description: entry.description,
+				projectUrl: entry.projectUrl,
 				projectPath: entry.projectPath,
 				sandboxMode: entry.sandboxMode,
 				gitBranch: entry.gitBranch,
@@ -1884,6 +1926,7 @@ export const handlers = [
 		const descriptionRaw = payload?.description;
 		const description =
 			typeof descriptionRaw === "string" ? descriptionRaw.trim() : null;
+		const projectUrlResult = normalizeProjectUrl(payload?.projectUrl);
 		const projectPathResult = normalizeProjectPath(payload?.projectPath);
 		const sandboxModeResult = normalizeProjectSandboxMode(payload?.sandboxMode);
 		const gitBranchResult = normalizeProjectGitBranch(payload?.gitBranch);
@@ -1927,6 +1970,17 @@ export const handlers = [
 					error: {
 						code: projectPathResult.code,
 						message: projectPathResult.message,
+					},
+				},
+				{ status: 400 },
+			);
+		}
+		if (!projectUrlResult.ok) {
+			return HttpResponse.json(
+				{
+					error: {
+						code: projectUrlResult.code,
+						message: projectUrlResult.message,
 					},
 				},
 				{ status: 400 },
@@ -1990,6 +2044,7 @@ export const handlers = [
 			workspaceId: activeWorkspaceId,
 			name,
 			description: description || null,
+			projectUrl: projectUrlResult.value,
 			projectPath: projectPathResult.value,
 			sandboxMode: sandboxModeResult.value,
 			gitBranch: gitBranchResult.value,
@@ -2001,6 +2056,7 @@ export const handlers = [
 			id: created.id,
 			name: created.name,
 			description: created.description,
+			projectUrl: created.projectUrl,
 			projectPath: created.projectPath,
 			sandboxMode: created.sandboxMode,
 			gitBranch: created.gitBranch,
@@ -2016,6 +2072,7 @@ export const handlers = [
 		const descriptionRaw = payload?.description;
 		const description =
 			typeof descriptionRaw === "string" ? descriptionRaw.trim() : null;
+		const projectUrlResult = normalizeProjectUrl(payload?.projectUrl);
 		const projectPathResult = normalizeProjectPath(payload?.projectPath);
 		const sandboxModeResult = normalizeProjectSandboxMode(payload?.sandboxMode);
 		const gitBranchResult = normalizeProjectGitBranch(payload?.gitBranch);
@@ -2083,6 +2140,17 @@ export const handlers = [
 				{ status: 400 },
 			);
 		}
+		if (!projectUrlResult.ok) {
+			return HttpResponse.json(
+				{
+					error: {
+						code: projectUrlResult.code,
+						message: projectUrlResult.message,
+					},
+				},
+				{ status: 400 },
+			);
+		}
 		if (!sandboxModeResult.ok) {
 			return HttpResponse.json(
 				{
@@ -2128,6 +2196,7 @@ export const handlers = [
 			...current,
 			name,
 			description: description || null,
+			projectUrl: projectUrlResult.value,
 			projectPath: projectPathResult.value,
 			sandboxMode: sandboxModeResult.value,
 			gitBranch: gitBranchResult.value,
@@ -2140,11 +2209,50 @@ export const handlers = [
 			id: updated.id,
 			name: updated.name,
 			description: updated.description,
+			projectUrl: updated.projectUrl,
 			projectPath: updated.projectPath,
 			sandboxMode: updated.sandboxMode,
 			gitBranch: updated.gitBranch,
 			createdAt: updated.createdAt,
 			updatedAt: updated.updatedAt,
+		});
+	}),
+
+	http.post("/api/projects/:projectId/open-folder", ({ params }) => {
+		const projectId = String(params.projectId);
+		const activeWorkspaceId = getActiveWorkspaceId(state);
+		const project =
+			activeWorkspaceId == null
+				? undefined
+				: state.projects.find(
+						(entry) => entry.id === projectId && entry.workspaceId === activeWorkspaceId,
+					);
+		if (!project) {
+			return HttpResponse.json(
+				{
+					error: {
+						code: "project_not_found",
+						message: "Project not found",
+					},
+				},
+				{ status: 404 },
+			);
+		}
+		if (!project.projectPath) {
+			return HttpResponse.json(
+				{
+					error: {
+						code: "project_path_required",
+						message: "Project path is required before opening in an editor",
+					},
+				},
+				{ status: 400 },
+			);
+		}
+		return HttpResponse.json({
+			status: "opened",
+			projectPath: project.projectPath,
+			editor: "code",
 		});
 	}),
 

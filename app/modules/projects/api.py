@@ -5,10 +5,12 @@ from fastapi import APIRouter, Body, Depends
 from app.core.auth.dependencies import set_dashboard_error_format, validate_dashboard_session
 from app.core.exceptions import DashboardBadRequestError, DashboardConflictError, DashboardNotFoundError
 from app.dependencies import ProjectsContext, get_projects_context
+from app.modules.projects.editor import ProjectEditorLaunchError, open_project_folder_in_editor
 from app.modules.projects.schemas import (
     ProjectCreateRequest,
     ProjectDeleteResponse,
     ProjectEntry,
+    ProjectOpenFolderResponse,
     ProjectsResponse,
     ProjectUpdateRequest,
 )
@@ -32,6 +34,7 @@ async def list_projects(
                 id=entry.id,
                 name=entry.name,
                 description=entry.description,
+                project_url=entry.project_url,
                 project_path=entry.project_path,
                 sandbox_mode=entry.sandbox_mode,
                 git_branch=entry.git_branch,
@@ -52,6 +55,7 @@ async def create_project(
         created = await context.service.add_project(
             name=payload.name,
             description=payload.description,
+            project_url=payload.project_url,
             project_path=payload.project_path,
             sandbox_mode=payload.sandbox_mode,
             git_branch=payload.git_branch,
@@ -65,6 +69,7 @@ async def create_project(
         id=created.id,
         name=created.name,
         description=created.description,
+        project_url=created.project_url,
         project_path=created.project_path,
         sandbox_mode=created.sandbox_mode,
         git_branch=created.git_branch,
@@ -84,6 +89,7 @@ async def update_project(
             project_id=project_id,
             name=payload.name,
             description=payload.description,
+            project_url=payload.project_url,
             project_path=payload.project_path,
             sandbox_mode=payload.sandbox_mode,
             git_branch=payload.git_branch,
@@ -100,6 +106,7 @@ async def update_project(
         id=updated.id,
         name=updated.name,
         description=updated.description,
+        project_url=updated.project_url,
         project_path=updated.project_path,
         sandbox_mode=updated.sandbox_mode,
         git_branch=updated.git_branch,
@@ -117,3 +124,29 @@ async def delete_project(
     if not deleted:
         raise DashboardNotFoundError("Project not found", code="project_not_found")
     return ProjectDeleteResponse(status="deleted")
+
+
+@router.post("/{project_id}/open-folder", response_model=ProjectOpenFolderResponse)
+async def open_project_folder(
+    project_id: str,
+    context: ProjectsContext = Depends(get_projects_context),
+) -> ProjectOpenFolderResponse:
+    project = await context.service.get_project(project_id)
+    if project is None:
+        raise DashboardNotFoundError("Project not found", code="project_not_found")
+    if not project.project_path:
+        raise DashboardBadRequestError(
+            "Project path is required before opening in an editor",
+            code="project_path_required",
+        )
+
+    try:
+        editor = open_project_folder_in_editor(project.project_path)
+    except ProjectEditorLaunchError as exc:
+        raise DashboardBadRequestError(str(exc), code=exc.code) from exc
+
+    return ProjectOpenFolderResponse(
+        status="opened",
+        project_path=project.project_path,
+        editor=editor,
+    )

@@ -1,7 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-import { createProject, deleteProject, listProjects, updateProject } from "@/features/projects/api";
+import {
+  createProject,
+  deleteProject,
+  listProjects,
+  openProjectFolder,
+  updateProject,
+} from "@/features/projects/api";
 import type { ProjectCreateRequest, ProjectUpdateRequest } from "@/features/projects/schemas";
 
 export function useProjects(activeWorkspaceId: string | null = null) {
@@ -54,10 +60,22 @@ export function useProjects(activeWorkspaceId: string | null = null) {
     },
   });
 
+  const openFolderMutation = useMutation({
+    mutationFn: (projectId: string) => openProjectFolder(projectId),
+    onSuccess: (payload) => {
+      const editorLabel = payload.editor ? ` in ${payload.editor}` : "";
+      toast.success(`Opened project folder${editorLabel}`);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Failed to open project folder");
+    },
+  });
+
   return {
     projectsQuery,
     createMutation,
     updateMutation,
     deleteMutation,
+    openFolderMutation,
   };
 }

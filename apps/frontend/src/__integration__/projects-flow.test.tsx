@@ -50,6 +50,14 @@ describe("projects flow integration", () => {
     expect(within(createDialog).getByText("recodee.com")).toBeInTheDocument();
     await user.type(within(createDialog).getByPlaceholderText("Project title"), "recodee-core");
     await user.type(
+      within(createDialog).getByPlaceholderText("https://project-domain.com"),
+      "recodee.com",
+    );
+    await user.type(
+      within(createDialog).getByPlaceholderText("/absolute/path/to/project"),
+      "/home/deadpool/projects/recodee-core",
+    );
+    await user.type(
       within(createDialog).getByPlaceholderText("Add description..."),
       "Main dashboard project",
     );
@@ -57,6 +65,8 @@ describe("projects flow integration", () => {
 
     expect(await screen.findByText("recodee-core")).toBeInTheDocument();
     expect(screen.getByText("Main dashboard project")).toBeInTheDocument();
+    expect(screen.getByText("https://recodee.com/")).toBeInTheDocument();
+    expect(screen.getByText("/home/deadpool/projects/recodee-core")).toBeInTheDocument();
     expect(screen.getAllByText("—").length).toBeGreaterThan(0);
     expect(screen.getAllByText("workspace-write").length).toBeGreaterThan(0);
 
@@ -64,6 +74,11 @@ describe("projects flow integration", () => {
     const editDialog = await screen.findByRole("dialog", { name: "Edit project" });
     await user.clear(within(editDialog).getByPlaceholderText("Project name (e.g. recodee-core)"));
     await user.type(within(editDialog).getByPlaceholderText("Project name (e.g. recodee-core)"), "recodee-core-v2");
+    await user.clear(within(editDialog).getByPlaceholderText("https://project-domain.com (optional)"));
+    await user.type(
+      within(editDialog).getByPlaceholderText("https://project-domain.com (optional)"),
+      "recodee.dev",
+    );
     await user.clear(within(editDialog).getByPlaceholderText("Optional description (max 512 characters)"));
     await user.type(
       within(editDialog).getByPlaceholderText("Optional description (max 512 characters)"),
@@ -83,6 +98,7 @@ describe("projects flow integration", () => {
 
     expect(await screen.findByText("recodee-core-v2")).toBeInTheDocument();
     expect(screen.getByText("Updated project details")).toBeInTheDocument();
+    expect(screen.getByText("https://recodee.dev/")).toBeInTheDocument();
     expect(screen.getByText("/home/deadpool/projects/recodee-core-v2")).toBeInTheDocument();
     expect(screen.getByText("feature/recodee-core-v2")).toBeInTheDocument();
     expect(screen.queryByText("recodee-core")).not.toBeInTheDocument();

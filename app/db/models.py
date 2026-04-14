@@ -303,6 +303,7 @@ class Project(Base):
     )
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    project_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     project_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     sandbox_mode: Mapped[str] = mapped_column(
         String(64),

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ChevronRight, Folder, Maximize2, Minimize2, Minus, Plus, X } from "lucide-react";
+import { ChevronRight, Folder, FolderOpen, Maximize2, Minimize2, Minus, Plus, X } from "lucide-react";
 
 import { AlertMessage } from "@/components/alert-message";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -41,6 +41,7 @@ const SANDBOX_MODE_OPTIONS: Array<{ value: ProjectSandboxMode; label: string }> 
 type ProjectDraft = {
   name: string;
   description: string;
+  projectUrl: string;
   projectPath: string;
   sandboxMode: ProjectSandboxMode;
   gitBranch: string;
@@ -50,6 +51,7 @@ function getEmptyProjectDraft(): ProjectDraft {
   return {
     name: "",
     description: "",
+    projectUrl: "",
     projectPath: "",
     sandboxMode: DEFAULT_SANDBOX_MODE,
     gitBranch: "",
@@ -60,6 +62,7 @@ function draftFromProject(entry: ProjectEntry): ProjectDraft {
   return {
     name: entry.name,
     description: entry.description ?? "",
+    projectUrl: entry.projectUrl ?? "",
     projectPath: entry.projectPath ?? "",
     sandboxMode: entry.sandboxMode,
     gitBranch: entry.gitBranch ?? "",
@@ -192,6 +195,24 @@ function CreateProjectDialog({
               className="w-full border-0 bg-transparent p-0 text-[2.6rem] font-semibold leading-tight tracking-tight text-white placeholder:text-white/45 focus-visible:outline-none"
               disabled={disabled}
             />
+            <input
+              value={draft.projectUrl}
+              onChange={(event) => {
+                onDraftChange((current) => ({ ...current, projectUrl: event.target.value }));
+              }}
+              placeholder="https://project-domain.com"
+              className="w-full border-0 bg-transparent p-0 text-base text-cyan-200/90 placeholder:text-cyan-200/45 focus-visible:outline-none"
+              disabled={disabled}
+            />
+            <input
+              value={draft.projectPath}
+              onChange={(event) => {
+                onDraftChange((current) => ({ ...current, projectPath: event.target.value }));
+              }}
+              placeholder="/absolute/path/to/project"
+              className="w-full border-0 bg-transparent p-0 text-sm font-mono text-muted-foreground/95 placeholder:text-muted-foreground/55 focus-visible:outline-none"
+              disabled={disabled}
+            />
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto px-5">
@@ -215,7 +236,7 @@ function CreateProjectDialog({
               </span>
               <span className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/5 px-2.5 py-1 text-sm text-white/85">
                 <Minus className="size-3.5" />
-                No priority
+                Priority
               </span>
               <span className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/5 px-2.5 py-1 text-sm text-white/85">
                 Lead
@@ -275,6 +296,21 @@ function ProjectDialog({
               />
             </div>
             <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Project URL</Label>
+              <Input
+                value={draft.projectUrl}
+                onChange={(event) => {
+                  onDraftChange((current) => ({ ...current, projectUrl: event.target.value }));
+                }}
+                placeholder="https://project-domain.com (optional)"
+                className="h-10 rounded-xl text-xs"
+                disabled={formDisabled}
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_200px]">
+            <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Absolute path</Label>
               <Input
                 value={draft.projectPath}
@@ -286,9 +322,6 @@ function ProjectDialog({
                 disabled={formDisabled}
               />
             </div>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-[1fr_200px]">
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Git branch</Label>
               <Input
@@ -377,7 +410,13 @@ export function ProjectsPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [editProjectId, setEditProjectId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<ProjectDraft>(() => getEmptyProjectDraft());
-  const { projectsQuery, createMutation, updateMutation, deleteMutation } = useProjects(activeWorkspaceId);
+  const {
+    projectsQuery,
+    createMutation,
+    updateMutation,
+    deleteMutation,
+    openFolderMutation,
+  } = useProjects(activeWorkspaceId);
   const deleteDialog = useDialogState<{ id: string; name: string }>();
 
   const mutationError = useMemo(
@@ -385,12 +424,14 @@ export function ProjectsPage() {
       getErrorMessageOrNull(projectsQuery.error)
       || getErrorMessageOrNull(createMutation.error)
       || getErrorMessageOrNull(updateMutation.error)
-      || getErrorMessageOrNull(deleteMutation.error),
+      || getErrorMessageOrNull(deleteMutation.error)
+      || getErrorMessageOrNull(openFolderMutation.error),
     [
       projectsQuery.error,
       createMutation.error,
       updateMutation.error,
       deleteMutation.error,
+      openFolderMutation.error,
     ],
   );
   const displayMutationError = useMemo(() => {
@@ -408,6 +449,11 @@ export function ProjectsPage() {
 
   const entries = projectsQuery.data?.entries ?? [];
   const busy = createMutation.isPending || updateMutation.isPending || deleteMutation.isPending;
+  const openFolderBusyProjectId =
+    openFolderMutation.isPending
+    && typeof openFolderMutation.variables === "string"
+      ? openFolderMutation.variables
+      : null;
 
   const handleAdd = async () => {
     const name = createDraft.name.trim();
@@ -418,6 +464,7 @@ export function ProjectsPage() {
     await createMutation.mutateAsync({
       name,
       description: createDraft.description.trim() || null,
+      projectUrl: createDraft.projectUrl.trim() || null,
       projectPath: createDraft.projectPath.trim() || null,
       sandboxMode: createDraft.sandboxMode,
       gitBranch: createDraft.gitBranch.trim() || null,
@@ -452,6 +499,7 @@ export function ProjectsPage() {
       payload: {
         name,
         description: editDraft.description.trim() || null,
+        projectUrl: editDraft.projectUrl.trim() || null,
         projectPath: editDraft.projectPath.trim() || null,
         sandboxMode: editDraft.sandboxMode,
         gitBranch: editDraft.gitBranch.trim() || null,
@@ -515,9 +563,10 @@ export function ProjectsPage() {
             </div>
           ) : (
             <div className="min-h-0 flex-1 overflow-auto">
-              <div className="min-w-[1040px]">
-                <div className="sticky top-0 z-[1] grid h-9 grid-cols-[minmax(240px,1.7fr)_minmax(240px,2fr)_170px_170px_110px_170px] items-center gap-3 border-b border-border/65 bg-background/95 px-5 text-[11px] uppercase tracking-[0.08em] text-muted-foreground backdrop-blur-sm">
+              <div className="min-w-[1320px]">
+                <div className="sticky top-0 z-[1] grid h-9 grid-cols-[minmax(220px,1.6fr)_minmax(220px,1.4fr)_minmax(220px,1.8fr)_150px_170px_110px_220px] items-center gap-3 border-b border-border/65 bg-background/95 px-5 text-[11px] uppercase tracking-[0.08em] text-muted-foreground backdrop-blur-sm">
                   <span>Name</span>
+                  <span>URL</span>
                   <span>Path</span>
                   <span>Sandbox</span>
                   <span>Branch</span>
@@ -528,12 +577,27 @@ export function ProjectsPage() {
                 {entries.map((entry) => (
                   <div
                     key={entry.id}
-                    className="group/row grid min-h-12 grid-cols-[minmax(240px,1.7fr)_minmax(240px,2fr)_170px_170px_110px_170px] items-center gap-3 border-b border-border/45 px-5 py-2 text-sm transition-colors hover:bg-accent/35"
+                    className="group/row grid min-h-12 grid-cols-[minmax(220px,1.6fr)_minmax(220px,1.4fr)_minmax(220px,1.8fr)_150px_170px_110px_220px] items-center gap-3 border-b border-border/45 px-5 py-2 text-sm transition-colors hover:bg-accent/35"
                   >
                     <div className="min-w-0">
                       <p className="truncate font-medium">{entry.name}</p>
                       <p className="truncate text-xs text-muted-foreground">{entry.description || "No description"}</p>
                     </div>
+
+                    <span className="truncate text-xs text-muted-foreground">
+                      {entry.projectUrl ? (
+                        <a
+                          href={entry.projectUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-cyan-300 underline-offset-2 hover:text-cyan-200 hover:underline"
+                        >
+                          {entry.projectUrl}
+                        </a>
+                      ) : (
+                        "—"
+                      )}
+                    </span>
 
                     <span className="truncate font-mono text-xs text-muted-foreground">
                       {entry.projectPath || "—"}
@@ -550,6 +614,19 @@ export function ProjectsPage() {
                     </span>
 
                     <div className="flex items-center justify-end gap-1.5 opacity-100 md:opacity-0 md:group-hover/row:opacity-100 transition-opacity">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 rounded-md px-2 text-xs"
+                        onClick={() => {
+                          void openFolderMutation.mutateAsync(entry.id);
+                        }}
+                        disabled={busy || !entry.projectPath || openFolderBusyProjectId === entry.id}
+                      >
+                        <FolderOpen className="mr-1 h-3.5 w-3.5" />
+                        Open folder
+                      </Button>
                       <Button
                         type="button"
                         size="sm"

@@ -16,6 +16,7 @@ from app.modules.projects.service import (
     ProjectValidationError,
     normalize_git_branch,
     normalize_project_description,
+    normalize_project_url,
     normalize_project_path,
     normalize_project_name,
     normalize_sandbox_mode,
@@ -29,6 +30,7 @@ class _Entry:
     id: str
     name: str
     description: str | None
+    project_url: str | None
     project_path: str | None
     sandbox_mode: str
     git_branch: str | None
@@ -43,6 +45,9 @@ class _Repo:
     async def list_entries(self) -> Sequence[_Entry]:
         return sorted(self._entries.values(), key=lambda entry: (entry.created_at, entry.name))
 
+    async def get_entry(self, project_id: str) -> _Entry | None:
+        return self._entries.get(project_id)
+
     async def exists_name(self, name: str) -> bool:
         return any(entry.name == name for entry in self._entries.values())
 
@@ -50,6 +55,7 @@ class _Repo:
         self,
         name: str,
         description: str | None,
+        project_url: str | None,
         project_path: str | None,
         sandbox_mode: str,
         git_branch: str | None,
@@ -59,6 +65,7 @@ class _Repo:
             id=f"proj-{len(self._entries) + 1}",
             name=name,
             description=description,
+            project_url=project_url,
             project_path=project_path,
             sandbox_mode=sandbox_mode,
             git_branch=git_branch,
@@ -73,6 +80,7 @@ class _Repo:
         project_id: str,
         name: str,
         description: str | None,
+        project_url: str | None,
         project_path: str | None,
         sandbox_mode: str,
         git_branch: str | None,
@@ -85,6 +93,7 @@ class _Repo:
             id=entry.id,
             name=name,
             description=description,
+            project_url=project_url,
             project_path=project_path,
             sandbox_mode=sandbox_mode,
             git_branch=git_branch,
@@ -117,6 +126,15 @@ def test_normalize_project_description_rejects_too_long_value() -> None:
         normalize_project_description("x" * 513)
 
 
+def test_normalize_project_url_rejects_invalid_value() -> None:
+    with pytest.raises(ProjectValidationError):
+        normalize_project_url("invalid url")
+
+
+def test_normalize_project_url_normalizes_domain_to_https() -> None:
+    assert normalize_project_url("marvahome.com") == "https://marvahome.com"
+
+
 def test_normalize_project_path_rejects_relative_value() -> None:
     with pytest.raises(ProjectValidationError):
         normalize_project_path("./repo")
@@ -144,10 +162,10 @@ def test_normalize_git_branch_rejects_invalid_value() -> None:
 @pytest.mark.asyncio
 async def test_add_project_rejects_duplicate_name() -> None:
     service = ProjectsService(cast(ProjectsRepositoryPort, _Repo()))
-    await service.add_project("recodee-core", "Main project", None, None, None)
+    await service.add_project("recodee-core", "Main project", None, None, None, None)
 
     with pytest.raises(ProjectNameExistsError):
-        await service.add_project("recodee-core", "Another description", None, None, None)
+        await service.add_project("recodee-core", "Another description", None, None, None, None)
 
 
 @pytest.mark.asyncio
@@ -160,6 +178,7 @@ async def test_add_project_maps_repository_conflict() -> None:
             self,
             name: str,
             description: str | None,
+            project_url: str | None,
             project_path: str | None,
             sandbox_mode: str,
             git_branch: str | None,
@@ -169,7 +188,7 @@ async def test_add_project_maps_repository_conflict() -> None:
     service = ProjectsService(cast(ProjectsRepositoryPort, _ConflictRepo()))
 
     with pytest.raises(ProjectNameExistsError):
-        await service.add_project("recodee-core", "Main project", None, None, None)
+        await service.add_project("recodee-core", "Main project", None, None, None, None)
 
 
 @pytest.mark.asyncio
@@ -178,6 +197,7 @@ async def test_update_project_success() -> None:
     created = await service.add_project(
         "old-name",
         "Old description",
+        "https://old.example.com",
         "/home/deadpool/projects/old-name",
         "workspace-write",
         "feature/old-name",
@@ -187,6 +207,7 @@ async def test_update_project_success() -> None:
         created.id,
         "new-name",
         "New description",
+        "https://new.example.com",
         "/home/deadpool/projects/new-name",
         "danger-full-access",
         "feature/new-name",
@@ -196,6 +217,7 @@ async def test_update_project_success() -> None:
     assert updated.id == created.id
     assert updated.name == "new-name"
     assert updated.description == "New description"
+    assert updated.project_url == "https://new.example.com"
     assert updated.project_path == "/home/deadpool/projects/new-name"
     assert updated.sandbox_mode == "danger-full-access"
     assert updated.git_branch == "feature/new-name"
@@ -205,7 +227,7 @@ async def test_update_project_success() -> None:
 async def test_update_project_returns_none_when_missing() -> None:
     service = ProjectsService(cast(ProjectsRepositoryPort, _Repo()))
 
-    updated = await service.update_project("missing", "new-name", None, None, None, None)
+    updated = await service.update_project("missing", "new-name", None, None, None, None, None)
 
     assert updated is None
 
@@ -218,6 +240,7 @@ async def test_update_project_maps_repository_conflict() -> None:
             project_id: str,
             name: str,
             description: str | None,
+            project_url: str | None,
             project_path: str | None,
             sandbox_mode: str,
             git_branch: str | None,
@@ -227,15 +250,16 @@ async def test_update_project_maps_repository_conflict() -> None:
     service = ProjectsService(cast(ProjectsRepositoryPort, _ConflictRepo()))
 
     with pytest.raises(ProjectNameExistsError):
-        await service.update_project("proj-1", "new-name", "new-description", None, None, None)
+        await service.update_project("proj-1", "new-name", "new-description", None, None, None, None)
 
 
 @pytest.mark.asyncio
 async def test_add_project_applies_planner_defaults() -> None:
     service = ProjectsService(cast(ProjectsRepositoryPort, _Repo()))
 
-    created = await service.add_project("planner-defaults", None, None, None, None)
+    created = await service.add_project("planner-defaults", None, None, None, None, None)
 
+    assert created.project_url is None
     assert created.project_path is None
     assert created.sandbox_mode == DEFAULT_SANDBOX_MODE
     assert created.git_branch is None

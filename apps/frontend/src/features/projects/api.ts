@@ -4,6 +4,7 @@ import {
   ProjectCreateRequestSchema,
   ProjectDeleteResponseSchema,
   ProjectEntrySchema,
+  ProjectOpenFolderResponseSchema,
   ProjectsResponseSchema,
   ProjectUpdateRequestSchema,
 } from "@/features/projects/schemas";
@@ -28,4 +29,11 @@ export function updateProject(projectId: string, payload: unknown) {
 
 export function deleteProject(projectId: string) {
   return del(`${PROJECTS_BASE_PATH}/${encodeURIComponent(projectId)}`, ProjectDeleteResponseSchema);
+}
+
+export function openProjectFolder(projectId: string) {
+  return post(
+    `${PROJECTS_BASE_PATH}/${encodeURIComponent(projectId)}/open-folder`,
+    ProjectOpenFolderResponseSchema,
+  );
 }

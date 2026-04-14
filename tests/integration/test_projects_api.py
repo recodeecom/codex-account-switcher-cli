@@ -19,6 +19,7 @@ async def test_projects_api_crud_and_validation(async_client):
         json={
             "name": "recodee-core",
             "description": "Main dashboard project",
+            "projectUrl": "marvahome.com",
             "projectPath": "/home/deadpool/projects/recodee-core",
             "sandboxMode": "workspace-write",
             "gitBranch": "feature/recodee-core",
@@ -28,6 +29,7 @@ async def test_projects_api_crud_and_validation(async_client):
     created_payload = created.json()
     assert created_payload["name"] == "recodee-core"
     assert created_payload["description"] == "Main dashboard project"
+    assert created_payload["projectUrl"] == "https://marvahome.com"
     assert created_payload["projectPath"] == "/home/deadpool/projects/recodee-core"
     assert created_payload["sandboxMode"] == "workspace-write"
     assert created_payload["gitBranch"] == "feature/recodee-core"
@@ -44,6 +46,7 @@ async def test_projects_api_crud_and_validation(async_client):
         json={
             "name": "ops",
             "description": "Operations project",
+            "projectUrl": "https://ops.example.com",
             "projectPath": "/home/deadpool/projects/ops",
             "sandboxMode": "read-only",
             "gitBranch": None,
@@ -57,6 +60,7 @@ async def test_projects_api_crud_and_validation(async_client):
         json={
             "name": "recodee-core-v2",
             "description": "Updated description",
+            "projectUrl": "recodee.com",
             "projectPath": "/home/deadpool/projects/recodee-core-v2",
             "sandboxMode": "danger-full-access",
             "gitBranch": "feature/recodee-core-v2",
@@ -67,6 +71,7 @@ async def test_projects_api_crud_and_validation(async_client):
     assert updated_payload["id"] == created_payload["id"]
     assert updated_payload["name"] == "recodee-core-v2"
     assert updated_payload["description"] == "Updated description"
+    assert updated_payload["projectUrl"] == "https://recodee.com"
     assert updated_payload["projectPath"] == "/home/deadpool/projects/recodee-core-v2"
     assert updated_payload["sandboxMode"] == "danger-full-access"
     assert updated_payload["gitBranch"] == "feature/recodee-core-v2"
@@ -148,6 +153,13 @@ async def test_projects_api_crud_and_validation(async_client):
     assert invalid_path.status_code == 400
     assert invalid_path.json()["error"]["code"] == "invalid_project_path"
 
+    invalid_url = await async_client.post(
+        "/api/projects",
+        json={"name": "valid-name", "description": "desc", "projectUrl": "not a url"},
+    )
+    assert invalid_url.status_code == 400
+    assert invalid_url.json()["error"]["code"] == "invalid_project_url"
+
     invalid_sandbox = await async_client.post(
         "/api/projects",
         json={"name": "valid-name", "description": "desc", "sandboxMode": "invalid"},
@@ -189,9 +201,39 @@ async def test_projects_api_defaults_sandbox_mode(async_client):
     )
     assert created.status_code == 200
     payload = created.json()
+    assert payload["projectUrl"] is None
     assert payload["projectPath"] is None
     assert payload["sandboxMode"] == "workspace-write"
     assert payload["gitBranch"] is None
+
+
+@pytest.mark.asyncio
+async def test_projects_api_open_folder(async_client, monkeypatch):
+    created = await async_client.post(
+        "/api/projects",
+        json={
+            "name": "open-folder-project",
+            "projectPath": "/home/deadpool/Documents/recodee",
+        },
+    )
+    assert created.status_code == 200
+    project_id = created.json()["id"]
+
+    def _fake_open(_path: str) -> str:
+        return "code"
+
+    monkeypatch.setattr(
+        "app.modules.projects.api.open_project_folder_in_editor",
+        _fake_open,
+    )
+
+    opened = await async_client.post(f"/api/projects/{project_id}/open-folder")
+    assert opened.status_code == 200
+    assert opened.json() == {
+        "status": "opened",
+        "projectPath": "/home/deadpool/Documents/recodee",
+        "editor": "code",
+    }
 
 
 @pytest.mark.asyncio
