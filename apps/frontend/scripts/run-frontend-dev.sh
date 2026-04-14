@@ -16,6 +16,24 @@ lock_file="${frontend_dir}/.next/dev/lock"
 host="${NEXT_DEV_HOSTNAME:-0.0.0.0}"
 port="${NEXT_DEV_PORT:-5174}"
 reuse_existing_next="${NEXT_DEV_REUSE_EXISTING:-true}"
+next_dev_engine="$(printf "%s" "${NEXT_DEV_ENGINE:-webpack}" | tr "[:upper:]" "[:lower:]")"
+next_dev_engine_flag=""
+
+case "$next_dev_engine" in
+  ""|webpack)
+    next_dev_engine="webpack"
+    next_dev_engine_flag="--webpack"
+    ;;
+  turbopack|turbo|default|auto)
+    next_dev_engine="turbopack"
+    next_dev_engine_flag=""
+    ;;
+  *)
+    echo "[codex-lb] Unknown NEXT_DEV_ENGINE='${next_dev_engine}'. Falling back to webpack."
+    next_dev_engine="webpack"
+    next_dev_engine_flag="--webpack"
+    ;;
+esac
 
 port_in_use() {
   ss -ltn "( sport = :$1 )" 2>/dev/null | grep -q LISTEN
@@ -194,14 +212,24 @@ if normalize_bool "${logging_to_file}"; then
   rm -f "${log_dir}/.write-check" 2>/dev/null || true
   log_file="${FRONTEND_LOG_FILE:-${log_dir}/frontend.log}"
   if mkdir -p "$log_dir" 2>/dev/null && touch "$log_file" 2>/dev/null; then
-    echo "[codex-lb] Frontend dev server: http://localhost:${port}"
+    echo "[codex-lb] Frontend dev server: http://localhost:${port} (${next_dev_engine})"
     echo "[codex-lb] Frontend logs -> ${log_file}"
-    ./node_modules/.bin/next dev --port "$port" --hostname "$host" 2>&1 | tee -a "$log_file"
+    if [ -n "$next_dev_engine_flag" ]; then
+      ./node_modules/.bin/next dev "$next_dev_engine_flag" --port "$port" --hostname "$host" 2>&1 | tee -a "$log_file"
+    else
+      ./node_modules/.bin/next dev --port "$port" --hostname "$host" 2>&1 | tee -a "$log_file"
+    fi
   else
     echo "[codex-lb] LOGGING_TO_FILE enabled, but ${log_file} is not writable. Falling back to stdout."
+    if [ -n "$next_dev_engine_flag" ]; then
+      exec ./node_modules/.bin/next dev "$next_dev_engine_flag" --port "$port" --hostname "$host"
+    fi
     exec ./node_modules/.bin/next dev --port "$port" --hostname "$host"
   fi
 else
-  echo "[codex-lb] Frontend dev server: http://localhost:${port}"
+  echo "[codex-lb] Frontend dev server: http://localhost:${port} (${next_dev_engine})"
+  if [ -n "$next_dev_engine_flag" ]; then
+    exec ./node_modules/.bin/next dev "$next_dev_engine_flag" --port "$port" --hostname "$host"
+  fi
   exec ./node_modules/.bin/next dev --port "$port" --hostname "$host"
 fi
