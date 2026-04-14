@@ -447,38 +447,26 @@ describe("plans flow integration", () => {
     expect(await screen.findByRole("button", { name: /copy starter prompt/i })).toBeInTheDocument();
   });
 
-  it("starts team execution from the selected plan with one click", async () => {
+  it("can collapse the plan list to show full-width detail and expand it again", async () => {
     const user = userEvent.setup();
-    let launchedSlug: string | null = null;
-
-    server.use(
-      http.post("/api/projects/plans/:planSlug/run-team", ({ params }) => {
-        const planSlug = String(params.planSlug);
-        launchedSlug = planSlug;
-        return HttpResponse.json({
-          slug: planSlug,
-          workerCount: 4,
-          command: `omx team 4:executor "Execute OpenSpec plan ${planSlug}"`,
-          pid: 424242,
-          launchedAt: "2026-04-14T18:30:00Z",
-          planPath: `openspec/plan/${planSlug}`,
-          plannerPlanPath: `openspec/plan/${planSlug}/planner/plan.md`,
-          logPath: `.omx/logs/plans-run-team-${planSlug}-20260414T183000Z.log`,
-        });
-      }),
-    );
-
     window.history.pushState({}, "", "/projects/plans");
     renderWithProviders(<App />);
 
-    const runNowButton = await screen.findByTestId("plan-run-team-now");
-    await user.click(runNowButton);
+    const toggle = await screen.findByTestId("plans-toggle-list-panel");
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    expect(toggle).toHaveTextContent("Full width detail");
+    expect(await screen.findByTestId("plans-list-panel")).toBeInTheDocument();
+    expect(screen.getByTestId("plans-detail-panel")).toBeInTheDocument();
 
+    await user.click(toggle);
     await waitFor(() => {
-      expect(launchedSlug).toBe("projects-plans-page");
+      expect(screen.queryByTestId("plans-list-panel")).not.toBeInTheDocument();
     });
-    expect(
-      await screen.findByText("Team started for projects-plans-page with 4 workers (PID 424242)."),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("plans-detail-panel")).toBeInTheDocument();
+    expect(screen.getByTestId("plans-toggle-list-panel")).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByTestId("plans-toggle-list-panel")).toHaveTextContent("Show plan list");
+
+    await user.click(screen.getByTestId("plans-toggle-list-panel"));
+    expect(await screen.findByTestId("plans-list-panel")).toBeInTheDocument();
   });
 });

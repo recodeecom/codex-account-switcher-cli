@@ -1,0 +1,42 @@
+name: Release to npm (provenance)
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    if: github.repository == 'recodeecom/musafety'
+    runs-on: ubuntu-latest
+    environment: npm
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Setup Node
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: npm
+
+      - name: Install
+        run: npm ci --ignore-scripts
+
+      - name: Verify
+        run: |
+          npm test
+          node --check bin/multiagent-safety.js
+          npm pack --dry-run
+
+      - name: Publish with provenance
+        run: npm publish --provenance --access public

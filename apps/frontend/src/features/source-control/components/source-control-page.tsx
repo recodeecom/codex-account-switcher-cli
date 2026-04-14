@@ -70,21 +70,16 @@ function botActivityClass(status: "idle" | "active"): string {
     : "border-white/20 bg-white/10 text-zinc-300";
 }
 
-function isAgentBranch(branch: string | null | undefined): boolean {
-  if (!branch) {
-    return false;
-  }
-  return AGENT_BRANCH_PATTERN.test(branch.trim());
-}
-
 function snapshotFromBranch(branch: string | null | undefined): string | null {
   if (!branch) {
     return null;
   }
+
   const segments = branch
     .split("/")
     .map((segment) => segment.trim())
     .filter((segment) => segment.length > 0);
+
   if (segments.length === 0) {
     return null;
   }
@@ -97,6 +92,7 @@ function snapshotFromBranch(branch: string | null | undefined): string | null {
   if (segments.length >= 2) {
     return segments[1] ?? null;
   }
+
   return segments[0] ?? null;
 }
 
@@ -151,12 +147,6 @@ export function SourceControlPage() {
   );
   const details = branchDetailsQuery.data;
   const selectedSnapshot = snapshotFromBranch(details?.branch);
-  const selectedBranchIsCurrent = Boolean(details && preview && details.branch === preview.activeBranch);
-  const selectedBranchHasOpenPr =
-    Boolean(details?.pullRequest) && details?.pullRequest?.headBranch === details?.branch;
-  const shouldShowCurrentChanges = Boolean(
-    details && isAgentBranch(details.branch) && selectedBranchHasOpenPr,
-  );
 
   const createPrMutation = useMutation({
     mutationFn: async () => {
@@ -243,9 +233,7 @@ export function SourceControlPage() {
                 <p className="text-[11px] text-slate-500">
                   local: {preview.activeBranch} • main: {preview.baseBranch}
                 </p>
-                <p className="text-[11px] text-slate-500">
-                  refreshed {formatIso(preview.refreshedAt)}
-                </p>
+                <p className="text-[11px] text-slate-500">refreshed {formatIso(preview.refreshedAt)}</p>
               </div>
 
               <label className="sr-only" htmlFor="source-control-project-select">
@@ -342,9 +330,7 @@ export function SourceControlPage() {
                     <article className="rounded-lg border border-white/[0.08] bg-white/[0.02] p-3">
                       <p className="text-[11px] uppercase tracking-[0.12em] text-slate-500">Current branch</p>
                       <p className="mt-2 truncate text-sm font-medium text-slate-100">{details.branch}</p>
-                      <p className="mt-1 text-[11px] text-slate-400">
-                        snapshot: {selectedSnapshot ?? "--"} • {selectedBranchIsCurrent ? "working now" : "not currently checked out"}
-                      </p>
+                      <p className="mt-1 text-[11px] text-slate-500">snapshot: {selectedSnapshot ?? "--"}</p>
                     </article>
                     <article className="rounded-lg border border-white/[0.08] bg-white/[0.02] p-3">
                       <p className="text-[11px] uppercase tracking-[0.12em] text-slate-500">Main/base branch</p>
@@ -466,8 +452,8 @@ export function SourceControlPage() {
                         ) : (
                           preview.gxBots.map((bot) => {
                             const botSnapshot = bot.snapshotName ?? snapshotFromBranch(bot.matchedBranch);
-                            const botMatchesSelected = bot.matchedBranch === details.branch;
                             const botSessionCount = Math.max(0, bot.sessionCount ?? 0);
+                            const botMatchesSelected = bot.matchedBranch === details.branch;
                             return (
                               <div
                                 key={`${bot.botName}-${bot.runtime}`}
@@ -506,41 +492,29 @@ export function SourceControlPage() {
                     </article>
                   </div>
 
-                  {shouldShowCurrentChanges ? (
-                    <article className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3">
-                      <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-slate-300">
-                        <GitBranch className="h-3.5 w-3.5 text-cyan-300" />
-                        Current changes ({details.branch})
-                      </div>
-                      <div className="space-y-1.5">
-                        {details.changedFiles.length === 0 ? (
-                          <p className="text-xs text-slate-500">
-                            No file diffs against {details.baseBranch} for this branch.
-                          </p>
-                        ) : (
-                          details.changedFiles.map((file) => (
-                            <div
-                              key={`${details.branch}:${file.path}:${file.code}`}
-                              className="flex items-start gap-2 rounded-md border border-white/[0.12] bg-white/[0.02] px-2.5 py-1.5"
-                            >
-                              <span className="mt-0.5 w-4 text-[10px] font-semibold text-emerald-300">{file.code}</span>
-                              <span className="min-w-0 break-all text-[11px] text-slate-300">{file.path}</span>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </article>
-                  ) : (
-                    <article className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3">
-                      <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-slate-300">
-                        <GitBranch className="h-3.5 w-3.5 text-slate-400" />
-                        Current changes
-                      </div>
-                      <p className="text-xs text-slate-500">
-                        Current changes are shown only for agent branches with an open pull request.
-                      </p>
-                    </article>
-                  )}
+                  <article className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3">
+                    <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-slate-300">
+                      <GitBranch className="h-3.5 w-3.5 text-cyan-300" />
+                      Current changes ({details.branch})
+                    </div>
+                    <div className="space-y-1.5">
+                      {details.changedFiles.length === 0 ? (
+                        <p className="text-xs text-slate-500">
+                          No file diffs against {details.baseBranch} for this branch.
+                        </p>
+                      ) : (
+                        details.changedFiles.map((file) => (
+                          <div
+                            key={`${details.branch}:${file.path}:${file.code}`}
+                            className="flex items-start gap-2 rounded-md border border-white/[0.12] bg-white/[0.02] px-2.5 py-1.5"
+                          >
+                            <span className="mt-0.5 w-4 text-[10px] font-semibold text-emerald-300">{file.code}</span>
+                            <span className="min-w-0 break-all text-[11px] text-slate-300">{file.path}</span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </article>
                 </>
               ) : (
                 <p className="text-sm text-slate-500">Select a branch to view changes and PR status.</p>

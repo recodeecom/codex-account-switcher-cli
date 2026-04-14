@@ -10,6 +10,8 @@ import {
   ExternalLink,
   FolderTree,
   Image as ImageIcon,
+  PanelLeftClose,
+  PanelLeftOpen,
   Palette,
   PenLine,
   ShieldCheck,
@@ -49,11 +51,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { listProjects } from "@/features/projects/api";
-import { runOpenSpecPlanTeam } from "@/features/plans/api";
 import { useOpenSpecPlans } from "@/features/plans/hooks/use-open-spec-plans";
 import type { OpenSpecPlanDetail } from "@/features/plans/schemas";
 import { cn } from "@/lib/utils";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { getErrorMessageOrNull } from "@/utils/errors";
 import { formatTimeLong } from "@/utils/formatters";
 
@@ -714,28 +715,77 @@ export function buildPlanLaunchSuggestions(planDetail: OpenSpecPlanDetail): Plan
   ];
 }
 
-export function buildPlanTeamExecutionPrompt(planDetail: OpenSpecPlanDetail): string {
-  const plannerPlanPath = `openspec/plan/${planDetail.slug}/planner/plan.md`;
-  return [
-    `Use this execution handoff for ${planDetail.title}:`,
+export function buildPlanTeamExecutionPrompt(
+  planDetail: OpenSpecPlanDetail,
+  displayStatus: string,
+  summaryLines: string[],
+): string {
+  const planPath = `openspec/plan/${planDetail.slug}`;
+  const remainingRoles = planDetail.roles.filter((role) => role.doneCheckpoints < role.totalCheckpoints);
+  const currentCheckpoint = planDetail.currentCheckpoint;
+  const recommendedWorkerCount = Math.max(3, Math.min(6, remainingRoles.length || 1));
+  const starterCommand = `$team ${recommendedWorkerCount}:executor "Execute OpenSpec plan ${planDetail.slug} from ${planPath} with master-agent coordination and verification lane."`;
+
+  const lines = [
+    starterCommand,
     "",
-    `1. Execute sequentially with $ralph execute ${plannerPlanPath}`,
-    `2. Execute in parallel with $team execute ${plannerPlanPath}`,
-  ].join("\n");
+    "Run this from your Master Agent session to start coordinated team execution for this plan.",
+    `Repository: /home/deadpool/Documents/recodee`,
+    `Plan workspace: ${planPath}`,
+    "",
+    "Team execution contract:",
+    "- Keep one implementation lane and one verification lane active in parallel.",
+    "- Use the plan checkpoint files as source of truth (do not restart planning).",
+    "- Track progress by updating role tasks/checkpoints as work completes.",
+    "",
+    `Plan: ${planDetail.title}`,
+    `Slug: ${planDetail.slug}`,
+    `Status: ${displayStatus}`,
+    `Overall progress: ${roleCompletionLabel(planDetail.overallProgress.doneCheckpoints, planDetail.overallProgress.totalCheckpoints)} checkpoints complete (${planDetail.overallProgress.percentComplete}%)`,
+  ];
+
+  if (currentCheckpoint) {
+    lines.push(
+      `Current checkpoint: ${formatRoleLabel(currentCheckpoint.role)} · ${currentCheckpoint.checkpointId} · ${formatCheckpointState(currentCheckpoint.state)}`,
+      `Current checkpoint note: ${currentCheckpoint.message || "No checkpoint message provided."}`,
+      `Current checkpoint time: ${currentCheckpoint.timestamp}`,
+    );
+  } else {
+    lines.push("Current checkpoint: none recorded.");
+  }
+
+  if (remainingRoles.length > 0) {
+    lines.push("Remaining role checkpoints:");
+    lines.push(
+      ...remainingRoles.map(
+        (role) =>
+          `- ${formatRoleLabel(role.role)} ${roleCompletionLabel(role.doneCheckpoints, role.totalCheckpoints)}`,
+      ),
+    );
+  }
+
+  if (summaryLines.length > 0) {
+    lines.push("Plan summary:");
+    lines.push(...summaryLines.map((line) => `- ${line}`));
+  }
+
+  lines.push(
+    "",
+    "Use bundled prompt cards from this plan when delegating waves to teammates.",
+    "After team lanes converge, run final verification before shutdown.",
+  );
+
+  return lines.join("\n");
 }
 
 export function PlansPage() {
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [showCompletedPlans, setShowCompletedPlans] = useState(false);
+  const [isPlanListCollapsed, setIsPlanListCollapsed] = useState(false);
   const [collapsedStepRows, setCollapsedStepRows] = useState<Record<string, boolean>>({});
   const [collapsedPromptCards, setCollapsedPromptCards] = useState<Record<string, boolean>>({});
   const [zoomedPromptKey, setZoomedPromptKey] = useState<string | null>(null);
-  const [runTeamFeedback, setRunTeamFeedback] = useState<{
-    scopeKey: string;
-    variant: "success" | "error";
-    message: string;
-  } | null>(null);
   const projectsQuery = useQuery({
     queryKey: ["projects", "list", "plans-page"],
     queryFn: listProjects,
@@ -765,26 +815,10 @@ export function PlansPage() {
   const listError = getErrorMessageOrNull(plansQuery.error);
   const detailError = getErrorMessageOrNull(planDetailQuery.error);
   const planDetail = planDetailQuery.data;
+  const canToggleListLayout = entries.length > 0;
+  const isDetailFullWidth = canToggleListLayout && isPlanListCollapsed;
 
   const selectedEntry = entries.find((entry) => entry.slug === effectiveSelectedSlug) ?? null;
-  const currentFeedbackScopeKey = `${effectiveProjectId ?? "current"}:${effectiveSelectedSlug ?? ""}`;
-  const runTeamMutation = useMutation({
-    mutationFn: (planSlug: string) => runOpenSpecPlanTeam(planSlug, effectiveProjectId),
-    onSuccess: (result) => {
-      setRunTeamFeedback({
-        scopeKey: `${effectiveProjectId ?? "current"}:${result.slug}`,
-        variant: "success",
-        message: `Team started for ${result.slug} with ${result.workerCount} workers (PID ${result.pid}).`,
-      });
-    },
-    onError: (error: unknown) => {
-      setRunTeamFeedback({
-        scopeKey: currentFeedbackScopeKey,
-        variant: "error",
-        message: getErrorMessageOrNull(error) ?? "Failed to start team execution.",
-      });
-    },
-  });
 
   const selectedEntryDisplayStatus = selectedEntry
     ? getDisplayStatus(selectedEntry.status, selectedEntry.overallProgress)
@@ -840,8 +874,11 @@ export function PlansPage() {
     planDetail && selectedEntryDisplayStatus
       ? buildPlanStarterPrompt(planDetail, selectedEntryDisplayStatus, summaryLines)
       : "";
-  const teamExecutionPrompt = planDetail ? buildPlanTeamExecutionPrompt(planDetail) : "";
   const launchSuggestions = planDetail ? buildPlanLaunchSuggestions(planDetail) : [];
+  const teamExecutionPrompt =
+    planDetail && selectedEntryDisplayStatus
+      ? buildPlanTeamExecutionPrompt(planDetail, selectedEntryDisplayStatus, summaryLines)
+      : "";
   const executorRole = planDetail?.roles.find((role) => role.role.trim().toLowerCase() === "executor") ?? null;
   const executorCheckpointStatusMap = parseCheckpointStatusMap(executorRole?.tasksMarkdown ?? "");
   if (
@@ -914,17 +951,32 @@ export function PlansPage() {
             </Select>
           </div>
 
-          <label className="inline-flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
-            <Switch
-              checked={showCompletedPlans}
-              onCheckedChange={(checked) => {
-                setSelectedSlug(null);
-                setShowCompletedPlans(checked);
-              }}
-              aria-label="Show completed plans"
-            />
-            Show completed plans
-          </label>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <label className="inline-flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+              <Switch
+                checked={showCompletedPlans}
+                onCheckedChange={(checked) => {
+                  setSelectedSlug(null);
+                  setShowCompletedPlans(checked);
+                }}
+                aria-label="Show completed plans"
+              />
+              Show completed plans
+            </label>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs"
+              onClick={() => setIsPlanListCollapsed((prev) => !prev)}
+              aria-pressed={isDetailFullWidth}
+              disabled={!canToggleListLayout}
+              data-testid="plans-toggle-list-panel"
+            >
+              {isDetailFullWidth ? <PanelLeftOpen className="size-3.5" /> : <PanelLeftClose className="size-3.5" />}
+              {isDetailFullWidth ? "Show plan list" : "Full width detail"}
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -943,9 +995,16 @@ export function PlansPage() {
           description='This project only has completed plans right now. Enable "Show completed plans" to view them.'
         />
       ) : (
-        <div className="grid gap-4 lg:grid-cols-[minmax(32rem,40rem)_minmax(0,1fr)]">
-          <div className="rounded-xl border border-border/60 bg-card/60 p-3">
-            <Table>
+        <div
+          className={cn(
+            "grid gap-4",
+            isDetailFullWidth ? "grid-cols-1" : "lg:grid-cols-[minmax(32rem,40rem)_minmax(0,1fr)]",
+          )}
+          data-testid="plans-layout-grid"
+        >
+          {!isDetailFullWidth ? (
+            <div className="rounded-xl border border-border/60 bg-card/60 p-3" data-testid="plans-list-panel">
+              <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[52%]">Plan</TableHead>
@@ -1029,10 +1088,11 @@ export function PlansPage() {
                   );
                 })}
               </TableBody>
-            </Table>
-          </div>
+              </Table>
+            </div>
+          ) : null}
 
-          <div className="rounded-xl border border-border/60 bg-card/60 p-4">
+          <div className="rounded-xl border border-border/60 bg-card/60 p-4" data-testid="plans-detail-panel">
             {selectedEntry ? (
               <>
                 <div className="mb-3 rounded-lg border border-cyan-500/15 bg-gradient-to-r from-[#040c18]/95 via-[#050c16]/95 to-[#060913]/95 p-3 shadow-[0_10px_30px_-24px_rgba(34,211,238,0.75)]">
@@ -1091,35 +1151,13 @@ export function PlansPage() {
                         </div>
                       ) : null}
                     </div>
-                    <div className="shrink-0">
-                      <div className="flex flex-wrap justify-end gap-2">
-                        {planDetail ? (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="secondary"
-                            className="border border-cyan-500/30 bg-cyan-500/10 text-cyan-100 hover:bg-cyan-500/20"
-                            onClick={() => {
-                              runTeamMutation.mutate(planDetail.slug);
-                            }}
-                            disabled={runTeamMutation.isPending}
-                            data-testid="plan-run-team-now"
-                          >
-                            {runTeamMutation.isPending ? "Starting team..." : "Run Team Now"}
-                          </Button>
-                        ) : null}
-                        {teamExecutionPrompt ? (
-                          <CopyButton value={teamExecutionPrompt} label="Copy team execution prompt" />
-                        ) : null}
-                        {starterPrompt ? <CopyButton value={starterPrompt} label="Copy starter prompt" /> : null}
-                      </div>
+                    <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                      {teamExecutionPrompt ? (
+                        <CopyButton value={teamExecutionPrompt} label="Copy team execution prompt" />
+                      ) : null}
+                      {starterPrompt ? <CopyButton value={starterPrompt} label="Copy starter prompt" /> : null}
                     </div>
                   </div>
-                  {runTeamFeedback && runTeamFeedback.scopeKey === currentFeedbackScopeKey ? (
-                    <AlertMessage variant={runTeamFeedback.variant} className="mt-3">
-                      {runTeamFeedback.message}
-                    </AlertMessage>
-                  ) : null}
                 </div>
 
                 {detailError ? (
