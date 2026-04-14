@@ -220,17 +220,22 @@ def _build_usage_window(
     fx_rate_usd_to_eur: float,
 ) -> RequestLogUsageSummaryWindow:
     token_attr = "tokens_5h" if window == "5h" else "tokens_7d" if window == "7d" else "tokens_30d"
-    cost_attr = "cost_usd_5h" if window == "5h" else "cost_usd_7d" if window == "7d" else "cost_usd_30d"
-    accounts = [
-        RequestLogUsageAccountTokens(
-            account_id=row.account_id,
-            account_email=row.account_email,
-            tokens=max(0, getattr(row, token_attr)),
-            cost_usd=max(0.0, getattr(row, cost_attr)),
-            cost_eur=max(0.0, getattr(row, cost_attr) * fx_rate_usd_to_eur),
+    cost_usd_attr = "cost_usd_5h" if window == "5h" else "cost_usd_7d" if window == "7d" else "cost_usd_30d"
+    cost_eur_attr = "cost_eur_5h" if window == "5h" else "cost_eur_7d" if window == "7d" else "cost_eur_30d"
+    accounts: list[RequestLogUsageAccountTokens] = []
+    for row in rows:
+        cost_usd = max(0.0, getattr(row, cost_usd_attr))
+        persisted_cost_eur = max(0.0, getattr(row, cost_eur_attr))
+        resolved_cost_eur = persisted_cost_eur if persisted_cost_eur > 0 else cost_usd * fx_rate_usd_to_eur
+        accounts.append(
+            RequestLogUsageAccountTokens(
+                account_id=row.account_id,
+                account_email=row.account_email,
+                tokens=max(0, getattr(row, token_attr)),
+                cost_usd=cost_usd,
+                cost_eur=max(0.0, resolved_cost_eur),
+            )
         )
-        for row in rows
-    ]
     accounts.sort(key=lambda row: (-row.tokens, row.account_id is None, row.account_id or ""))
     return RequestLogUsageSummaryWindow(
         total_tokens=sum(item.tokens for item in accounts),

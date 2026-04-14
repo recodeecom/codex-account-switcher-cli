@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 import pytest
+from sqlalchemy import update
 
 from app.core.config.settings import get_settings
 from app.core.crypto import TokenEncryptor
@@ -209,6 +210,87 @@ async def test_request_logs_usage_summary_returns_rolling_5h_and_7d_totals(async
     assert last30d_accounts[1]["tokens"] == 210
     assert last30d_accounts[2]["accountId"] is None
     assert last30d_accounts[2]["tokens"] == 10
+
+
+@pytest.mark.asyncio
+async def test_request_logs_usage_summary_prefers_persisted_eur_cost(async_client, db_setup):
+    now = utcnow()
+    account_id = "acc_usage_persisted_eur"
+    persisted_cost_usd = 4.0
+    persisted_cost_eur = 9.5
+
+    async with SessionLocal() as session:
+        accounts_repo = AccountsRepository(session)
+        logs_repo = RequestLogsRepository(session)
+        await accounts_repo.upsert(_make_account(account_id, "usage-persisted-eur@example.com"))
+        log = await logs_repo.add_log(
+            account_id=account_id,
+            request_id="req_usage_persisted_eur",
+            model="gpt-5.1",
+            input_tokens=120,
+            output_tokens=80,
+            latency_ms=100,
+            status="success",
+            error_code=None,
+            requested_at=now - timedelta(hours=1),
+        )
+        await session.execute(
+            update(log.__class__)
+            .where(log.__class__.id == log.id)
+            .values(cost_usd=persisted_cost_usd, cost_eur=persisted_cost_eur)
+        )
+        await session.commit()
+
+    response = await async_client.get("/api/request-logs/usage-summary")
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert payload["last30d"]["totalCostUsd"] == pytest.approx(persisted_cost_usd)
+    assert payload["last30d"]["totalCostEur"] == pytest.approx(persisted_cost_eur)
+    row_30d = next((row for row in payload["last30d"]["accounts"] if row["accountId"] == account_id), None)
+    assert row_30d is not None
+    assert row_30d["costUsd"] == pytest.approx(persisted_cost_usd)
+    assert row_30d["costEur"] == pytest.approx(persisted_cost_eur)
+
+
+@pytest.mark.asyncio
+async def test_request_logs_usage_summary_uses_fx_fallback_when_persisted_eur_missing(async_client, db_setup):
+    now = utcnow()
+    account_id = "acc_usage_missing_eur"
+    persisted_cost_usd = 3.25
+
+    async with SessionLocal() as session:
+        accounts_repo = AccountsRepository(session)
+        logs_repo = RequestLogsRepository(session)
+        await accounts_repo.upsert(_make_account(account_id, "usage-missing-eur@example.com"))
+        log = await logs_repo.add_log(
+            account_id=account_id,
+            request_id="req_usage_missing_eur",
+            model="gpt-5.1",
+            input_tokens=40,
+            output_tokens=30,
+            latency_ms=100,
+            status="success",
+            error_code=None,
+            requested_at=now - timedelta(hours=1),
+        )
+        await session.execute(
+            update(log.__class__).where(log.__class__.id == log.id).values(cost_usd=persisted_cost_usd, cost_eur=None)
+        )
+        await session.commit()
+
+    response = await async_client.get("/api/request-logs/usage-summary")
+    assert response.status_code == 200
+    payload = response.json()
+    fx_rate = get_settings().request_logs_usage_fx_usd_to_eur
+    expected_cost_eur = persisted_cost_usd * fx_rate
+
+    assert payload["last30d"]["totalCostUsd"] == pytest.approx(persisted_cost_usd)
+    assert payload["last30d"]["totalCostEur"] == pytest.approx(expected_cost_eur)
+    row_30d = next((row for row in payload["last30d"]["accounts"] if row["accountId"] == account_id), None)
+    assert row_30d is not None
+    assert row_30d["costUsd"] == pytest.approx(persisted_cost_usd)
+    assert row_30d["costEur"] == pytest.approx(expected_cost_eur)
 
 
 @pytest.mark.asyncio

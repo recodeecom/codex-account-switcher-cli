@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 from sqlalchemy.exc import ResourceClosedError
 
+from app.core.config.settings import get_settings
 from app.db.session import SessionLocal
 from app.modules.request_logs.repository import RequestLogsRepository
 
@@ -34,3 +35,4 @@ async def test_add_log_ignores_closed_transaction(monkeypatch) -> None:
 
         assert log.request_id == "req"
         assert log.cost_usd is not None
+        assert log.cost_eur == pytest.approx(log.cost_usd * get_settings().request_logs_usage_fx_usd_to_eur)

@@ -9,6 +9,7 @@ from sqlalchemy import Integer, String, and_, case, cast, func, literal_column, 
 from sqlalchemy import exc as sa_exc
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config.settings import get_settings
 from app.core.usage.logs import RequestLogLike, calculated_cost_from_log
 from app.core.usage.types import BucketModelAggregate
 from app.core.utils.request_id import ensure_request_id
@@ -32,6 +33,9 @@ class RequestLogTokenUsageRow:
     cost_usd_5h: float
     cost_usd_7d: float
     cost_usd_30d: float
+    cost_eur_5h: float
+    cost_eur_7d: float
+    cost_eur_30d: float
 
 
 class RequestLogsRepository:
@@ -52,6 +56,7 @@ class RequestLogsRepository:
         output_tokens_expr = func.coalesce(RequestLog.output_tokens, RequestLog.reasoning_tokens, 0)
         token_expr = func.coalesce(RequestLog.input_tokens, 0) + output_tokens_expr
         cost_usd_expr = func.coalesce(RequestLog.cost_usd, 0.0)
+        cost_eur_expr = func.coalesce(RequestLog.cost_eur, 0.0)
 
         stmt = (
             select(
@@ -75,6 +80,15 @@ class RequestLogsRepository:
                     0.0,
                 ).label("cost_usd_7d"),
                 func.coalesce(func.sum(cost_usd_expr), 0.0).label("cost_usd_30d"),
+                func.coalesce(
+                    func.sum(case((RequestLog.requested_at >= since_5h, cost_eur_expr), else_=0.0)),
+                    0.0,
+                ).label("cost_eur_5h"),
+                func.coalesce(
+                    func.sum(case((RequestLog.requested_at >= since_7d, cost_eur_expr), else_=0.0)),
+                    0.0,
+                ).label("cost_eur_7d"),
+                func.coalesce(func.sum(cost_eur_expr), 0.0).label("cost_eur_30d"),
             )
             .select_from(RequestLog)
             .join(Account, Account.id == RequestLog.account_id, isouter=True)
@@ -93,6 +107,9 @@ class RequestLogsRepository:
                 cost_usd_5h=float(cost_usd_5h or 0.0),
                 cost_usd_7d=float(cost_usd_7d or 0.0),
                 cost_usd_30d=float(cost_usd_30d or 0.0),
+                cost_eur_5h=float(cost_eur_5h or 0.0),
+                cost_eur_7d=float(cost_eur_7d or 0.0),
+                cost_eur_30d=float(cost_eur_30d or 0.0),
             )
             for (
                 account_id,
@@ -103,6 +120,9 @@ class RequestLogsRepository:
                 cost_usd_5h,
                 cost_usd_7d,
                 cost_usd_30d,
+                cost_eur_5h,
+                cost_eur_7d,
+                cost_eur_30d,
             ) in result.all()
         ]
 
@@ -192,6 +212,7 @@ class RequestLogsRepository:
             cached_input_tokens=cached_input_tokens,
             reasoning_tokens=reasoning_tokens,
             cost_usd=None,
+            cost_eur=None,
             reasoning_effort=reasoning_effort,
             latency_ms=latency_ms,
             latency_first_token_ms=latency_first_token_ms,
@@ -201,6 +222,12 @@ class RequestLogsRepository:
             requested_at=requested_at or utcnow(),
         )
         log.cost_usd = calculated_cost_from_log(typing_cast(RequestLogLike, log))
+        if log.cost_usd is None:
+            log.cost_eur = None
+        else:
+            fx_rate = get_settings().request_logs_usage_fx_usd_to_eur
+            resolved_fx_rate = fx_rate if fx_rate > 0 else 1.0
+            log.cost_eur = float(log.cost_usd) * resolved_fx_rate
         self._session.add(log)
         try:
             await self._session.commit()
