@@ -56,6 +56,15 @@ function resolveOwnerName(email: string): string {
   return words.length > 0 ? words.join(" ") : email;
 }
 
+function buildDefaultOwnerMember(ownerEmail: string, ownerName: string): LocalWorkspaceMember {
+  return {
+    id: `member-owner-${ownerEmail}`,
+    name: ownerName,
+    email: ownerEmail,
+    role: "owner",
+  };
+}
+
 export function MembersTab() {
   const { workspacesQuery } = useWorkspaces();
   const user = useMedusaAdminAuthStore((state) => state.user);
@@ -70,23 +79,21 @@ export function MembersTab() {
   const ownerName =
     `${user?.first_name ?? ""} ${user?.last_name ?? ""}`.trim() || resolveOwnerName(ownerEmail);
 
-  const [members, setMembers] = useState<LocalWorkspaceMember[]>(() => {
+  const [membersByWorkspaceId, setMembersByWorkspaceId] = useState<Record<string, LocalWorkspaceMember[]>>({});
+  const members = useMemo(() => {
     if (!workspace) {
       return [];
+    }
+    const cached = membersByWorkspaceId[workspace.id];
+    if (cached) {
+      return cached;
     }
     const local = readWorkspaceLocalProfile(workspace.id);
     if (local.members.length > 0) {
       return local.members;
     }
-    return [
-      {
-        id: `member-owner-${ownerEmail}`,
-        name: ownerName,
-        email: ownerEmail,
-        role: "owner",
-      },
-    ];
-  });
+    return [buildDefaultOwnerMember(ownerEmail, ownerName)];
+  }, [workspace, membersByWorkspaceId, ownerEmail, ownerName]);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<LocalWorkspaceMemberRole>("member");
 
@@ -95,7 +102,10 @@ export function MembersTab() {
       return;
     }
     patchWorkspaceLocalProfile(workspace.id, { members: nextMembers });
-    setMembers(nextMembers);
+    setMembersByWorkspaceId((previous) => ({
+      ...previous,
+      [workspace.id]: nextMembers,
+    }));
   };
 
   const handleInvite = () => {
