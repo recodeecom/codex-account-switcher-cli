@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ChevronRight, Folder, Maximize2, Minimize2, Minus, Plus, X } from "lucide-react";
+import { ChevronRight, Folder, FolderOpen, Github, Globe, Maximize2, Minimize2, Minus, Plus, X } from "lucide-react";
 
 import { AlertMessage } from "@/components/alert-message";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -649,39 +649,66 @@ export function ProjectsPage() {
                       <p className="truncate text-xs text-muted-foreground">{entry.description || "No description"}</p>
                     </div>
 
-                    <span className="truncate text-xs text-muted-foreground">
+                    <span className="min-w-0 text-xs text-muted-foreground">
                       {entry.projectUrl ? (
-                        <a
-                          href={entry.projectUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-cyan-300 underline-offset-2 hover:text-cyan-200 hover:underline"
-                        >
-                          {entry.projectUrl}
-                        </a>
+                        <span className="flex min-w-0 items-center gap-1.5">
+                          <Globe className="h-3.5 w-3.5 shrink-0 text-cyan-300/80" />
+                          <a
+                            href={entry.projectUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="truncate text-cyan-300 underline-offset-2 hover:text-cyan-200 hover:underline"
+                          >
+                            {entry.projectUrl}
+                          </a>
+                        </span>
                       ) : (
                         "—"
                       )}
                     </span>
 
-                    <span className="truncate text-xs text-muted-foreground">
+                    <span className="min-w-0 text-xs text-muted-foreground">
                       {entry.githubRepoUrl ? (
-                        <a
-                          href={entry.githubRepoUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-emerald-300 underline-offset-2 hover:text-emerald-200 hover:underline"
-                        >
-                          {entry.githubRepoUrl}
-                        </a>
+                        <span className="flex min-w-0 items-center gap-1.5">
+                          <Github className="h-3.5 w-3.5 shrink-0 text-emerald-300/80" />
+                          <a
+                            href={entry.githubRepoUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="truncate text-emerald-300 underline-offset-2 hover:text-emerald-200 hover:underline"
+                          >
+                            {entry.githubRepoUrl}
+                          </a>
+                        </span>
                       ) : (
                         "—"
                       )}
                     </span>
 
-                    <span className="truncate font-mono text-xs text-muted-foreground">
-                      {entry.projectPath || "—"}
-                    </span>
+                    <div className="flex min-w-0 items-center gap-1">
+                      <span className="truncate font-mono text-xs text-muted-foreground">
+                        {entry.projectPath || "—"}
+                      </span>
+                      {entry.projectPath ? (
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className="h-6 w-6 shrink-0 text-muted-foreground/80 hover:text-foreground"
+                          onClick={() => {
+                            void openFolderMutation.mutateAsync({
+                              projectId: entry.id,
+                              target: "file-manager",
+                            });
+                          }}
+                          disabled={busy || openFolderBusyProjectId === entry.id}
+                          title="Open in file manager"
+                          aria-label={`Open ${entry.name} in file manager`}
+                        >
+                          <FolderOpen className="h-3.5 w-3.5" />
+                        </Button>
+                      ) : null}
+                    </div>
 
                     <Badge variant="outline" className={cn("justify-center rounded-md px-2 py-0.5 text-[11px] font-medium", resolveSandboxBadgeClass(entry.sandboxMode))}>
                       {entry.sandboxMode}
@@ -757,7 +784,7 @@ export function ProjectsPage() {
                         }}
                         disabled={busy || !entry.projectPath || openFolderBusyProjectId === entry.id}
                       >
-                        <Folder className="mr-1 h-3.5 w-3.5" />
+                        <FolderOpen className="mr-1 h-3.5 w-3.5" />
                         Open folder
                       </Button>
                       <Button
