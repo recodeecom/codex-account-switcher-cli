@@ -2385,10 +2385,15 @@ export const handlers = [
 						(left, right) =>
 							new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime(),
 					);
+				const completedPlanCount = linkedPlans.filter((plan) => {
+					const normalizedStatus = String(plan.status || "").trim().toLowerCase();
+					return normalizedStatus === "completed" || plan.overallProgress.percentComplete >= 100;
+				}).length;
 				const latest = linkedPlans[0] ?? null;
 				return {
 					projectId: entry.id,
 					planCount: linkedPlans.length,
+					completedPlanCount,
 					latestPlanSlug: latest ? latest.slug : null,
 					latestPlanUpdatedAt: latest ? latest.updatedAt : null,
 				};

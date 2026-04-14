@@ -65,6 +65,7 @@ export const ProjectOpenFolderResponseSchema = z.object({
 export const ProjectPlanLinkEntrySchema = z.object({
   projectId: z.string().min(1),
   planCount: z.number().int().min(0),
+  completedPlanCount: z.number().int().min(0).default(0),
   latestPlanSlug: z.string().nullable(),
   latestPlanUpdatedAt: z.string().datetime({ offset: true }).nullable(),
 });

@@ -118,6 +118,7 @@ class ProjectsListData:
 class ProjectPlanLinkData:
     project_id: str
     plan_count: int
+    completed_plan_count: int
     latest_plan_slug: str | None
     latest_plan_updated_at: datetime | None
 
@@ -265,6 +266,7 @@ class ProjectsService:
                     ProjectPlanLinkData(
                         project_id=row.id,
                         plan_count=0,
+                        completed_plan_count=0,
                         latest_plan_slug=None,
                         latest_plan_updated_at=None,
                     )
@@ -279,6 +281,7 @@ class ProjectsService:
                     ProjectPlanLinkData(
                         project_id=row.id,
                         plan_count=0,
+                        completed_plan_count=0,
                         latest_plan_slug=None,
                         latest_plan_updated_at=None,
                     )
@@ -288,8 +291,11 @@ class ProjectsService:
             latest_plan_slug: str | None = None
             latest_plan_updated_at: datetime | None = None
             latest_plan_mtime = 0.0
+            completed_plan_count = 0
 
             for plan_dir in plan_dirs:
+                if _is_plan_successful(plan_dir):
+                    completed_plan_count += 1
                 candidate_mtime = _latest_plan_mtime(plan_dir)
                 if candidate_mtime <= latest_plan_mtime:
                     continue
@@ -301,6 +307,7 @@ class ProjectsService:
                 ProjectPlanLinkData(
                     project_id=row.id,
                     plan_count=len(plan_dirs),
+                    completed_plan_count=completed_plan_count,
                     latest_plan_slug=latest_plan_slug,
                     latest_plan_updated_at=latest_plan_updated_at,
                 )
@@ -595,6 +602,24 @@ def _latest_plan_mtime(plan_dir: Path) -> float:
     except OSError:
         return latest_mtime
     return latest_mtime
+
+
+def _is_plan_successful(plan_dir: Path) -> bool:
+    summary_path = plan_dir / "summary.md"
+    checkpoints_path = plan_dir / "checkpoints.md"
+    try:
+        summary_markdown = summary_path.read_text(encoding="utf-8")
+    except OSError:
+        summary_markdown = ""
+    if "**status:** completed" in summary_markdown.lower():
+        return True
+
+    try:
+        checkpoints_markdown = checkpoints_path.read_text(encoding="utf-8")
+    except OSError:
+        checkpoints_markdown = ""
+    lowered = checkpoints_markdown.lower()
+    return "role=verifier" in lowered and "state=done" in lowered
 
 
 def _safe_path_mtime(path: Path) -> float:

@@ -57,6 +57,7 @@ import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { getErrorMessageOrNull } from "@/utils/errors";
 import { formatTimeLong } from "@/utils/formatters";
+import { useSearchParams } from "react-router-dom";
 
 function roleCompletionLabel(done: number, total: number): string {
   return `${done}/${total}`;
@@ -779,8 +780,10 @@ export function buildPlanTeamExecutionPrompt(
 }
 
 export function PlansPage() {
+  const [searchParams] = useSearchParams();
+  const requestedProjectId = searchParams.get("projectId");
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(requestedProjectId);
   const [showCompletedPlans, setShowCompletedPlans] = useState(false);
   const [isPlanListCollapsed, setIsPlanListCollapsed] = useState(false);
   const [collapsedStepRows, setCollapsedStepRows] = useState<Record<string, boolean>>({});
