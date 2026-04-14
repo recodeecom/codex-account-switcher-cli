@@ -981,6 +981,46 @@ describe("isAccountWorkingNow", () => {
     expect(isAccountWorkingNow(account, nowMs)).toBe(true);
   });
 
+  it("keeps active-snapshot accounts in working-now when recent session rows remain visible without no-live-telemetry override", () => {
+    const nowMs = new Date("2026-04-04T12:00:00.000Z").getTime();
+    const account = createAccountSummary({
+      codexLiveSessionCount: 0,
+      codexTrackedSessionCount: 0,
+      codexSessionCount: 0,
+      codexCurrentTaskPreview: null,
+      codexSessionTaskPreviews: [
+        {
+          sessionKey: "pid:9010",
+          taskPreview: "Continue rollout verification for live usage",
+          taskUpdatedAt: "2026-04-04T11:15:00.000Z",
+        },
+      ],
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "zeus",
+        activeSnapshotName: "zeus",
+        isActiveSnapshot: true,
+        hasLiveSession: false,
+      },
+      usage: {
+        primaryRemainingPercent: 44,
+        secondaryRemainingPercent: 60,
+      },
+      lastUsageRecordedAtPrimary: null,
+      lastUsageRecordedAtSecondary: null,
+      liveQuotaDebug: {
+        snapshotsConsidered: ["zeus"],
+        overrideApplied: false,
+        overrideReason: "missing_live_usage_payload",
+        merged: null,
+        rawSamples: [],
+      },
+    });
+
+    expect(hasActiveCliSessionSignal(account, nowMs)).toBe(true);
+    expect(isAccountWorkingNow(account, nowMs)).toBe(true);
+  });
+
   it("drops working-now when session rows are older than the long preview grace window", () => {
     const nowMs = new Date("2026-04-04T12:00:00.000Z").getTime();
     const account = createAccountSummary({

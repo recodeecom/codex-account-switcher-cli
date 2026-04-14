@@ -1030,6 +1030,59 @@ describe("AccountCards", () => {
     expect(screen.getByText("pia@edix.hu")).toBeInTheDocument();
   });
 
+  it("shows active-snapshot accounts in working-now when recent session rows remain visible without no-live-telemetry override", () => {
+    const recentTaskUpdatedAt = new Date(
+      Date.now() - 30 * 60 * 1000,
+    ).toISOString();
+    const account = createAccountSummary({
+      accountId: "acc_recent_active_preview_no_override",
+      email: "recent-active-preview@example.com",
+      displayName: "recent-active-preview@example.com",
+      codexLiveSessionCount: 0,
+      codexTrackedSessionCount: 0,
+      codexSessionCount: 0,
+      codexCurrentTaskPreview: null,
+      codexSessionTaskPreviews: [
+        {
+          sessionKey: "pid:66112",
+          taskPreview: "Continue dashboard session attribution verification",
+          taskUpdatedAt: recentTaskUpdatedAt,
+        },
+      ],
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "recent-active-preview",
+        activeSnapshotName: "recent-active-preview",
+        isActiveSnapshot: true,
+        hasLiveSession: false,
+      },
+      usage: {
+        primaryRemainingPercent: 44,
+        secondaryRemainingPercent: 60,
+      },
+      lastUsageRecordedAtPrimary: null,
+      lastUsageRecordedAtSecondary: null,
+      liveQuotaDebug: {
+        snapshotsConsidered: ["recent-active-preview"],
+        overrideApplied: false,
+        overrideReason: "missing_live_usage_payload",
+        merged: null,
+        rawSamples: [],
+      },
+    });
+
+    render(
+      <AccountCards
+        accounts={[account]}
+        primaryWindow={buildWindow("primary", "acc_recent_active_preview_no_override", 1000, 440)}
+        secondaryWindow={buildWindow("secondary", "acc_recent_active_preview_no_override", 1000, 600)}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: "Working now" })).toBeInTheDocument();
+    expect(screen.getByText("recent-active-preview@example.com")).toBeInTheDocument();
+  });
+
   it("uses secondary window remaining for weekly-only-account token balance", () => {
     const account = createAccountSummary({
       accountId: "acc_weekly",

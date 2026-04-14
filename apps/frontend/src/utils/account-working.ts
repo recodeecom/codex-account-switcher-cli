@@ -1056,7 +1056,14 @@ export function isAccountWorkingNow(
   const hasFreshActiveSnapshotSessionPreviewSignal =
     (account.codexAuth?.isActiveSnapshot ?? false) &&
     hasFreshSessionTaskPreviewSignal(account, nowMs);
+  const hasRecentActiveSnapshotSessionPreviewSignal =
+    (account.codexAuth?.isActiveSnapshot ?? false) &&
+    hasRecentSessionTaskPreview &&
+    hasActiveCliSessionSignal;
   if (hasFreshActiveSnapshotSessionPreviewSignal) {
+    return true;
+  }
+  if (hasRecentActiveSnapshotSessionPreviewSignal) {
     return true;
   }
 

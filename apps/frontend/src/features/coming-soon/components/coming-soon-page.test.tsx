@@ -32,6 +32,11 @@ describe("ComingSoonPage", () => {
       }),
     ).toBeInTheDocument();
     expect(
+      screen.getByRole("heading", { name: "Code with AI agents", level: 3 }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Open WebUI")).toBeInTheDocument();
+    expect(screen.getByText("Ollama")).toBeInTheDocument();
+    expect(
       screen.getByText("Stay in flow instead of babysitting status checks."),
     ).toBeInTheDocument();
     expect(

@@ -73,6 +73,13 @@ type InfoItem = {
   body: string;
 };
 
+type AgentToolItem = {
+  name: string;
+  description: string;
+  badge: string;
+  badgeClassName: string;
+};
+
 const WHAT_IT_DOES: InfoItem[] = [
   {
     title: "See live account state in one glance",
@@ -104,6 +111,72 @@ const WHY_IT_HELPS: InfoItem[] = [
   {
     title: "Clear timing decisions under pressure",
     body: "When to wait, when to switch, and when to push should feel obvious instead of approximate.",
+  },
+];
+
+const AGENT_TOOL_ITEMS: AgentToolItem[] = [
+  {
+    name: "Codex",
+    description: "Ship tasks end-to-end with autonomous coding loops.",
+    badge: "CX",
+    badgeClassName:
+      "bg-gradient-to-br from-cyan-400/35 to-blue-500/25 text-cyan-100",
+  },
+  {
+    name: "Claude",
+    description: "Run parallel reasoning for architecture and critiques.",
+    badge: "CL",
+    badgeClassName:
+      "bg-gradient-to-br from-amber-400/35 to-orange-500/25 text-amber-100",
+  },
+  {
+    name: "OpenAI",
+    description: "Power API workflows with model routing and tool calls.",
+    badge: "OA",
+    badgeClassName:
+      "bg-gradient-to-br from-emerald-400/35 to-cyan-500/25 text-emerald-100",
+  },
+  {
+    name: "Open WebUI",
+    description: "Bring local/self-hosted model frontends into one flow.",
+    badge: "OW",
+    badgeClassName:
+      "bg-gradient-to-br from-indigo-400/35 to-blue-500/25 text-indigo-100",
+  },
+  {
+    name: "Gemini",
+    description: "Add fast multimodal checks for docs, code, and UI.",
+    badge: "GM",
+    badgeClassName:
+      "bg-gradient-to-br from-violet-400/35 to-fuchsia-500/25 text-violet-100",
+  },
+  {
+    name: "OpenRouter",
+    description: "Switch providers without rewriting your task pipeline.",
+    badge: "OR",
+    badgeClassName:
+      "bg-gradient-to-br from-sky-400/35 to-cyan-500/25 text-sky-100",
+  },
+  {
+    name: "Cursor",
+    description: "Pair coding sessions with repo context and fast edits.",
+    badge: "CU",
+    badgeClassName:
+      "bg-gradient-to-br from-zinc-300/35 to-zinc-500/25 text-zinc-100",
+  },
+  {
+    name: "Aider",
+    description: "Patch files from terminal prompts with git-native flow.",
+    badge: "AI",
+    badgeClassName:
+      "bg-gradient-to-br from-rose-400/35 to-red-500/25 text-rose-100",
+  },
+  {
+    name: "Ollama",
+    description: "Keep privacy-first local models available when offline.",
+    badge: "OL",
+    badgeClassName:
+      "bg-gradient-to-br from-teal-400/35 to-emerald-500/25 text-teal-100",
   },
 ];
 
@@ -211,36 +284,69 @@ function AmbientLights() {
 
 function FunFactCard() {
   return (
-    <div className="mx-auto mt-4 w-full max-w-4xl">
-      <div className="relative overflow-hidden rounded-[28px] bg-[linear-gradient(180deg,rgba(10,14,24,0.96)_0%,rgba(4,8,16,0.98)_100%)] p-[1px] shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
-        <div className="relative rounded-[27px] px-6 py-7 text-center sm:px-10 sm:py-9">
-          <div className="mb-4 flex justify-center">
-            <CodexLogo
-              size={42}
-              title="recodee.com logo"
-              className="opacity-95"
-            />
+    <div className="mx-auto mt-4 w-full max-w-6xl">
+      <div className="relative overflow-hidden rounded-[20px] border border-white/12 bg-[#030814] shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
+        <div className="pointer-events-none absolute inset-0 opacity-90">
+          <div className="absolute -left-20 top-0 h-full w-[46%] bg-[radial-gradient(circle_at_20%_35%,rgba(110,228,170,0.45),rgba(110,228,170,0.08)_45%,transparent_70%)]" />
+          <div className="absolute left-[28%] top-0 h-full w-[40%] bg-[radial-gradient(circle_at_40%_60%,rgba(99,102,241,0.35),rgba(99,102,241,0.08)_50%,transparent_75%)]" />
+          <div className="absolute right-[-10%] top-[-20%] h-[150%] w-[50%] bg-[radial-gradient(circle_at_65%_45%,rgba(96,165,250,0.35),rgba(37,99,235,0.08)_52%,transparent_78%)]" />
+        </div>
+
+        <div className="relative z-10 grid gap-6 px-6 py-7 sm:px-8 sm:py-9 lg:grid-cols-[1.4fr_1fr] lg:items-center lg:gap-10">
+          <div>
+            <div className="mb-4 flex items-center gap-3">
+              <CodexLogo size={34} title="recodee.com logo" className="opacity-95" />
+              <div className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-cyan-200 ring-1 ring-cyan-400/20">
+                <span className="h-1.5 w-1.5 rounded-full bg-cyan-300" />
+                Fun Fact
+              </div>
+            </div>
+
+            <p className="text-2xl font-semibold tracking-tight text-zinc-100 sm:text-[2.45rem] sm:leading-[1.15]">
+              We built recodee with recodee. We call that confidence.
+            </p>
+
+            <div className="mt-5 grid gap-2.5 sm:grid-cols-2">
+              <div className="rounded-2xl border border-cyan-400/20 bg-cyan-500/[0.08] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.07)]">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-200/80">
+                  Codex Throughput
+                </p>
+                <p className="mt-1.5 text-lg font-semibold tracking-[0.04em] text-cyan-50 sm:text-xl">
+                  codex tokens used: 3B
+                </p>
+              </div>
+              <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/[0.08] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.07)]">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-200/80">
+                  Efficiency Gain
+                </p>
+                <p className="mt-1.5 text-lg font-semibold tracking-[0.04em] text-emerald-50 sm:text-xl">
+                  money saved: $10k+
+                </p>
+              </div>
+            </div>
           </div>
 
-          <div className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-cyan-200 ring-1 ring-cyan-400/20">
-            <span className="h-1.5 w-1.5 rounded-full bg-cyan-300" />
-            Fun Fact
-          </div>
-
-          <p className="mt-4 text-2xl font-semibold tracking-tight text-zinc-100 sm:text-[2rem]">
-            We built recodee with recodee. We call that confidence.
-          </p>
-          <p className="mt-2 text-sm text-zinc-400 sm:text-base">
-            Very on-brand. Also genuinely useful.
-          </p>
-
-          <div className="mt-5 flex flex-wrap items-center justify-center gap-2.5">
-            <span className="inline-flex items-center rounded-full px-4 py-1.5 text-xs font-medium tracking-[0.12em] text-cyan-100 ring-1 ring-cyan-400/20 sm:text-sm">
-              codex tokens used: 3B
-            </span>
-            <span className="inline-flex items-center rounded-full px-4 py-1.5 text-xs font-medium tracking-[0.12em] text-emerald-100 ring-1 ring-emerald-400/20 sm:text-sm">
-              money saved: $10k+
-            </span>
+          <div className="space-y-4 lg:border-l lg:border-white/10 lg:pl-8">
+            <p className="text-base font-semibold leading-8 text-zinc-100 sm:text-[1.05rem]">
+              Very on-brand. Also genuinely useful.
+            </p>
+            <div className="flex flex-wrap items-center gap-2.5">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-12 rounded-xl border-white/25 bg-white/10 px-6 text-lg font-semibold text-zinc-100 hover:bg-white/20"
+              >
+                Try free
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-12 rounded-xl border-cyan-400/30 bg-cyan-500/[0.08] px-6 text-lg font-semibold text-cyan-100 hover:bg-cyan-500/[0.16]"
+                asChild
+              >
+                <a href="/billing">Pricing</a>
+              </Button>
+            </div>
           </div>
         </div>
       </div>
@@ -332,6 +438,52 @@ function DemoCardAnnotations() {
             strokeLinejoin="round"
           />
         </svg>
+      </div>
+    </div>
+  );
+}
+
+function AgentToolsPanel() {
+  return (
+    <div className="mx-auto w-full max-w-6xl rounded-[26px] border border-white/10 bg-black/20 p-5 shadow-[0_24px_70px_rgba(3,8,20,0.5)] sm:p-7">
+      <div className="grid gap-6 lg:grid-cols-[1.12fr_1.88fr] lg:gap-8">
+        <div className="space-y-3">
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-200/80">
+            Agent Stack
+          </p>
+          <h3 className="text-3xl font-semibold tracking-tight text-zinc-100 sm:text-4xl">
+            Code with AI agents
+          </h3>
+          <p className="max-w-md text-base leading-8 text-zinc-300">
+            Use recodee with Codex, Claude, OpenAI, Open WebUI, and your
+            preferred coding tools in one workflow.
+          </p>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {AGENT_TOOL_ITEMS.map((item) => (
+            <div
+              key={item.name}
+              className="group rounded-2xl border border-white/10 bg-[#050b1b]/85 p-4 transition-colors duration-200 hover:border-cyan-200/30 hover:bg-[#081126]"
+            >
+              <div className="flex items-start gap-3">
+                <span
+                  className={`mt-0.5 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-sm font-semibold tracking-[0.12em] ${item.badgeClassName}`}
+                >
+                  {item.badge}
+                </span>
+                <div className="space-y-1.5">
+                  <p className="text-lg font-semibold leading-6 text-zinc-100">
+                    {item.name}
+                  </p>
+                  <p className="text-sm leading-6 text-zinc-400">
+                    {item.description}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -500,10 +652,10 @@ export function ComingSoonPage() {
                   </div>
                 </div>
 
-                <div className="flex flex-wrap justify-center gap-2">
-                  <Button type="button" variant="outline" size="sm" asChild>
-                    <a href="/dashboard">Open dashboard</a>
-                  </Button>
+              <div className="flex flex-wrap justify-center gap-2">
+                <Button type="button" variant="outline" size="sm" asChild>
+                  <a href="/dashboard">Open dashboard</a>
+                </Button>
                   <Button type="button" variant="outline" size="sm" asChild>
                     <a href="/accounts">Open accounts</a>
                   </Button>
@@ -511,6 +663,8 @@ export function ComingSoonPage() {
               </div>
             </div>
           </div>
+
+          <AgentToolsPanel />
 
           <div className="mx-auto w-full max-w-5xl px-1 py-4 sm:py-6">
             <div className="grid gap-5 lg:grid-cols-2">
