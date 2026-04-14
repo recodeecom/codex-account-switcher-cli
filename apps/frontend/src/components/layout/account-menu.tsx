@@ -126,14 +126,20 @@ export function AccountMenu({
           </span>
           <span className="hidden min-w-0 sm:flex sm:max-w-[16rem] sm:flex-col sm:items-start sm:leading-tight">
             <span
-              className="max-w-[16rem] truncate text-xs text-muted-foreground"
+              className={cn(
+                "max-w-[16rem] truncate text-xs text-muted-foreground",
+                blurred && triggerEmail ? "privacy-blur" : "",
+              )}
               title={triggerEmail ?? "No dashboard login recorded yet"}
             >
               {triggerEmail ?? "No dashboard login recorded yet"}
             </span>
             {showTriggerCodexEmail ? (
               <span
-                className="max-w-[16rem] truncate text-[10px] text-muted-foreground/80"
+                className={cn(
+                  "max-w-[16rem] truncate text-[10px] text-muted-foreground/80",
+                  blurred && loggedInEmail ? "privacy-blur" : "",
+                )}
                 title={loggedInEmail ?? undefined}
               >
                 Active Codex account: {loggedInEmail}
