@@ -591,11 +591,73 @@ function toSafeRequestLogs(requestLogs: RequestLog[] | null | undefined): Reques
   return Array.isArray(requestLogs) ? requestLogs : [];
 }
 
+function toRoundedNonNegative(value: unknown): number {
+  const numeric = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(numeric)) {
+    return 0;
+  }
+  return Math.max(0, Math.round(numeric));
+}
+
+function readNestedRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function readNestedTokenCount(logRecord: Record<string, unknown>) {
+  const usageRecord =
+    readNestedRecord(logRecord.usage)
+    ?? readNestedRecord(logRecord.usageSummary)
+    ?? readNestedRecord(logRecord.tokenCount)
+    ?? readNestedRecord(logRecord.token_count);
+  if (!usageRecord) {
+    return {
+      input: 0,
+      output: 0,
+      total: 0,
+      cacheRead: 0,
+    };
+  }
+
+  const input = toRoundedNonNegative(
+    usageRecord.input_tokens ?? usageRecord.inputTokens ?? usageRecord.input,
+  );
+  const output = toRoundedNonNegative(
+    usageRecord.output_tokens ?? usageRecord.outputTokens ?? usageRecord.output,
+  );
+  const total = toRoundedNonNegative(
+    usageRecord.total_tokens ?? usageRecord.totalTokens ?? usageRecord.tokens,
+  );
+  const cacheReadDirect = toRoundedNonNegative(
+    usageRecord.cached_input_tokens
+      ?? usageRecord.cachedInputTokens
+      ?? usageRecord.cache_read_tokens
+      ?? usageRecord.cacheReadTokens
+      ?? usageRecord.cached_tokens
+      ?? usageRecord.cachedTokens,
+  );
+  const inputDetails = readNestedRecord(
+    usageRecord.input_tokens_details ?? usageRecord.inputTokensDetails,
+  );
+  const cacheReadFromDetails = toRoundedNonNegative(
+    inputDetails?.cached_tokens ?? inputDetails?.cachedTokens,
+  );
+
+  return {
+    input,
+    output,
+    total,
+    cacheRead: Math.max(cacheReadDirect, cacheReadFromDetails),
+  };
+}
+
 function resolveLogTokenBreakdown(log: RequestLog) {
-  const explicitInput = Math.max(0, Math.round(log.inputTokens ?? 0));
-  const explicitOutput = Math.max(0, Math.round(log.outputTokens ?? 0));
-  const cacheRead = Math.max(0, Math.round(log.cachedInputTokens ?? 0));
-  const legacyTotal = Math.max(0, Math.round(log.tokens ?? 0));
+  const explicitInput = toRoundedNonNegative(log.inputTokens);
+  const explicitOutput = toRoundedNonNegative(log.outputTokens);
+  const cacheRead = toRoundedNonNegative(log.cachedInputTokens);
+  const legacyTotal = toRoundedNonNegative(log.tokens);
 
   if (explicitInput > 0 || explicitOutput > 0 || cacheRead > 0) {
     return {
@@ -605,10 +667,46 @@ function resolveLogTokenBreakdown(log: RequestLog) {
     };
   }
 
+  if (legacyTotal > 0) {
+    return {
+      input: legacyTotal,
+      output: 0,
+      cacheRead,
+    };
+  }
+
+  const logRecord = log as unknown as Record<string, unknown>;
+  const snakeInput = toRoundedNonNegative(
+    logRecord.input_tokens ?? logRecord.input ?? logRecord.input_token_count,
+  );
+  const snakeOutput = toRoundedNonNegative(
+    logRecord.output_tokens ?? logRecord.output ?? logRecord.output_token_count,
+  );
+  const snakeCacheRead = toRoundedNonNegative(
+    logRecord.cached_input_tokens ?? logRecord.cached_tokens ?? logRecord.cachedInput,
+  );
+  const snakeTotal = toRoundedNonNegative(
+    logRecord.total_tokens ?? logRecord.totalTokens ?? logRecord.tokens,
+  );
+
+  const nestedUsage = readNestedTokenCount(logRecord);
+  const fallbackInput = Math.max(snakeInput, nestedUsage.input);
+  const fallbackOutput = Math.max(snakeOutput, nestedUsage.output);
+  const fallbackCacheRead = Math.max(snakeCacheRead, nestedUsage.cacheRead);
+  const fallbackTotal = Math.max(snakeTotal, nestedUsage.total);
+
+  if (fallbackInput > 0 || fallbackOutput > 0 || fallbackCacheRead > 0) {
+    return {
+      input: fallbackInput,
+      output: fallbackOutput,
+      cacheRead: fallbackCacheRead,
+    };
+  }
+
   return {
-    input: legacyTotal,
+    input: fallbackTotal,
     output: 0,
-    cacheRead,
+    cacheRead: fallbackCacheRead,
   };
 }
 

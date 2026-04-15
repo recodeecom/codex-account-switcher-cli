@@ -111,7 +111,7 @@ export const RequestLogSchema = z.object({
   reasoningEffort: z.string().nullable(),
   costUsd: z.number().nullable(),
   latencyMs: z.number().nullable(),
-});
+}).passthrough();
 
 export const RequestLogsResponseSchema = z.object({
   requests: z.array(RequestLogSchema),

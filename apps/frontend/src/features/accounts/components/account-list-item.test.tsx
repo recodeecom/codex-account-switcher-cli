@@ -514,7 +514,7 @@ describe("AccountListItem", () => {
     expect(screen.getByText("Disconnected")).toBeInTheDocument();
   });
 
-  it("shows live badge and live background when account is working now", () => {
+  it("shows live badge when account is working now", () => {
     const nowIso = new Date().toISOString();
     const account = createAccountSummary({
       codexAuth: {
@@ -540,7 +540,7 @@ describe("AccountListItem", () => {
     );
 
     expect(screen.getByTestId("live-status-badge")).toHaveTextContent("Live");
-    expect(screen.getByTestId("account-list-item").className).toContain("bg-cyan");
+    expect(screen.getByTestId("account-list-item").className).not.toContain("bg-cyan");
   });
 
   it("hides live badge when account is not working now", () => {

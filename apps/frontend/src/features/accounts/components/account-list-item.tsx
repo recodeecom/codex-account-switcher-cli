@@ -232,10 +232,8 @@ export function AccountListItem({
       data-testid="account-list-item"
       className={cn(
         "w-full rounded-lg p-2 transition-colors",
-        selected && isWorkingNow && "bg-cyan-500/12 ring-1 ring-cyan-500/35",
-        selected && !isWorkingNow && "bg-primary/8 ring-1 ring-primary/25",
-        !selected && isWorkingNow && "bg-cyan-500/[0.06] ring-1 ring-cyan-500/25 hover:bg-cyan-500/[0.1]",
-        !selected && !isWorkingNow && "hover:bg-muted/50",
+        selected && "bg-primary/8 ring-1 ring-primary/25",
+        !selected && "hover:bg-muted/50",
       )}
     >
       <div className="flex items-start gap-2">

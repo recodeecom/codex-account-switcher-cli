@@ -1116,7 +1116,7 @@ export function ProjectsPage() {
                               type="button"
                               size="sm"
                               variant="ghost"
-                              className="h-11 w-11 rounded-none px-0 text-xs"
+                              className="h-11 w-11 rounded-l-none rounded-r-md px-0 text-xs"
                               onClick={() => {
                                 void openFolderMutation.mutateAsync({
                                   projectId: entry.id,
@@ -1128,37 +1128,39 @@ export function ProjectsPage() {
                             >
                               <FolderOpen className="h-4 w-4" />
                             </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="ghost"
-                              className="h-11 w-11 rounded-l-none rounded-r-md px-0 text-xs"
-                              onClick={() => handleEditStart(entry)}
-                              disabled={busy}
-                              title="Edit"
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
                           </div>
                           <div
                             className={cn(
                               "overflow-hidden transition-all duration-200 ease-out",
                               isRowActive
-                                ? "max-w-[150px] translate-x-0 opacity-100"
+                                ? "max-w-[260px] translate-x-0 opacity-100"
                                 : "pointer-events-none max-w-0 translate-x-2 opacity-0",
                             )}
                           >
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="ghost"
-                              className="h-11 rounded-md px-3 text-xs font-semibold text-red-200 hover:bg-transparent hover:text-red-100"
-                              onClick={() => deleteDialog.show({ id: entry.id, name: entry.name })}
-                              disabled={busy}
-                            >
-                              <Trash2 className="mr-1 h-4 w-4" />
-                              Delete
-                            </Button>
+                            <div className="flex items-center gap-1">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                className="h-11 rounded-md px-3 text-xs font-semibold text-zinc-200 hover:bg-transparent hover:text-zinc-100"
+                                onClick={() => handleEditStart(entry)}
+                                disabled={busy}
+                              >
+                                <Pencil className="mr-1 h-4 w-4" />
+                                Edit
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                className="h-11 rounded-md px-3 text-xs font-semibold text-red-200 hover:bg-transparent hover:text-red-100"
+                                onClick={() => deleteDialog.show({ id: entry.id, name: entry.name })}
+                                disabled={busy}
+                              >
+                                <Trash2 className="mr-1 h-4 w-4" />
+                                Delete
+                              </Button>
+                            </div>
                           </div>
                         </div>
                       </div>

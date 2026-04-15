@@ -1296,6 +1296,38 @@ describe("AccountCard", () => {
     expect(screen.queryByText("waiting for new task")).not.toBeInTheDocument();
   });
 
+  it("shows disconnected under usage-limit badges when re-auth is needed", () => {
+    const account = createAccountSummary({
+      status: "deactivated",
+      usage: {
+        primaryRemainingPercent: 0,
+        secondaryRemainingPercent: 0,
+      },
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "odin",
+        activeSnapshotName: "odin",
+        isActiveSnapshot: true,
+      },
+      auth: {
+        access: { expiresAt: null, state: null },
+        refresh: { state: "expired" },
+        idToken: { state: "parsed" },
+      },
+    });
+
+    render(<AccountCard account={account} />);
+
+    const badgeRow = screen.getByTestId("token-card-badge-row");
+    expect(within(badgeRow).getByText("Usage limit hit")).toBeInTheDocument();
+    expect(
+      within(badgeRow).getByText("Weekly usage limit hit"),
+    ).toBeInTheDocument();
+    const disconnected = within(badgeRow).getByText("Disconnected");
+    expect(disconnected).toBeInTheDocument();
+    expect(disconnected.closest("div")?.className).toContain("basis-full");
+  });
+
   it("treats sub-5% 5h quota as depleted for live usage-limit state", () => {
     const nowIso = new Date().toISOString();
     const account = createAccountSummary({

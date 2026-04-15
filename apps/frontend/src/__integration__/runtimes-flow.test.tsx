@@ -205,6 +205,133 @@ describe("runtimes flow integration", () => {
     expect(screen.getByRole("button", { name: "Copy update commands" })).toBeInTheDocument();
   });
 
+  it("reads nested usage payload fields for runtime token usage when flat token fields are zero", async () => {
+    const nowIso = new Date().toISOString();
+
+    server.use(
+      http.get("/api/dashboard/overview", () =>
+        HttpResponse.json(
+          createDashboardOverview({
+            accounts: [
+              createAccountSummary({
+                accountId: "acc_runtime_nested_usage",
+                email: "runtime-nested@example.com",
+                displayName: "runtime-nested@example.com",
+                codexLiveSessionCount: 1,
+                codexTrackedSessionCount: 1,
+                codexSessionCount: 1,
+                codexCurrentTaskPreview: "Token payload shape compatibility check",
+                codexAuth: {
+                  hasSnapshot: true,
+                  snapshotName: "runtime-nested",
+                  activeSnapshotName: "runtime-nested",
+                  isActiveSnapshot: true,
+                  hasLiveSession: true,
+                },
+                requestUsage: {
+                  requestCount: 1,
+                  totalTokens: 0,
+                  cachedInputTokens: 0,
+                  totalCostUsd: 0.02,
+                },
+              }),
+            ],
+          }),
+        ),
+      ),
+      http.get("/api/sticky-sessions", ({ request }) => {
+        const url = new URL(request.url);
+        if (url.searchParams.get("kind") !== "codex_session") {
+          return HttpResponse.json({ entries: [], stalePromptCacheCount: 0, total: 0, hasMore: false });
+        }
+        return HttpResponse.json({
+          entries: [
+            {
+              key: "session-runtime-nested-1",
+              accountId: "acc_runtime_nested_usage",
+              displayName: "runtime-nested@example.com",
+              kind: "codex_session",
+              createdAt: nowIso,
+              updatedAt: nowIso,
+              taskPreview: "Token payload shape compatibility check",
+              taskUpdatedAt: nowIso,
+              isActive: true,
+              expiresAt: null,
+              isStale: false,
+            },
+          ],
+          unmappedCliSessions: [],
+          stalePromptCacheCount: 0,
+          total: 1,
+          hasMore: false,
+        });
+      }),
+      http.get("/api/accounts/:accountId/trends", ({ params }) =>
+        HttpResponse.json({
+          accountId: String(params.accountId),
+          primary: [{ t: nowIso, v: 1 }],
+          secondary: [{ t: nowIso, v: 1 }],
+        }),
+      ),
+      http.get("/api/request-logs", () =>
+        HttpResponse.json({
+          requests: [
+            {
+              requestedAt: nowIso,
+              accountId: "acc_runtime_nested_usage",
+              apiKeyName: "runtime-nested-key",
+              requestId: "req-runtime-nested-1",
+              model: "gpt-5.4-mini",
+              transport: "responses",
+              serviceTier: null,
+              requestedServiceTier: null,
+              actualServiceTier: null,
+              status: "ok",
+              errorCode: null,
+              errorMessage: null,
+              inputTokens: 0,
+              outputTokens: 0,
+              tokens: 0,
+              cachedInputTokens: 0,
+              reasoningEffort: "high",
+              costUsd: 0.02,
+              latencyMs: 90,
+              usage: {
+                input_tokens: 1321,
+                output_tokens: 654,
+                total_tokens: 1975,
+                input_tokens_details: {
+                  cached_tokens: 210,
+                },
+              },
+            },
+          ],
+          total: 1,
+          hasMore: false,
+        }),
+      ),
+      http.get("/api/source-control/commit-activity", () =>
+        HttpResponse.json({
+          repositoryRoot: "/home/deadpool/Documents/recodee",
+          projectPath: null,
+          commits: [],
+        }),
+      ),
+      http.post("http://localhost:9000/store/customers/me", () => HttpResponse.json({ customer: {} })),
+    );
+
+    window.history.pushState({}, "", "/runtimes");
+    renderWithProviders(<App />);
+
+    expect((await screen.findAllByText(hasExactTextContent("Codex (runtime-nested)"))).length).toBeGreaterThan(0);
+    const tokenUsageSection = (await screen.findByText("Token usage")).closest("section");
+    expect(tokenUsageSection).not.toBeNull();
+
+    expect(within(tokenUsageSection as HTMLElement).getByText("1.32K")).toBeInTheDocument();
+    expect(within(tokenUsageSection as HTMLElement).getByText("654")).toBeInTheDocument();
+    expect(within(tokenUsageSection as HTMLElement).getByText("210")).toBeInTheDocument();
+  });
+
   it("shows usage limit hit runtime status instead of live badges", async () => {
     const nowIso = new Date().toISOString();
 
