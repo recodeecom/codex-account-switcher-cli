@@ -171,7 +171,6 @@ export function SourceControlPage() {
   }, [workspacesQuery.data?.entries]);
   const { projectsQuery } = useProjects(activeWorkspaceId);
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
-  const [selectedBranch, setSelectedBranch] = useState<string>("");
   const [actionMessage, setActionMessage] = useState<string | null>(null);
 
   const projects = useMemo(() => projectsQuery.data?.entries ?? [], [projectsQuery.data?.entries]);
@@ -189,12 +188,26 @@ export function SourceControlPage() {
     if (!preview) {
       return "";
     }
-    if (selectedBranch && preview.branches.some((branch) => branch.name === selectedBranch)) {
-      return selectedBranch;
+    if (preview.activeBranch.trim().length > 0) {
+      return preview.activeBranch;
     }
     const active = preview.branches.find((branch) => branch.isActive)?.name;
     return active ?? preview.branches[0]?.name ?? "";
-  }, [preview, selectedBranch]);
+  }, [preview]);
+
+  const selectedProjectLabel = useMemo(() => {
+    if (!effectiveProjectId) {
+      return "Current repository";
+    }
+    return projects.find((project) => project.id === effectiveProjectId)?.name ?? "Current repository";
+  }, [effectiveProjectId, projects]);
+
+  const selectedBranchPreview = useMemo(() => {
+    if (!preview) {
+      return null;
+    }
+    return preview.branches.find((branch) => branch.name === effectiveSelectedBranch) ?? null;
+  }, [preview, effectiveSelectedBranch]);
 
   const branchDetailsQuery = useSourceControlBranchDetails(
     effectiveProjectId || null,
@@ -251,7 +264,6 @@ export function SourceControlPage() {
     },
     onSuccess: async (result) => {
       setActionMessage(result.message);
-      setSelectedBranch("");
       await queryClient.invalidateQueries({ queryKey: ["source-control"] });
     },
   });
@@ -288,6 +300,7 @@ export function SourceControlPage() {
                 <p className="text-[11px] text-slate-500">
                   local: {preview.activeBranch} • main: {preview.baseBranch}
                 </p>
+                <p className="text-[11px] text-slate-500">project: {selectedProjectLabel}</p>
                 <p className="text-[11px] text-slate-500">refreshed {formatIso(preview.refreshedAt)}</p>
               </div>
 
@@ -327,37 +340,74 @@ export function SourceControlPage() {
 
               <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                  Current codex branches
+                  Current project branch
                 </p>
-                {preview.branches.map((branch) => (
-                  <button
-                    type="button"
-                    key={branch.name}
-                    onClick={() => {
-                      setActionMessage(null);
-                      setSelectedBranch(branch.name);
-                    }}
-                    className={cn(
-                      "w-full cursor-pointer rounded-md border px-2.5 py-2 text-left transition-colors",
-                      effectiveSelectedBranch === branch.name
-                        ? "border-cyan-400/40 bg-cyan-500/15"
-                        : "border-white/[0.12] bg-white/[0.02] hover:bg-white/[0.06]",
-                    )}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="truncate text-xs font-semibold text-slate-100">{branch.name}</p>
-                      <span
-                        className={cn(
-                          "inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em]",
-                          mergeBadgeClass(branch.mergeState),
-                        )}
-                      >
-                        {toMergeStateLabel(branch.mergeState)}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-[11px] text-slate-500">ahead {branch.ahead} • behind {branch.behind}</p>
-                  </button>
-                ))}
+                <article className="rounded-md border border-cyan-400/30 bg-cyan-500/10 px-2.5 py-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="truncate text-xs font-semibold text-slate-100">{effectiveSelectedBranch || "--"}</p>
+                    <span
+                      className={cn(
+                        "inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em]",
+                        mergeBadgeClass(selectedBranchPreview?.mergeState ?? "unknown"),
+                      )}
+                    >
+                      {toMergeStateLabel(selectedBranchPreview?.mergeState ?? "unknown")}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    ahead {selectedBranchPreview?.ahead ?? 0} • behind {selectedBranchPreview?.behind ?? 0}
+                  </p>
+                </article>
+
+                <p className="pt-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                  Current pull requests
+                </p>
+                {preview.pullRequests.length === 0 ? (
+                  <p className="text-xs text-slate-500">No pull requests found for this repository.</p>
+                ) : (
+                  preview.pullRequests.map((pullRequest) => (
+                    <article
+                      key={`sc-pr-${pullRequest.number}`}
+                      className={cn(
+                        "rounded-md border px-2.5 py-2",
+                        pullRequest.headBranch === effectiveSelectedBranch
+                          ? "border-cyan-400/40 bg-cyan-500/10"
+                          : "border-white/[0.12] bg-white/[0.02]",
+                      )}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="truncate text-xs font-semibold text-slate-100">
+                          #{pullRequest.number} {pullRequest.title}
+                        </p>
+                        <span
+                          className={cn(
+                            "inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em]",
+                            pullRequest.state === "merged"
+                              ? "border-emerald-400/35 bg-emerald-500/15 text-emerald-200"
+                              : pullRequest.state === "closed"
+                                ? "border-slate-400/35 bg-slate-500/15 text-slate-300"
+                                : "border-cyan-400/35 bg-cyan-500/15 text-cyan-200",
+                          )}
+                        >
+                          {pullRequest.state}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        {pullRequest.headBranch} {"->"} {pullRequest.baseBranch}
+                      </p>
+                      {pullRequest.url ? (
+                        <a
+                          href={pullRequest.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-1 inline-flex text-[11px] text-cyan-300 underline decoration-cyan-400/50 underline-offset-2 hover:text-cyan-200"
+                        >
+                          Open PR #{pullRequest.number}
+                        </a>
+                      ) : null}
+                    </article>
+                  ))
+                )}
               </div>
             </CardContent>
           </Card>
@@ -367,7 +417,7 @@ export function SourceControlPage() {
               <div className="flex flex-wrap items-end justify-between gap-3">
                 <div>
                   <h1 className="text-lg font-semibold tracking-tight text-slate-100">Source Control</h1>
-                  <p className="mt-0.5 text-xs text-slate-400">Runtime-layout view for branches, PR status, and GX bot sync.</p>
+                  <p className="mt-0.5 text-xs text-slate-400">Project-scoped branch, PR status, and GX bot sync.</p>
                 </div>
               </div>
 
@@ -736,7 +786,7 @@ export function SourceControlPage() {
 
                 </>
               ) : (
-                <p className="text-sm text-slate-500">Select a branch to view PR status and GX bot sync.</p>
+                <p className="text-sm text-slate-500">No current local branch found for this project.</p>
               )}
             </CardContent>
           </Card>
