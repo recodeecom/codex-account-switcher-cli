@@ -461,6 +461,94 @@ test("listAccountMappings returns active flag and identity metadata for each sna
   });
 });
 
+test("listAccountMappings includes 5h and weekly remaining usage percentages", async (t) => {
+  await withIsolatedCodexDir(t, async ({ codexDir, accountsDir, authPath }) => {
+    const service = new AccountService();
+    const currentPath = path.join(codexDir, "current");
+    const registryPath = path.join(accountsDir, "registry.json");
+    const nowSeconds = Math.floor(Date.now() / 1000);
+
+    await fsp.writeFile(
+      path.join(accountsDir, "alpha.json"),
+      buildAuthPayload("alpha@edixai.com", {
+        accountId: "acct-alpha",
+        userId: "user-alpha",
+      }),
+      "utf8",
+    );
+    await fsp.writeFile(
+      path.join(accountsDir, "beta.json"),
+      buildAuthPayload("beta@edixai.com", {
+        accountId: "acct-beta",
+        userId: "user-beta",
+      }),
+      "utf8",
+    );
+    await fsp.writeFile(currentPath, "alpha\n", "utf8");
+    await fsp.writeFile(authPath, buildAuthPayload("alpha@edixai.com"), "utf8");
+
+    await fsp.writeFile(
+      registryPath,
+      `${JSON.stringify(
+        {
+          version: 1,
+          autoSwitch: {
+            enabled: false,
+            threshold5hPercent: 10,
+            thresholdWeeklyPercent: 5,
+          },
+          api: {
+            usage: true,
+          },
+          activeAccountName: "alpha",
+          accounts: {
+            alpha: {
+              name: "alpha",
+              createdAt: new Date().toISOString(),
+              email: "alpha@edixai.com",
+              accountId: "acct-alpha",
+              userId: "user-alpha",
+              lastUsageAt: new Date().toISOString(),
+              lastUsage: {
+                primary: { usedPercent: 25, windowMinutes: 300 },
+                secondary: { usedPercent: 40, windowMinutes: 10080 },
+                fetchedAt: new Date().toISOString(),
+                source: "cached",
+              },
+            },
+            beta: {
+              name: "beta",
+              createdAt: new Date().toISOString(),
+              email: "beta@edixai.com",
+              accountId: "acct-beta",
+              userId: "user-beta",
+              lastUsageAt: new Date().toISOString(),
+              lastUsage: {
+                primary: { usedPercent: 99, windowMinutes: 300, resetsAt: nowSeconds - 5 },
+                secondary: { usedPercent: 30, windowMinutes: 10080 },
+                fetchedAt: new Date().toISOString(),
+                source: "cached",
+              },
+            },
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const mappings = await service.listAccountMappings();
+    const alpha = mappings.find((item) => item.name === "alpha");
+    const beta = mappings.find((item) => item.name === "beta");
+
+    assert.equal(alpha?.remaining5hPercent, 75);
+    assert.equal(alpha?.remainingWeeklyPercent, 60);
+    assert.equal(beta?.remaining5hPercent, 100);
+    assert.equal(beta?.remainingWeeklyPercent, 70);
+  });
+});
+
 test("syncExternalAuthSnapshotIfNeeded disables auto-switch and snapshots external codex login into inferred email name", async (t) => {
   await withIsolatedCodexDir(t, async ({ codexDir, accountsDir, authPath }) => {
     const service = new AccountService();

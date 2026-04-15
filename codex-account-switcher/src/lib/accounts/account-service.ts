@@ -35,6 +35,8 @@ import {
 import {
   fetchUsageFromApi,
   fetchUsageFromLocal,
+  remainingPercent,
+  resolveRateWindow,
   shouldSwitchCurrent,
   usageScore,
 } from "./usage";
@@ -246,6 +248,7 @@ export class AccountService {
       this.getCurrentAccountName(),
       this.loadReconciledRegistry(),
     ]);
+    const nowSeconds = Math.floor(Date.now() / 1000);
 
     return Promise.all(
       accounts.map(async (name) => {
@@ -256,6 +259,12 @@ export class AccountService {
           fallbackSnapshot = await parseAuthSnapshotFile(this.accountFilePath(name));
         }
 
+        const remaining5hPercent = remainingPercent(resolveRateWindow(entry?.lastUsage, 300, true), nowSeconds);
+        const remainingWeeklyPercent = remainingPercent(
+          resolveRateWindow(entry?.lastUsage, 10080, false),
+          nowSeconds,
+        );
+
         return {
           name,
           active: current === name,
@@ -265,6 +274,8 @@ export class AccountService {
           planType: entry?.planType ?? fallbackSnapshot?.planType,
           lastUsageAt: entry?.lastUsageAt,
           usageSource: entry?.lastUsage?.source,
+          remaining5hPercent,
+          remainingWeeklyPercent,
         };
       }),
     );
