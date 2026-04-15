@@ -2387,13 +2387,6 @@ function parseSyncArgs(rawArgs) {
     throw new Error(`Unknown option: ${arg}`);
   }
 
-    if (parseSharedInstallFlag(arg, options)) {
-      continue;
-    }
-
-    throw new Error(`Unknown option: ${arg}`);
-  }
-
   return options;
 }
 

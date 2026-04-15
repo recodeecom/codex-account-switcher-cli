@@ -255,7 +255,6 @@ test('setup provisions workflow files and repo config', () => {
   assert.match(result.stdout, /OpenSpec core workflow: \/opsx:propose -> \/opsx:apply -> \/opsx:archive/);
   assert.match(result.stdout, /OpenSpec guide: docs\/openspec-getting-started\.md/);
 
-function assertRepoInstalled(repoDir) {
   const requiredFiles = [
     '.omx',
     '.omx/state',
