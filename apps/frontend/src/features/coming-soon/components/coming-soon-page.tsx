@@ -729,13 +729,35 @@ export function ComingSoonPage() {
                   />
                   <div className="space-y-3 p-5 sm:p-6">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-cyan-200/85">
-                      VS Code branch workflow
+                      Keep your setup
                     </p>
                     <h3 className="text-2xl font-semibold tracking-tight text-zinc-50 sm:text-3xl">
-                      Subbranch changes, clearly visible
+                      Works with VS Code and your terminal
                     </h3>
+                    <div className="flex flex-wrap items-center gap-3 pt-1">
+                      <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-zinc-900/75 px-3 py-1.5 text-xs font-semibold text-zinc-100">
+                        <img
+                          src="/vscode.svg"
+                          alt="VS Code logo"
+                          className="h-4 w-4 object-contain"
+                          loading="lazy"
+                        />
+                        VS Code
+                      </span>
+                      <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-zinc-900/75 px-3 py-1.5 text-xs font-semibold text-zinc-100">
+                        <img
+                          src="/linux-terminal.svg"
+                          alt="Linux terminal logo"
+                          className="h-4 w-4 object-contain"
+                          loading="lazy"
+                        />
+                        Linux terminal
+                      </span>
+                    </div>
                     <p className="max-w-4xl text-[1.03rem] leading-8 text-zinc-300/95">
-                      Show edits, modified files, and commit status per subbranch in one clean view so parallel branch work stays easy to track.
+                      We won&apos;t take away the tools you love. recodee adds
+                      visibility on top of your existing VS Code and terminal
+                      workflow.
                     </p>
                   </div>
                 </article>

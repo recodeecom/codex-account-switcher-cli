@@ -33,6 +33,12 @@ describe("ComingSoonPage", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole("heading", {
+        name: "Works with VS Code and your terminal",
+        level: 3,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", {
         name: "Code with multiple agents at the same time",
         level: 3,
       }),
@@ -61,6 +67,13 @@ describe("ComingSoonPage", () => {
     expect(within(agentPanel).queryByText("Ollama")).not.toBeInTheDocument();
     expect(
       screen.getByText("Stay in flow instead of babysitting status checks."),
+    ).toBeInTheDocument();
+    expect(screen.getByAltText("VS Code logo")).toBeInTheDocument();
+    expect(screen.getByAltText("Linux terminal logo")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "We won't take away the tools you love. recodee adds visibility on top of your existing VS Code and terminal workflow.",
+      ),
     ).toBeInTheDocument();
     expect(
       screen.getAllByText("Please enter your email address").length,
