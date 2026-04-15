@@ -49,12 +49,14 @@ function workspaceMonogram(name: string): string {
 
 const WORKSPACE_LINKS: SidebarNavEntry[] = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/issues", label: "Issues", icon: ListTodo },
   {
     to: "/projects",
     label: "Projects",
     icon: PanelsTopLeft,
-    children: [{ to: "/projects/plans", label: "Plans", icon: FolderTree }],
+    children: [
+      { to: "/projects/plans", label: "Plans", icon: FolderTree },
+      { to: "/projects/issues", label: "Issues", icon: ListTodo },
+    ],
   },
   { to: "/agents", label: "Agents", icon: Bot },
 ];

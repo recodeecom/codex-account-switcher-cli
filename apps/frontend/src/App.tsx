@@ -33,7 +33,7 @@ function AppLayout() {
   const isProjectsRoute = location.pathname === "/projects";
   const isAccountsRoute = location.pathname === "/accounts";
   const isPlansRoute = location.pathname === "/projects/plans";
-  const isIssuesRoute = location.pathname === "/issues";
+  const isIssuesRoute = location.pathname === "/projects/issues" || location.pathname === "/issues";
   const isAgentsRoute = location.pathname === "/agents";
   const isRuntimesRoute = location.pathname === "/runtimes";
   const isSkillsRoute = location.pathname === "/skills";
@@ -99,12 +99,13 @@ export default function App() {
           <Route element={<AppLayout />}>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/issues" element={<IssuesPage />} />
+            <Route path="/issues" element={<Navigate to="/projects/issues" replace />} />
             <Route path="/accounts" element={<AccountsPage />} />
             <Route path="/agents" element={<AgentsPage />} />
             <Route path="/referrals" element={<ReferralsPage />} />
             <Route path="/projects" element={<ProjectsPage />} />
             <Route path="/projects/plans" element={<PlansPage />} />
+            <Route path="/projects/issues" element={<IssuesPage />} />
             <Route path="/billing" element={<BillingPage />} />
             <Route path="/apis" element={<ApisPage />} />
             <Route path="/devices" element={<DevicesPage />} />

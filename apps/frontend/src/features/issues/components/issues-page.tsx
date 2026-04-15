@@ -13,7 +13,7 @@ import {
   SlidersHorizontal,
   X,
 } from "lucide-react";
-import { useMemo, useState, type ButtonHTMLAttributes, type DragEvent } from "react";
+import { useEffect, useMemo, useState, type ButtonHTMLAttributes, type DragEvent } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -27,7 +27,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useProjects } from "@/features/projects/hooks/use-projects";
 import { cn } from "@/lib/utils";
+import { useSearchParams } from "@/lib/router-compat";
 import { useWorkspaces } from "@/features/workspaces/hooks/use-workspaces";
 
 type IssueScope = "all" | "members" | "agents";
@@ -43,6 +45,7 @@ type IssueCard = {
   assigneeType: IssueAssigneeType;
   assigneeName: string | null;
   dueDate: string | null;
+  projectId: string | null;
   projectName: string | null;
 };
 
@@ -61,11 +64,17 @@ type CreateIssueInput = {
   assigneeType: IssueAssigneeType;
   assigneeName: string | null;
   dueDate: string | null;
+  projectId: string | null;
   projectName: string | null;
 };
 
 type AssigneeOption = {
   type: Exclude<IssueAssigneeType, null>;
+  name: string;
+};
+
+type IssueProjectOption = {
+  id: string;
   name: string;
 };
 
@@ -136,6 +145,7 @@ const ISSUE_SEED: Record<IssueStatusKey, IssueCard[]> = {
       assigneeType: "member",
       assigneeName: "Nina",
       dueDate: null,
+      projectId: null,
       projectName: null,
     },
     {
@@ -145,6 +155,7 @@ const ISSUE_SEED: Record<IssueStatusKey, IssueCard[]> = {
       assigneeType: "agent",
       assigneeName: "Builder Bot",
       dueDate: null,
+      projectId: null,
       projectName: null,
     },
     {
@@ -154,6 +165,7 @@ const ISSUE_SEED: Record<IssueStatusKey, IssueCard[]> = {
       assigneeType: "agent",
       assigneeName: "Review Agent",
       dueDate: null,
+      projectId: null,
       projectName: null,
     },
     {
@@ -163,6 +175,7 @@ const ISSUE_SEED: Record<IssueStatusKey, IssueCard[]> = {
       assigneeType: "member",
       assigneeName: "Alex",
       dueDate: null,
+      projectId: null,
       projectName: null,
     },
   ],
@@ -210,7 +223,14 @@ function moveIssueToColumn(
   };
 }
 
-function issueMatchesScope(issue: IssueCard, scope: IssueScope): boolean {
+function issueMatchesScope(
+  issue: IssueCard,
+  scope: IssueScope,
+  selectedProjectId: string | null,
+): boolean {
+  if (selectedProjectId && issue.projectId !== selectedProjectId) {
+    return false;
+  }
   if (scope === "members") {
     return issue.assigneeType === "member";
   }
@@ -223,13 +243,14 @@ function issueMatchesScope(issue: IssueCard, scope: IssueScope): boolean {
 function buildScopedColumns(
   columns: Record<IssueStatusKey, IssueCard[]>,
   scope: IssueScope,
+  selectedProjectId: string | null,
 ): Record<IssueStatusKey, IssueCard[]> {
   return {
-    backlog: columns.backlog.filter((issue) => issueMatchesScope(issue, scope)),
-    todo: columns.todo.filter((issue) => issueMatchesScope(issue, scope)),
-    in_progress: columns.in_progress.filter((issue) => issueMatchesScope(issue, scope)),
-    in_review: columns.in_review.filter((issue) => issueMatchesScope(issue, scope)),
-    done: columns.done.filter((issue) => issueMatchesScope(issue, scope)),
+    backlog: columns.backlog.filter((issue) => issueMatchesScope(issue, scope, selectedProjectId)),
+    todo: columns.todo.filter((issue) => issueMatchesScope(issue, scope, selectedProjectId)),
+    in_progress: columns.in_progress.filter((issue) => issueMatchesScope(issue, scope, selectedProjectId)),
+    in_review: columns.in_review.filter((issue) => issueMatchesScope(issue, scope, selectedProjectId)),
+    done: columns.done.filter((issue) => issueMatchesScope(issue, scope, selectedProjectId)),
   };
 }
 
@@ -280,7 +301,8 @@ type CreateIssueDialogProps = {
   onOpenChange: (open: boolean) => void;
   workspaceName: string;
   defaultStatus: IssueStatusKey;
-  projectOptions: string[];
+  selectedProjectId: string | null;
+  projectOptions: IssueProjectOption[];
   onCreateIssue: (input: CreateIssueInput) => void;
 };
 
@@ -289,6 +311,7 @@ function CreateIssueDialog({
   onOpenChange,
   workspaceName,
   defaultStatus,
+  selectedProjectId,
   projectOptions,
   onCreateIssue,
 }: CreateIssueDialogProps) {
@@ -300,7 +323,11 @@ function CreateIssueDialog({
   const [assigneeType, setAssigneeType] = useState<IssueAssigneeType>(null);
   const [assigneeName, setAssigneeName] = useState<string | null>(null);
   const [dueDate, setDueDate] = useState<string | null>(null);
-  const [projectName, setProjectName] = useState<string | null>(null);
+  const [projectId, setProjectId] = useState<string | null>(selectedProjectId);
+
+  useEffect(() => {
+    setProjectId(selectedProjectId);
+  }, [selectedProjectId]);
 
   const reset = () => {
     setExpanded(false);
@@ -311,12 +338,12 @@ function CreateIssueDialog({
     setAssigneeType(null);
     setAssigneeName(null);
     setDueDate(null);
-    setProjectName(null);
+    setProjectId(selectedProjectId);
   };
 
   const selectedStatus = ISSUE_COLUMNS.find((column) => column.key === status)?.label ?? "Backlog";
   const selectedAssigneeLabel = assigneeName ?? "Unassigned";
-  const selectedProjectLabel = projectName ?? "No project";
+  const selectedProjectLabel = projectOptions.find((entry) => entry.id === projectId)?.name ?? "No project";
 
   const handleSubmit = () => {
     if (!title.trim()) {
@@ -330,7 +357,8 @@ function CreateIssueDialog({
       assigneeType,
       assigneeName,
       dueDate,
-      projectName,
+      projectId,
+      projectName: projectOptions.find((entry) => entry.id === projectId)?.name ?? null,
     });
     onOpenChange(false);
     reset();
@@ -525,11 +553,11 @@ function CreateIssueDialog({
               <PillButton>{selectedProjectLabel}</PillButton>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-52">
-              <DropdownMenuItem onClick={() => setProjectName(null)}>No project</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setProjectId(null)}>No project</DropdownMenuItem>
               <DropdownMenuSeparator />
-              {projectOptions.map((projectNameOption) => (
-                <DropdownMenuItem key={projectNameOption} onClick={() => setProjectName(projectNameOption)}>
-                  {projectNameOption}
+              {projectOptions.map((projectOption) => (
+                <DropdownMenuItem key={projectOption.id} onClick={() => setProjectId(projectOption.id)}>
+                  {projectOption.name}
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>
@@ -555,6 +583,13 @@ function CreateIssueDialog({
 
 export function IssuesPage() {
   const { workspacesQuery } = useWorkspaces();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeWorkspace = useMemo(
+    () => (workspacesQuery.data?.entries ?? []).find((entry) => entry.isActive) ?? null,
+    [workspacesQuery.data?.entries],
+  );
+  const activeWorkspaceId = activeWorkspace?.id ?? null;
+  const { projectsQuery } = useProjects(activeWorkspaceId);
   const [scope, setScope] = useState<IssueScope>("all");
   const [issuesByColumn, setIssuesByColumn] = useState<Record<IssueStatusKey, IssueCard[]>>(() =>
     cloneIssueSeed(),
@@ -570,13 +605,28 @@ export function IssuesPage() {
   }, [workspacesQuery.data?.entries]);
 
   const projectOptions = useMemo(() => {
-    const entries = workspacesQuery.data?.entries ?? [];
-    return entries.map((entry) => entry.name).filter((name, index, source) => source.indexOf(name) === index);
-  }, [workspacesQuery.data?.entries]);
+    const entries = projectsQuery.data?.entries ?? [];
+    return entries.map((entry) => ({ id: entry.id, name: entry.name }));
+  }, [projectsQuery.data?.entries]);
+
+  const selectedProjectId = useMemo(() => {
+    const requestedProjectId = searchParams.get("projectId");
+    if (!requestedProjectId) {
+      return null;
+    }
+    return projectOptions.some((project) => project.id === requestedProjectId)
+      ? requestedProjectId
+      : null;
+  }, [projectOptions, searchParams]);
+
+  const selectedProjectName = useMemo(
+    () => projectOptions.find((project) => project.id === selectedProjectId)?.name ?? "All projects",
+    [projectOptions, selectedProjectId],
+  );
 
   const scopedIssuesByColumn = useMemo(
-    () => buildScopedColumns(issuesByColumn, scope),
-    [issuesByColumn, scope],
+    () => buildScopedColumns(issuesByColumn, scope, selectedProjectId),
+    [issuesByColumn, scope, selectedProjectId],
   );
 
   const hasScopedIssues = useMemo(
@@ -623,6 +673,16 @@ export function IssuesPage() {
     setComposerOpen(true);
   };
 
+  const setProjectFilter = (projectId: string | null) => {
+    const nextParams = new URLSearchParams(searchParams);
+    if (projectId) {
+      nextParams.set("projectId", projectId);
+    } else {
+      nextParams.delete("projectId");
+    }
+    setSearchParams(nextParams);
+  };
+
   const handleCreateIssue = (input: CreateIssueInput) => {
     setIssuesByColumn((previous) => {
       const nextIssue: IssueCard = {
@@ -633,6 +693,7 @@ export function IssuesPage() {
         assigneeType: input.assigneeType,
         assigneeName: input.assigneeName,
         dueDate: input.dueDate,
+        projectId: input.projectId,
         projectName: input.projectName,
       };
       return {
@@ -664,6 +725,30 @@ export function IssuesPage() {
                 {option.label}
               </button>
             ))}
+            {projectOptions.length > 0 ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="ml-1 rounded-md border border-white/12 bg-white/[0.03] px-2.5 py-1 text-[11px] font-medium text-zinc-300 transition-colors hover:bg-white/10 hover:text-zinc-100"
+                    aria-label="Project issues filter"
+                  >
+                    {selectedProjectName}
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-56">
+                  <DropdownMenuItem onClick={() => setProjectFilter(null)}>
+                    All projects
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  {projectOptions.map((project) => (
+                    <DropdownMenuItem key={project.id} onClick={() => setProjectFilter(project.id)}>
+                      {project.name}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
           </div>
 
           <div className="flex items-center gap-1.5">
@@ -777,6 +862,11 @@ export function IssuesPage() {
                                   {issue.assigneeType === "member" ? "Member" : "Agent"}: {issue.assigneeName}
                                 </span>
                               ) : null}
+                              {issue.projectName ? (
+                                <span className="inline-flex rounded border border-white/12 bg-white/5 px-1.5 py-0.5 text-[10px] text-zinc-400">
+                                  {issue.projectName}
+                                </span>
+                              ) : null}
                             </div>
                           </article>
                         ))
@@ -805,6 +895,7 @@ export function IssuesPage() {
         onOpenChange={setComposerOpen}
         workspaceName={workspaceName}
         defaultStatus={composerDefaultStatus}
+        selectedProjectId={selectedProjectId}
         projectOptions={projectOptions}
         onCreateIssue={handleCreateIssue}
       />
