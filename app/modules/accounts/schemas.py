@@ -107,6 +107,8 @@ class AccountSessionTaskPreview(DashboardModel):
     session_key: str
     task_preview: str | None = None
     task_updated_at: datetime | None = None
+    project_name: str | None = None
+    project_path: str | None = None
 
 
 class AccountSummary(DashboardModel):

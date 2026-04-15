@@ -539,8 +539,10 @@ function OmxPlanningPromptGraph({
 
 function CodexActiveAgentCard({
   cliRuntimeState,
+  projectLabel,
 }: {
   cliRuntimeState: OmxCliRuntimeState;
+  projectLabel?: string | null;
 }) {
   const cliStateStyle =
     OMX_CLI_STATE_STYLES[cliRuntimeState] ?? OMX_CLI_STATE_STYLES.finished;
@@ -611,6 +613,15 @@ function CodexActiveAgentCard({
                 </span>
               ) : null}
             </span>
+            {projectLabel ? (
+              <span
+                data-testid="codex-inline-project"
+                className="inline-flex w-fit items-center gap-1.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-cyan-100/85"
+              >
+                <span className="text-cyan-100/65">Project:</span>
+                <span className="font-mono text-cyan-100/95">{projectLabel}</span>
+              </span>
+            ) : null}
           </div>
         </div>
       </div>
@@ -764,6 +775,8 @@ type SessionTaskRow = {
   sessionKey: string;
   taskPreview: string;
   taskUpdatedAt: string | null;
+  projectName: string | null;
+  projectPath: string | null;
   ordinal: number;
   synthetic: boolean;
 };
@@ -886,6 +899,29 @@ function formatSessionKeyLabel(sessionKey: string): string {
     return normalized;
   }
   return `${normalized.slice(0, 6)}…${normalized.slice(-4)}`;
+}
+
+function resolveSessionProjectLabel(
+  projectName: string | null | undefined,
+  projectPath: string | null | undefined,
+): string | null {
+  const normalizedName = projectName?.trim();
+  if (normalizedName) {
+    return normalizedName;
+  }
+  const normalizedPath = projectPath?.trim();
+  if (!normalizedPath) {
+    return null;
+  }
+  const pathSegments = normalizedPath
+    .replace(/\\/g, "/")
+    .split("/")
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0);
+  if (pathSegments.length === 0) {
+    return null;
+  }
+  return pathSegments[pathSegments.length - 1] ?? null;
 }
 
 const SESSION_TASK_ACCENT_CLASSES = [
@@ -1769,6 +1805,8 @@ export function AccountCard(props: AccountCardProps) {
         sessionKey: string;
         taskPreview: string;
         taskUpdatedAt: string | null;
+        projectName: string | null;
+        projectPath: string | null;
         sourceIndex: number;
       }
     >();
@@ -1784,6 +1822,8 @@ export function AccountCard(props: AccountCardProps) {
         sessionKey,
         taskPreview: resolveSessionTaskPreview(preview.taskPreview),
         taskUpdatedAt: preview.taskUpdatedAt ?? null,
+        projectName: preview.projectName?.trim() || null,
+        projectPath: preview.projectPath?.trim() || null,
         sourceIndex: index,
       };
       const existing = dedupedBySessionKey.get(sessionKey);
@@ -1808,10 +1848,12 @@ export function AccountCard(props: AccountCardProps) {
     }
 
     const normalized = Array.from(dedupedBySessionKey.values()).map(
-      ({ sessionKey, taskPreview, taskUpdatedAt }) => ({
+      ({ sessionKey, taskPreview, taskUpdatedAt, projectName, projectPath }) => ({
         sessionKey,
         taskPreview,
         taskUpdatedAt,
+        projectName,
+        projectPath,
       }),
     );
     if (
@@ -1981,6 +2023,8 @@ export function AccountCard(props: AccountCardProps) {
           account.lastUsageRecordedAtPrimary ??
           account.lastUsageRecordedAtSecondary ??
           null,
+        projectName: null,
+        projectPath: null,
         ordinal: 1,
         synthetic: true,
       });
@@ -1990,6 +2034,8 @@ export function AccountCard(props: AccountCardProps) {
         sessionKey: `live-session-${index + 1}`,
         taskPreview: WAITING_FOR_NEW_TASK_LABEL,
         taskUpdatedAt: null,
+        projectName: null,
+        projectPath: null,
         ordinal: index + 1,
         synthetic: true,
       });
@@ -2152,6 +2198,28 @@ export function AccountCard(props: AccountCardProps) {
     () => sessionTaskRows.find((row) => !row.synthetic)?.sessionKey ?? null,
     [sessionTaskRows],
   );
+  const codexActiveProjectLabel = useMemo(() => {
+    for (let index = 0; index < sessionTaskRows.length; index += 1) {
+      const row = sessionTaskRows[index];
+      if (!row || row.synthetic || sessionTaskStates[index] !== "thinking") {
+        continue;
+      }
+      const label = resolveSessionProjectLabel(row.projectName, row.projectPath);
+      if (label) {
+        return label;
+      }
+    }
+    for (const row of sessionTaskRows) {
+      if (row.synthetic) {
+        continue;
+      }
+      const label = resolveSessionProjectLabel(row.projectName, row.projectPath);
+      if (label) {
+        return label;
+      }
+    }
+    return null;
+  }, [sessionTaskRows, sessionTaskStates]);
   const openCodexLogsView = () => {
     const focusSessionKey = primaryCliSessionKey ?? undefined;
     const context = focusSessionKey
@@ -2423,6 +2491,7 @@ export function AccountCard(props: AccountCardProps) {
                         ) : showCodexActiveAgentCard ? (
                           <CodexActiveAgentCard
                             cliRuntimeState={codexActiveCardCliRuntimeState}
+                            projectLabel={codexActiveProjectLabel}
                           />
                         ) : null
                       ) : null}

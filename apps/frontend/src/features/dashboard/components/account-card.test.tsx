@@ -1847,6 +1847,38 @@ describe("AccountCard", () => {
     expect(screen.getByText("working...")).toBeInTheDocument();
   });
 
+  it("renders the active project label under codex thinking status when session metadata includes project info", () => {
+    const account = createAccountSummary({
+      codexLiveSessionCount: 1,
+      codexSessionCount: 1,
+      codexTrackedSessionCount: 1,
+      codexCurrentTaskPreview: "Investigate account-card session metadata",
+      codexSessionTaskPreviews: [
+        {
+          sessionKey: "sess-project-001",
+          taskPreview: "Investigate account-card session metadata",
+          taskUpdatedAt: "2026-04-05T10:00:00.000Z",
+          projectName: "recodee",
+          projectPath: "/home/deadpool/Documents/recodee",
+        },
+      ],
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+    });
+
+    render(<AccountCard account={account} />);
+
+    const codexActiveCard = screen.getByTestId("codex-active-agent-card");
+    expect(
+      within(codexActiveCard).getByTestId("codex-inline-project"),
+    ).toHaveTextContent("Project:recodee");
+  });
+
   it("renders the OMX planning graph with planning role nodes", () => {
     const nowIso = new Date().toISOString();
     const account = createAccountSummary({

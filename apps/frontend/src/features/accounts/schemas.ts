@@ -98,6 +98,8 @@ export const AccountSessionTaskPreviewSchema = z.object({
   sessionKey: z.string(),
   taskPreview: z.string().nullable().optional().default(null),
   taskUpdatedAt: z.string().datetime({ offset: true }).nullable().optional().default(null),
+  projectName: z.string().nullable().optional(),
+  projectPath: z.string().nullable().optional(),
 });
 
 export const AccountSummarySchema = z.object({

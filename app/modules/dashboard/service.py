@@ -88,6 +88,8 @@ class DashboardService:
                     session_key=preview.session_key,
                     task_preview=preview.task_preview,
                     task_updated_at=preview.task_updated_at,
+                    project_name=preview.project_name,
+                    project_path=preview.project_path,
                 )
                 for preview in previews
             ]

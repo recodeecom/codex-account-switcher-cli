@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import os
+import re
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 
 from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.exc import OperationalError
@@ -26,6 +29,9 @@ _DELETED_ACCOUNT_DEACTIVATION_REASON = "deleted_by_user"
 _SQLITE_MERGE_LOCK_MAX_ATTEMPTS = 6
 _SQLITE_MERGE_LOCK_BASE_BACKOFF_SECONDS = 0.05
 _SQLITE_MERGE_LOCK_MAX_BACKOFF_SECONDS = 0.4
+_SESSION_ID_FROM_KEY_RE = re.compile(r"([0-9a-fA-F-]{36})")
+_ROLLOUT_CWD_RE = re.compile(r"(?is)<cwd>\s*([^<]+?)\s*</cwd>")
+_ROLLOUT_SCAN_LINE_LIMIT = 420
 
 
 def _not_deleted_account_clause():
@@ -47,6 +53,8 @@ class AccountSessionTaskPreview:
     session_key: str
     task_preview: str | None
     task_updated_at: datetime | None
+    project_name: str | None = None
+    project_path: str | None = None
 
 
 class AccountIdentityConflictError(Exception):
@@ -234,16 +242,27 @@ class AccountsRepository:
         result = await self._session.execute(query)
 
         previews_by_account: dict[str, list[AccountSessionTaskPreview]] = {}
+        project_metadata_by_session_id: dict[str, tuple[str | None, str | None]] = {}
         for account_id, session_key, task_preview, task_timestamp in result.all():
             if not account_id or not session_key:
                 continue
             normalized_task_preview = str(task_preview).strip() if isinstance(task_preview, str) else None
+            session_id = _extract_session_id_from_key(str(session_key))
+            project_name: str | None = None
+            project_path: str | None = None
+            if session_id is not None:
+                project_name, project_path = _resolve_session_project_metadata(
+                    session_id=session_id,
+                    cache=project_metadata_by_session_id,
+                )
             previews_by_account.setdefault(str(account_id), []).append(
                 AccountSessionTaskPreview(
                     account_id=str(account_id),
                     session_key=str(session_key),
                     task_preview=normalized_task_preview or None,
                     task_updated_at=task_timestamp,
+                    project_name=project_name,
+                    project_path=project_path,
                 )
             )
 
@@ -541,3 +560,122 @@ def _apply_account_updates(target: Account, source: Account) -> None:
 def _advisory_lock_key(scope: str, value: str) -> int:
     digest = hashlib.sha256(f"{scope}:{value}".encode("utf-8")).digest()
     return int.from_bytes(digest[:8], byteorder="big", signed=True)
+
+
+def _extract_session_id_from_key(key: str) -> str | None:
+    match = _SESSION_ID_FROM_KEY_RE.search(key)
+    if match is None:
+        return None
+    return match.group(1)
+
+
+def _resolve_session_project_metadata(
+    *,
+    session_id: str,
+    cache: dict[str, tuple[str | None, str | None]],
+) -> tuple[str | None, str | None]:
+    cached = cache.get(session_id)
+    if cached is not None:
+        return cached
+
+    rollout_path = _resolve_latest_rollout_file_for_session_id(session_id)
+    if rollout_path is None:
+        cache[session_id] = (None, None)
+        return (None, None)
+
+    project_path = _extract_cwd_from_rollout_file(rollout_path)
+    project_name = _project_name_from_path(project_path)
+    cache[session_id] = (project_name, project_path)
+    return (project_name, project_path)
+
+
+def _resolve_latest_rollout_file_for_session_id(session_id: str) -> Path | None:
+    candidate_files: list[Path] = []
+    for sessions_dir in _iter_sessions_dirs():
+        if not sessions_dir.exists() or not sessions_dir.is_dir():
+            continue
+        candidate_files.extend(sessions_dir.rglob(f"rollout-*-{session_id}.jsonl"))
+    if not candidate_files:
+        return None
+    candidate_files.sort(key=_safe_mtime, reverse=True)
+    return candidate_files[0]
+
+
+def _iter_sessions_dirs() -> list[Path]:
+    directories: list[Path] = []
+
+    default_sessions_dir = _resolve_sessions_dir()
+    directories.append(default_sessions_dir)
+
+    runtime_root = _resolve_runtime_root()
+    if runtime_root.exists() and runtime_root.is_dir():
+        for runtime_dir in runtime_root.iterdir():
+            if not runtime_dir.is_dir():
+                continue
+            directories.append((runtime_dir / "sessions").resolve())
+
+    unique_directories: list[Path] = []
+    seen: set[str] = set()
+    for directory in directories:
+        key = str(directory)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique_directories.append(directory)
+    return unique_directories
+
+
+def _resolve_sessions_dir() -> Path:
+    sessions_raw = os.environ.get("CODEX_SESSIONS_DIR")
+    if sessions_raw:
+        return Path(sessions_raw).expanduser().resolve()
+
+    auth_raw = os.environ.get("CODEX_AUTH_JSON_PATH")
+    if auth_raw:
+        auth_path = Path(auth_raw).expanduser().resolve()
+        return (auth_path.parent / "sessions").resolve()
+
+    return (Path.home() / ".codex" / "sessions").resolve()
+
+
+def _resolve_runtime_root() -> Path:
+    runtime_raw = os.environ.get("CODEX_AUTH_RUNTIME_ROOT")
+    if runtime_raw:
+        return Path(runtime_raw).expanduser().resolve()
+    return (Path.home() / ".codex" / "runtimes").resolve()
+
+
+def _safe_mtime(path: Path) -> float:
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
+def _extract_cwd_from_rollout_file(path: Path) -> str | None:
+    try:
+        with path.open("r", encoding="utf-8", errors="ignore") as handle:
+            for index, line in enumerate(handle):
+                if index >= _ROLLOUT_SCAN_LINE_LIMIT:
+                    break
+                match = _ROLLOUT_CWD_RE.search(line)
+                if match is not None:
+                    normalized = match.group(1).strip()
+                    if normalized:
+                        return normalized
+    except OSError:
+        return None
+    return None
+
+
+def _project_name_from_path(project_path: str | None) -> str | None:
+    if project_path is None:
+        return None
+    normalized = project_path.strip()
+    if not normalized:
+        return None
+    path = Path(normalized)
+    name = path.name.strip()
+    if name:
+        return name
+    return None

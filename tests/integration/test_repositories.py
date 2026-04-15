@@ -298,3 +298,64 @@ async def test_accounts_repository_list_codex_session_task_previews_has_no_defau
             "repo-session-active-4",
             "repo-session-active-5",
         ]
+
+
+@pytest.mark.asyncio
+async def test_accounts_repository_enriches_codex_session_task_preview_project_metadata(
+    db_setup,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+):
+    now = utcnow().replace(microsecond=0)
+    active_since = now - timedelta(minutes=10)
+    session_id = "11111111-2222-4333-8444-555555555555"
+    rollout_path = (
+        tmp_path
+        / "2026"
+        / "04"
+        / "15"
+        / f"rollout-2026-04-15T10-00-00-{session_id}.jsonl"
+    )
+    rollout_path.parent.mkdir(parents=True, exist_ok=True)
+    rollout_path.write_text(
+        '{"type":"response.output_text.delta","payload":{"text":"<environment_context>\\n  <cwd>/home/deadpool/Documents/recodee</cwd>\\n</environment_context>"}}\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CODEX_SESSIONS_DIR", str(tmp_path))
+    monkeypatch.delenv("CODEX_AUTH_RUNTIME_ROOT", raising=False)
+    monkeypatch.delenv("CODEX_AUTH_JSON_PATH", raising=False)
+
+    async with SessionLocal() as session:
+        repo = AccountsRepository(session)
+        await repo.upsert(_make_account("acc_preview_project", "preview-project@example.com"))
+        await session.execute(
+            text(
+                """
+                INSERT INTO sticky_sessions (
+                    key, account_id, kind, created_at, updated_at, task_preview, task_updated_at
+                )
+                VALUES (
+                    :key, :account_id, 'codex_session',
+                    :timestamp, :timestamp, :task_preview, :timestamp
+                )
+                """
+            ),
+            {
+                "key": f"pid:5000:{session_id}",
+                "account_id": "acc_preview_project",
+                "timestamp": now,
+                "task_preview": "Investigate project metadata projection",
+            },
+        )
+        await session.commit()
+
+        previews = await repo.list_codex_session_task_previews_by_account(
+            ["acc_preview_project"],
+            active_since=active_since,
+        )
+
+        assert list(previews.keys()) == ["acc_preview_project"]
+        assert len(previews["acc_preview_project"]) == 1
+        preview = previews["acc_preview_project"][0]
+        assert preview.project_name == "recodee"
+        assert preview.project_path == "/home/deadpool/Documents/recodee"
