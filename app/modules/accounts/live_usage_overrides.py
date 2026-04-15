@@ -282,20 +282,17 @@ def apply_local_live_usage_overrides(
             session_presence_snapshot_names,
             selected_snapshot_name=effective_selected_snapshot_name,
         )
-        if (
-            has_recently_terminated_cli_session
-            and not has_live_process_session
-            and not has_live_runtime_session
-        ):
+        if has_recently_terminated_cli_session and not has_live_process_session:
+            effective_live_runtime_session_count = 0
+            live_runtime_session_counts_by_account[account.id] = 0
+            has_live_runtime_session = False
             live_usage = None
         deferred_default_scope_session_hint_count = (
             deferred_default_scope_session_hints_by_account.get(account.id, 0)
             if should_defer_active_snapshot_usage
             else 0
         )
-        if has_recently_terminated_cli_session and not (
-            has_live_process_session or has_live_runtime_session
-        ):
+        if has_recently_terminated_cli_session and not has_live_process_session:
             deferred_default_scope_session_hint_count = 0
         has_deferred_default_scope_session_hint = deferred_default_scope_session_hint_count > 0
         has_live_telemetry = bool(live_usage and live_usage.active_session_count > 0)

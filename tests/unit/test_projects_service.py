@@ -408,6 +408,78 @@ async def test_list_projects_auto_discovery_updates_existing_missing_git_metadat
     assert listed.entries[0].github_repo_url == "https://github.com/webu-pro/recodee"
 
 
+@pytest.mark.asyncio
+async def test_list_projects_auto_discovery_updates_existing_mismatched_github_repo_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = ProjectsService(cast(ProjectsRepositoryPort, _Repo()))
+    monkeypatch.setenv("CODEX_LB_PROJECTS_AUTO_DISCOVER_ENABLED", "true")
+    created = await service.add_project(
+        "wireless-kfb",
+        None,
+        None,
+        "https://github.com/NagyVikt/Wireless_KFB_Project",
+        "/home/deadpool/KFB-WIRELESS-CLIP-TESTER/GUI",
+        None,
+        "dev",
+    )
+
+    monkeypatch.setattr(
+        "app.modules.projects.service.discover_active_codex_git_projects",
+        lambda: [
+            AutoDiscoveredGitProject(
+                name="GUI",
+                project_path="/home/deadpool/KFB-WIRELESS-CLIP-TESTER/GUI",
+                git_branch="dev",
+                github_repo_url="https://github.com/projects-kssk/Wireless_KFB_Project",
+            )
+        ],
+    )
+
+    listed = await service.list_projects()
+    assert len(listed.entries) == 1
+    assert listed.entries[0].id == created.id
+    assert listed.entries[0].git_branch == "dev"
+    assert listed.entries[0].github_repo_url == "https://github.com/projects-kssk/Wireless_KFB_Project"
+
+
+@pytest.mark.asyncio
+async def test_list_projects_auto_discovery_refreshes_git_metadata_from_project_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = ProjectsService(cast(ProjectsRepositoryPort, _Repo()))
+    monkeypatch.setenv("CODEX_LB_PROJECTS_AUTO_DISCOVER_ENABLED", "true")
+    created = await service.add_project(
+        "wireless-kfb",
+        None,
+        None,
+        "https://github.com/NagyVikt/Wireless_KFB_Project",
+        "/home/deadpool/KFB-WIRELESS-CLIP-TESTER/GUI",
+        None,
+        None,
+    )
+
+    monkeypatch.setattr(
+        "app.modules.projects.service.discover_active_codex_git_projects",
+        lambda: [],
+    )
+    monkeypatch.setattr(
+        "app.modules.projects.service._discover_git_metadata_for_project_path",
+        lambda project_path: (
+            "dev",
+            "https://github.com/projects-kssk/Wireless_KFB_Project",
+        )
+        if project_path == "/home/deadpool/KFB-WIRELESS-CLIP-TESTER/GUI"
+        else None,
+    )
+
+    listed = await service.list_projects()
+    assert len(listed.entries) == 1
+    assert listed.entries[0].id == created.id
+    assert listed.entries[0].git_branch == "dev"
+    assert listed.entries[0].github_repo_url == "https://github.com/projects-kssk/Wireless_KFB_Project"
+
+
 def test_discover_active_codex_git_projects_includes_current_process_cwd_repo(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

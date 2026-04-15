@@ -423,11 +423,10 @@ class AccountsService:
         for snapshot_name in snapshot_names_to_terminate:
             terminated_session_count += terminate_live_codex_processes_for_snapshot(snapshot_name)
 
-        if terminated_session_count > 0:
-            remember_terminated_cli_session_snapshots(
-                snapshot_names_to_terminate,
-                observed_at=utcnow(),
-            )
+        remember_terminated_cli_session_snapshots(
+            snapshot_names_to_terminate,
+            observed_at=utcnow(),
+        )
 
         await self._repo.delete_codex_sessions_for_account(account.id)
         return AccountTerminateCliSessionsResponse(
