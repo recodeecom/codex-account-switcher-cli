@@ -1223,6 +1223,141 @@ export function PlansPage() {
                       </p>
                     </div>
 
+                    <div className="space-y-3 rounded-lg border border-border/60 bg-background/20 p-3" data-testid="plan-included-prompts">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-xs uppercase tracking-wide text-muted-foreground">Included AI prompts</p>
+                        <Badge variant="outline" className="text-[10px]">
+                          {includedPromptCards.length} prompt{includedPromptCards.length === 1 ? "" : "s"}
+                        </Badge>
+                      </div>
+
+                      {includedPromptCards.length > 0 ? (
+                        <ul className="grid gap-2 lg:grid-cols-2">
+                          {includedPromptCards.map((prompt) => {
+                            const isCollapsed = collapsedPromptCards[prompt.key] ?? true;
+
+                            return (
+                              <li
+                                key={prompt.key}
+                                className="overflow-hidden rounded-md border border-border/60 bg-background/15"
+                                data-testid={`plan-included-prompt-card-${prompt.id}`}
+                              >
+                                <div
+                                  className={cn(
+                                    "px-2.5 py-2 transition-colors hover:bg-background/30",
+                                    !isCollapsed ? "border-b border-border/40" : null,
+                                  )}
+                                >
+                                  <div className="flex items-start gap-2">
+                                    <button
+                                      type="button"
+                                      className="flex min-w-0 flex-1 items-start gap-2 text-left"
+                                      aria-expanded={!isCollapsed}
+                                      onClick={() => togglePromptCard(prompt.key)}
+                                    >
+                                      <StepStatusIcon status={prompt.status} className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                                      <div className="min-w-0 space-y-1">
+                                        <p className="truncate text-sm font-medium text-foreground/90">{prompt.title}</p>
+                                        {prompt.goal ? (
+                                          <p className="text-[11px] leading-relaxed text-foreground/85">
+                                            <span className="font-semibold text-foreground/95">Goal:</span>
+                                            <span className="mt-0.5 block line-clamp-3">{prompt.goal}</span>
+                                          </p>
+                                        ) : null}
+                                      </div>
+                                    </button>
+                                    <ChevronDown
+                                      className={cn(
+                                        "mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200",
+                                        isCollapsed ? "-rotate-90" : "rotate-0",
+                                      )}
+                                      aria-hidden
+                                    />
+                                  </div>
+                                  <div className="mt-2 flex flex-wrap items-center gap-1.5 pl-5">
+                                    {prompt.status !== "pending" ? (
+                                      <Badge
+                                        variant="outline"
+                                        className={cn("text-[10px] capitalize", stepStatusBadgeClass(prompt.status))}
+                                        data-testid={`plan-included-prompt-status-${prompt.id}`}
+                                      >
+                                        {statusLabel(prompt.status)}
+                                      </Badge>
+                                    ) : null}
+                                    {prompt.checkpointIds.length > 0 ? (
+                                      <Badge variant="outline" className="text-[10px]">
+                                        {prompt.checkpointIds.join(" · ")}
+                                      </Badge>
+                                    ) : null}
+                                    <CopyButton value={prompt.content} label={`Copy ${prompt.title}`} />
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="xs"
+                                      onClick={() => setZoomedPromptKey(prompt.key)}
+                                      aria-label={`Zoom ${prompt.title}`}
+                                    >
+                                      <Maximize2 className="size-3" />
+                                      Zoom
+                                    </Button>
+                                  </div>
+                                </div>
+                                {!isCollapsed ? (
+                                  <div className="px-3 py-2">
+                                    <pre className="max-h-64 overflow-auto rounded-md border border-border/60 bg-background/30 px-2 py-1.5 text-[11px] leading-relaxed whitespace-pre-wrap text-foreground/85">
+                                      {prompt.content}
+                                    </pre>
+                                  </div>
+                                ) : null}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">
+                          No bundled prompts found for this plan yet.
+                        </p>
+                      )}
+                    </div>
+                    <Dialog open={Boolean(zoomedPrompt)} onOpenChange={(open) => (open ? undefined : setZoomedPromptKey(null))}>
+                      {zoomedPrompt ? (
+                        <DialogContent className="max-h-[88vh] overflow-hidden p-0 sm:max-w-5xl">
+                          <DialogHeader className="border-b border-border/60 bg-[#020714] px-5 py-4">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0 space-y-1">
+                                <DialogTitle className="truncate text-base">{zoomedPrompt.title}</DialogTitle>
+                                <DialogDescription className="truncate text-xs">
+                                  {zoomedPrompt.bundleTitle} · {zoomedPrompt.sourcePath}
+                                </DialogDescription>
+                                {zoomedPrompt.goal ? (
+                                  <p className="text-xs text-cyan-100/80">
+                                    <span className="font-semibold text-cyan-100/95">Goal:</span> {zoomedPrompt.goal}
+                                  </p>
+                                ) : null}
+                              </div>
+                              <div className="flex items-center gap-1.5 pr-8">
+                                <StepStatusIcon status={zoomedPrompt.status} className="h-4 w-4" />
+                                {zoomedPrompt.status !== "pending" ? (
+                                  <Badge
+                                    variant="outline"
+                                    className={cn("text-[10px] capitalize", stepStatusBadgeClass(zoomedPrompt.status))}
+                                  >
+                                    {statusLabel(zoomedPrompt.status)}
+                                  </Badge>
+                                ) : null}
+                                <CopyButton value={zoomedPrompt.content} label={`Copy ${zoomedPrompt.title}`} />
+                              </div>
+                            </div>
+                          </DialogHeader>
+                          <div className="overflow-auto p-5">
+                            <pre className="max-h-[68vh] overflow-auto rounded-md border border-white/10 bg-[#020714]/90 px-3 py-2 text-xs leading-relaxed whitespace-pre-wrap text-cyan-100/90">
+                              {zoomedPrompt.content}
+                            </pre>
+                          </div>
+                        </DialogContent>
+                      ) : null}
+                    </Dialog>
+
                     <div
                       className="space-y-3 rounded-xl border border-white/[0.1] bg-white/[0.03] p-3.5"
                       data-testid="plan-next-step-suggestions"

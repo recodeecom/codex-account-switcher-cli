@@ -45,6 +45,18 @@ for reload_dir in $(printf "%s" "$reload_dirs_raw" | tr ',:' ' '); do
   fi
 done
 
+set -- "$python_bin" -m uvicorn app.main:app --host 0.0.0.0 --port "$backend_port" --reload
+for reload_dir in $(printf "%s" "$reload_dirs_raw" | tr ',:' ' '); do
+  [ -n "$reload_dir" ] || continue
+  case "$reload_dir" in
+    /*) resolved_reload_dir="$reload_dir" ;;
+    *) resolved_reload_dir="${repo_root}/${reload_dir}" ;;
+  esac
+  if [ -d "$resolved_reload_dir" ]; then
+    set -- "$@" --reload-dir "$resolved_reload_dir"
+  fi
+done
+
 if normalize_bool "${logging_to_file}"; then
   log_dir="${LOG_DIR:-/var/log/codex-lb}"
   if ! mkdir -p "$log_dir" 2>/dev/null || ! touch "$log_dir/.write-check" 2>/dev/null; then

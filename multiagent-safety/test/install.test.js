@@ -90,10 +90,12 @@ function initRepo() {
   result = runCmd('git', ['config', 'user.name', 'Bot'], repoDir);
   assert.equal(result.status, 0, result.stderr);
 
-  fs.writeFileSync(
-    path.join(repoDir, 'package.json'),
-    JSON.stringify({ name: 'demo', private: true, scripts: {} }, null, 2) + '\n',
-  );
+  if (withPackageJson) {
+    fs.writeFileSync(
+      path.join(repoDir, 'package.json'),
+      JSON.stringify({ name: path.basename(repoDir), private: true, scripts: {} }, null, 2) + '\n',
+    );
+  }
 
   return repoDir;
 }
@@ -253,6 +255,7 @@ test('setup provisions workflow files and repo config', () => {
   assert.match(result.stdout, /OpenSpec core workflow: \/opsx:propose -> \/opsx:apply -> \/opsx:archive/);
   assert.match(result.stdout, /OpenSpec guide: docs\/openspec-getting-started\.md/);
 
+function assertRepoInstalled(repoDir) {
   const requiredFiles = [
     '.omx',
     '.omx/state',
