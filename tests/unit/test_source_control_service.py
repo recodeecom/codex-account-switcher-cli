@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import json
 import subprocess
-from types import SimpleNamespace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 import app.modules.source_control.service as source_control_service
+from app.modules.source_control.schemas import (
+    SourceControlPullRequestPreview,
+    SourceControlReviewContent,
+)
 from app.modules.source_control.service import (
     SourceControlBotSnapshot,
     SourceControlError,
@@ -133,3 +138,154 @@ def test_build_preview_includes_active_snapshot_sessions_with_worktree_branch_ma
     assert matching_entries
     assert matching_entries[0].matched_branch == snapshot_branch
     assert matching_entries[0].session_count == 1
+
+
+def test_build_branch_details_includes_review_content_for_review_bot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _init_repo(tmp_path)
+    branch = "agent/review-target"
+    _git(repo, "checkout", "-b", branch)
+    (repo / "review-target.txt").write_text("review target\n", encoding="utf-8")
+    _git(repo, "add", "review-target.txt")
+    _git(repo, "commit", "-m", "Add review target")
+    _git(repo, "checkout", "main")
+
+    service = SourceControlService()
+    monkeypatch.setattr(
+        service,
+        "_list_pull_requests",
+        lambda **_: [
+            SourceControlPullRequestPreview(
+                number=41,
+                title="Review target",
+                state="open",
+                head_branch=branch,
+                base_branch="main",
+                url="https://example.com/pr/41",
+                author="review-bot",
+                is_draft=False,
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        service,
+        "_load_pull_request_review_content",
+        lambda **_: SourceControlReviewContent(
+            kind="review",
+            content="Please add verification steps before merge.",
+            state="CHANGES_REQUESTED",
+            author="review-bot",
+            submitted_at=None,
+            url="https://example.com/pr/41#review",
+        ),
+    )
+
+    details = service.build_branch_details(
+        project_path=str(repo),
+        bots=[SourceControlBotSnapshot(name="Review Target", status="idle", runtime="Codex")],
+        branch=branch,
+    )
+
+    assert details.review_content is not None
+    assert details.review_content.kind == "review"
+    assert details.review_content.content == "Please add verification steps before merge."
+    assert details.review_content.state == "CHANGES_REQUESTED"
+    assert "Review Target" in details.linked_bots
+
+
+def test_build_branch_details_skips_review_content_without_review_bot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _init_repo(tmp_path)
+    branch = "agent/master-agent"
+    _git(repo, "checkout", "-b", branch)
+    (repo / "master-agent.txt").write_text("master\n", encoding="utf-8")
+    _git(repo, "add", "master-agent.txt")
+    _git(repo, "commit", "-m", "Add master agent")
+    _git(repo, "checkout", "main")
+
+    service = SourceControlService()
+    monkeypatch.setattr(
+        service,
+        "_list_pull_requests",
+        lambda **_: [
+            SourceControlPullRequestPreview(
+                number=73,
+                title="Master agent sync",
+                state="open",
+                head_branch=branch,
+                base_branch="main",
+                url="https://example.com/pr/73",
+                author="master-agent",
+                is_draft=False,
+            )
+        ],
+    )
+
+    def _unexpected_review_lookup(**_):
+        raise AssertionError("review content lookup should not run without review bot")
+
+    monkeypatch.setattr(service, "_load_pull_request_review_content", _unexpected_review_lookup)
+
+    details = service.build_branch_details(
+        project_path=str(repo),
+        bots=[SourceControlBotSnapshot(name="Master Agent", status="active", runtime="Codex")],
+        branch=branch,
+    )
+
+    assert details.review_content is None
+
+
+def test_load_pull_request_review_content_prefers_latest_review(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = _init_repo(tmp_path)
+    service = SourceControlService()
+    monkeypatch.setattr(
+        service,
+        "_run_gh",
+        lambda *_, **__: json.dumps(
+            {
+                "url": "https://example.com/pr/41",
+                "reviewDecision": "CHANGES_REQUESTED",
+                "reviews": [
+                    {
+                        "state": "APPROVED",
+                        "body": "Older review",
+                        "author": {"login": "first-reviewer"},
+                        "submittedAt": "2026-04-14T09:00:00Z",
+                        "url": "https://example.com/pr/41#review-older",
+                    },
+                    {
+                        "state": "CHANGES_REQUESTED",
+                        "body": "Latest review content",
+                        "author": {"login": "review-bot"},
+                        "submittedAt": "2026-04-14T10:00:00Z",
+                        "url": "https://example.com/pr/41#review-latest",
+                    },
+                ],
+                "comments": [
+                    {
+                        "body": "General PR comment",
+                        "author": {"login": "commenter"},
+                        "createdAt": "2026-04-14T10:30:00Z",
+                        "url": "https://example.com/pr/41#issuecomment-1",
+                    }
+                ],
+            }
+        ),
+    )
+
+    review = service._load_pull_request_review_content(
+        repo_root=repo,
+        pull_request_number=41,
+        pull_request_url="https://example.com/pr/41",
+    )
+
+    assert review is not None
+    assert review.kind == "review"
+    assert review.content == "Latest review content"
+    assert review.state == "CHANGES_REQUESTED"
+    assert review.author == "review-bot"
+    assert review.url == "https://example.com/pr/41#review-latest"

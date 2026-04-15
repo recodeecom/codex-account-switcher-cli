@@ -25,6 +25,7 @@ from app.modules.source_control.schemas import (
     SourceControlMergePreviewEntry,
     SourceControlPullRequestPreview,
     SourceControlPreviewResponse,
+    SourceControlReviewContent,
     SourceControlWorktreeEntry,
 )
 
@@ -242,6 +243,14 @@ class SourceControlService:
 
         pull_requests = self._list_pull_requests(repo_root=repo_root, base_branch=base_branch)
         pull_request = next((entry for entry in pull_requests if entry.head_branch == target_branch), None)
+        has_review_bot = any(_is_review_bot_name(bot.name) for bot in bots)
+        review_content: SourceControlReviewContent | None = None
+        if has_review_bot and pull_request:
+            review_content = self._load_pull_request_review_content(
+                repo_root=repo_root,
+                pull_request_number=pull_request.number,
+                pull_request_url=pull_request.url,
+            )
 
         linked_bots: list[str] = []
         for bot in bots:
@@ -268,6 +277,7 @@ class SourceControlService:
             changed_files=changed_files,
             linked_bots=list(dict.fromkeys(linked_bots)),
             pull_request=pull_request,
+            review_content=review_content,
         )
 
     def create_pull_request(
@@ -929,6 +939,114 @@ class SourceControlService:
             code="source_control_git_failed",
         )
 
+    def _load_pull_request_review_content(
+        self,
+        *,
+        repo_root: Path,
+        pull_request_number: int,
+        pull_request_url: str | None,
+    ) -> SourceControlReviewContent | None:
+        raw = self._run_gh(
+            [
+                "pr",
+                "view",
+                str(pull_request_number),
+                "--json",
+                "reviewDecision,reviews,comments,url",
+            ],
+            cwd=repo_root,
+            allow_failure=True,
+        )
+        if not raw:
+            return None
+
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(payload, dict):
+            return None
+
+        fallback_url = pull_request_url
+        payload_url = payload.get("url")
+        if isinstance(payload_url, str) and payload_url.strip():
+            fallback_url = payload_url.strip()
+
+        reviews_payload = payload.get("reviews")
+        if isinstance(reviews_payload, list) and reviews_payload:
+            parsed_reviews = []
+            for entry in reviews_payload:
+                if not isinstance(entry, dict):
+                    continue
+                body = str(entry.get("body") or "").strip()
+                state = str(entry.get("state") or "").strip() or None
+                author = _extract_author_login(entry.get("author"))
+                review_url = _extract_string(entry.get("url")) or fallback_url
+                submitted_at = _extract_datetime(entry, ("submittedAt", "updatedAt", "createdAt"))
+                parsed_reviews.append(
+                    (
+                        submitted_at,
+                        body,
+                        state,
+                        author,
+                        review_url,
+                    )
+                )
+            if parsed_reviews:
+                parsed_reviews.sort(key=lambda item: item[0] or utcnow(), reverse=True)
+                submitted_at, body, state, author, review_url = parsed_reviews[0]
+                content = body
+                if not content:
+                    state_label = state.replace("_", " ").title() if state else "Review"
+                    reviewer_label = author or "reviewer"
+                    content = f"{state_label} by {reviewer_label}."
+                return SourceControlReviewContent(
+                    kind="review",
+                    content=content,
+                    state=state,
+                    author=author,
+                    submitted_at=submitted_at,
+                    url=review_url,
+                )
+
+        comments_payload = payload.get("comments")
+        if isinstance(comments_payload, list) and comments_payload:
+            parsed_comments = []
+            for entry in comments_payload:
+                if not isinstance(entry, dict):
+                    continue
+                body = str(entry.get("body") or "").strip()
+                if not body:
+                    continue
+                author = _extract_author_login(entry.get("author"))
+                comment_url = _extract_string(entry.get("url")) or fallback_url
+                submitted_at = _extract_datetime(entry, ("updatedAt", "createdAt", "publishedAt"))
+                parsed_comments.append((submitted_at, body, author, comment_url))
+            if parsed_comments:
+                parsed_comments.sort(key=lambda item: item[0] or utcnow(), reverse=True)
+                submitted_at, body, author, comment_url = parsed_comments[0]
+                return SourceControlReviewContent(
+                    kind="comment",
+                    content=body,
+                    state=None,
+                    author=author,
+                    submitted_at=submitted_at,
+                    url=comment_url,
+                )
+
+        decision_raw = _extract_string(payload.get("reviewDecision"))
+        if decision_raw:
+            decision_label = decision_raw.replace("_", " ").title()
+            return SourceControlReviewContent(
+                kind="decision",
+                content=f"Review decision: {decision_label}.",
+                state=decision_raw,
+                author=None,
+                submitted_at=None,
+                url=fallback_url,
+            )
+        return None
+
 
 def _parse_changed_file(line: str) -> SourceControlChangedFile | None:
     if len(line) < 3:
@@ -1060,6 +1178,35 @@ def _extract_first_url(value: str) -> str | None:
     if not match:
         return None
     return match.group(0).strip()
+
+
+def _extract_string(value: object) -> str | None:
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
+
+
+def _extract_author_login(value: object) -> str | None:
+    if not isinstance(value, dict):
+        return None
+    return _extract_string(value.get("login"))
+
+
+def _extract_datetime(payload: dict[str, object], keys: Sequence[str]):
+    for key in keys:
+        raw = payload.get(key)
+        text = _extract_string(raw)
+        if not text:
+            continue
+        try:
+            return _parse_iso_datetime(text)
+        except ValueError:
+            continue
+    return None
+
+
+def _is_review_bot_name(name: str) -> bool:
+    return "review" in name.lower()
 
 
 def _parse_iso_datetime(value: str):

@@ -928,7 +928,7 @@ export function PlansPage() {
         <AlertMessage variant="error">Couldn’t load projects: {projectsError}</AlertMessage>
       ) : null}
 
-      <div className="rounded-xl border border-cyan-400/15 bg-[linear-gradient(145deg,rgba(11,20,35,0.94)_0%,rgba(6,12,24,0.92)_100%)] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+      <div className="rounded-xl border border-white/[0.1] bg-[linear-gradient(180deg,rgba(7,10,18,0.96)_0%,rgba(3,5,12,1)_100%)] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="min-w-[14rem] flex-1 space-y-1.5">
             <p className="text-[10px] uppercase tracking-wide text-muted-foreground/90">Project</p>
@@ -941,7 +941,7 @@ export function PlansPage() {
               disabled={projectsQuery.isLoading}
             >
               <SelectTrigger
-                className="h-9 border-white/10 bg-[#0a1528]/80 text-sm text-zinc-100 data-[placeholder]:text-zinc-400"
+                className="h-9 border-white/[0.14] bg-white/[0.04] text-sm text-zinc-100 data-[placeholder]:text-zinc-400"
                 data-testid="plans-project-select"
               >
                 <SelectValue placeholder="Select a project" />
@@ -976,7 +976,7 @@ export function PlansPage() {
               type="button"
               variant="outline"
               size="sm"
-              className="h-8 border-cyan-400/25 bg-[#0a1629]/80 text-xs text-zinc-100 hover:border-cyan-300/40 hover:bg-[#0d1a31]"
+              className="h-8 border-white/[0.14] bg-white/[0.04] text-xs text-zinc-100 hover:border-white/[0.26] hover:bg-white/[0.08]"
               onClick={() => setIsPlanListCollapsed((prev) => !prev)}
               aria-pressed={isDetailFullWidth}
               disabled={!canToggleListLayout}

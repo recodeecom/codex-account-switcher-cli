@@ -19,11 +19,14 @@ describe("SourceControlPage", () => {
     });
 
     expect(screen.getByText("Master Agent")).toBeInTheDocument();
+    expect(screen.getByText("Review Bot")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Merge PR (gh)" })).toBeInTheDocument();
     const snapshotLines = await screen.findAllByText(/snapshot:\s*demo-source-control/i);
     expect(snapshotLines.length).toBeGreaterThan(0);
     expect(screen.getByText("Codex (admin@kozponthiusbolt.hu--dup-2)")).toBeInTheDocument();
     expect(screen.getByText("codex snapshot • live sessions: 1")).toBeInTheDocument();
+    expect(screen.getByText("CR review content")).toBeInTheDocument();
+    expect(screen.getByText(/Please add guardrails for review-bot branch matching before merge./i)).toBeInTheDocument();
     expect(screen.queryByText(/Current changes \(/i)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Delete branch" })).toBeDisabled();
 

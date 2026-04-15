@@ -68,6 +68,15 @@ export const SourceControlPullRequestSchema = z.object({
   isDraft: z.boolean().default(false),
 });
 
+export const SourceControlReviewContentSchema = z.object({
+  kind: z.enum(["review", "comment", "decision"]),
+  content: z.string().min(1),
+  state: z.string().nullable().optional(),
+  author: z.string().nullable().optional(),
+  submittedAt: z.string().datetime({ offset: true }).nullable().optional(),
+  url: z.string().url().nullable().optional(),
+});
+
 export const SourceControlPreviewResponseSchema = z.object({
   repositoryRoot: z.string().min(1),
   projectPath: z.string().nullable().optional(),
@@ -96,6 +105,7 @@ export const SourceControlBranchDetailsResponseSchema = z.object({
   changedFiles: z.array(SourceControlChangedFileSchema).default([]),
   linkedBots: z.array(z.string()).default([]),
   pullRequest: SourceControlPullRequestSchema.nullable().optional(),
+  reviewContent: SourceControlReviewContentSchema.nullable().optional(),
 });
 
 export const SourceControlCreatePullRequestResponseSchema = z.object({

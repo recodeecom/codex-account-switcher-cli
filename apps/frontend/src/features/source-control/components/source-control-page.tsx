@@ -70,6 +70,30 @@ function botActivityClass(status: "idle" | "active"): string {
     : "border-white/20 bg-white/10 text-zinc-300";
 }
 
+function isReviewBotName(name: string): boolean {
+  return name.toLowerCase().includes("review");
+}
+
+function reviewKindLabel(kind: "review" | "comment" | "decision"): string {
+  switch (kind) {
+    case "review":
+      return "Review";
+    case "comment":
+      return "Comment";
+    case "decision":
+      return "Decision";
+    default:
+      return "Review";
+  }
+}
+
+function reviewStateLabel(state: string | null | undefined): string | null {
+  if (!state) {
+    return null;
+  }
+  return state.replace(/_/g, " ").toLowerCase();
+}
+
 function snapshotFromBranch(branch: string | null | undefined): string | null {
   if (!branch) {
     return null;
@@ -452,6 +476,8 @@ export function SourceControlPage() {
                             const botSnapshot = bot.snapshotName ?? snapshotFromBranch(bot.matchedBranch);
                             const botSessionCount = Math.max(0, bot.sessionCount ?? 0);
                             const botMatchesSelected = bot.matchedBranch === details.branch;
+                            const isReviewBot = isReviewBotName(bot.botName);
+                            const reviewContent = isReviewBot && botMatchesSelected ? details.reviewContent : null;
                             return (
                               <div
                                 key={`${bot.botName}-${bot.runtime}`}
@@ -482,6 +508,38 @@ export function SourceControlPage() {
                                 <p className="mt-1 text-[11px] text-slate-400">
                                   {bot.source === "snapshot" ? "codex snapshot" : "agent bot"} • live sessions: {botSessionCount}
                                 </p>
+                                {isReviewBot ? (
+                                  <div className="mt-2 rounded-md border border-cyan-400/30 bg-cyan-500/10 px-2 py-1.5">
+                                    <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-cyan-200">CR review content</p>
+                                    {reviewContent ? (
+                                      <>
+                                        <p className="mt-1 text-[11px] text-cyan-50">{reviewContent.content}</p>
+                                        <p className="mt-1 text-[10px] text-cyan-200/90">
+                                          {reviewKindLabel(reviewContent.kind)}
+                                          {reviewStateLabel(reviewContent.state) ? ` • ${reviewStateLabel(reviewContent.state)}` : ""}
+                                          {reviewContent.author ? ` • ${reviewContent.author}` : ""}
+                                          {reviewContent.submittedAt ? ` • ${formatIso(reviewContent.submittedAt)}` : ""}
+                                        </p>
+                                        {reviewContent.url ? (
+                                          <a
+                                            href={reviewContent.url}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="mt-1 inline-flex text-[10px] text-cyan-200 underline decoration-cyan-300/60 underline-offset-2 hover:text-cyan-100"
+                                          >
+                                            Open review thread
+                                          </a>
+                                        ) : null}
+                                      </>
+                                    ) : (
+                                      <p className="mt-1 text-[11px] text-cyan-200/80">
+                                        {botMatchesSelected
+                                          ? "No review content found for the selected PR."
+                                          : "Review bot is not matched to the selected branch."}
+                                      </p>
+                                    )}
+                                  </div>
+                                ) : null}
                               </div>
                             );
                           })

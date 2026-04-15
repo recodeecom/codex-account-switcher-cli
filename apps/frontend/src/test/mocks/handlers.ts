@@ -1156,6 +1156,17 @@ const sourceControlBots = [
 		sessionCount: 0,
 	},
 	{
+		botName: "Review Bot",
+		botStatus: "idle",
+		runtime: "Codex",
+		matchedBranch: "agent/demo-source-control",
+		inSync: true,
+		branchCandidates: ["agent/review-bot", "agent_review-bot", "subbranch/review-bot"],
+		source: "agent",
+		snapshotName: null,
+		sessionCount: 0,
+	},
+	{
 		botName: "Runtime Guardrail Bot",
 		botStatus: "idle",
 		runtime: "Codex",
@@ -1219,6 +1230,27 @@ let sourceControlPullRequests = [
 		isDraft: true,
 	},
 ];
+
+const sourceControlReviewContentByBranch: Record<
+	string,
+	{
+		kind: "review" | "comment" | "decision";
+		content: string;
+		state: string | null;
+		author: string | null;
+		submittedAt: string | null;
+		url: string | null;
+	}
+> = {
+	"agent/demo-source-control": {
+		kind: "review",
+		content: "Please add guardrails for review-bot branch matching before merge.",
+		state: "CHANGES_REQUESTED",
+		author: "review-bot",
+		submittedAt: new Date().toISOString(),
+		url: "https://github.com/recodeecom/recodee/pull/128#pullrequestreview-1",
+	},
+};
 
 export const handlers = [
 	http.get("/health", () => {
@@ -1325,6 +1357,7 @@ export const handlers = [
 			changedFiles: sourceControlChangesByBranch[branch] ?? [],
 			linkedBots,
 			pullRequest,
+			reviewContent: sourceControlReviewContentByBranch[branch] ?? null,
 		});
 	}),
 

@@ -10,6 +10,7 @@ from app.modules.shared.schemas import DashboardModel
 MergeState = Literal["merged", "ready", "diverged", "behind", "unknown"]
 BotStatus = Literal["idle", "active"]
 PullRequestState = Literal["open", "merged", "closed"]
+ReviewContentKind = Literal["review", "comment", "decision"]
 
 
 class SourceControlChangedFile(DashboardModel):
@@ -61,6 +62,15 @@ class SourceControlBotSyncEntry(DashboardModel):
     session_count: int = 0
 
 
+class SourceControlReviewContent(DashboardModel):
+    kind: ReviewContentKind
+    content: str
+    state: str | None = None
+    author: str | None = None
+    submitted_at: datetime | None = None
+    url: str | None = None
+
+
 class SourceControlPullRequestPreview(DashboardModel):
     number: int
     title: str
@@ -100,6 +110,7 @@ class SourceControlBranchDetailsResponse(DashboardModel):
     changed_files: list[SourceControlChangedFile] = Field(default_factory=list)
     linked_bots: list[str] = Field(default_factory=list)
     pull_request: SourceControlPullRequestPreview | None = None
+    review_content: SourceControlReviewContent | None = None
 
 
 class SourceControlCreatePullRequestRequest(DashboardModel):
