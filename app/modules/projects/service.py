@@ -374,8 +374,7 @@ class ProjectsService:
                 next_github_repo_url = discovered.github_repo_url
 
             if (
-                normalize_stored_project_path(existing.project_path) == normalized_path
-                and existing.git_branch == next_git_branch
+                existing.git_branch == next_git_branch
                 and existing.github_repo_url == next_github_repo_url
             ):
                 continue
