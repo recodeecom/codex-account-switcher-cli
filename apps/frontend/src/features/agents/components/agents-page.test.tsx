@@ -43,6 +43,8 @@ describe("AgentsPage", () => {
   const deleteMutate = vi.fn();
 
   beforeEach(() => {
+    window.localStorage.clear();
+
     if (!HTMLElement.prototype.hasPointerCapture) {
       HTMLElement.prototype.hasPointerCapture = () => false;
     }
@@ -201,6 +203,40 @@ describe("AgentsPage", () => {
     expect(screen.getByPlaceholderText("What does this agent do?")).toBeInTheDocument();
     expect(screen.getByRole("spinbutton")).toHaveValue(6);
     expect(screen.getByRole("button", { name: "Save Changes" })).toBeInTheDocument();
+  });
+
+  it("creates an OMX task and assigns an agent skill to it", async () => {
+    const user = userEvent.setup({ delay: null });
+    renderWithProviders(<AgentsPage />);
+
+    await user.click(screen.getByRole("tab", { name: "Skills" }));
+    await user.click(screen.getAllByRole("button", { name: "Add Skill" })[0]);
+
+    await user.type(screen.getByLabelText("Name"), "OMX Planner");
+    await user.type(screen.getByLabelText("Description"), "Creates task plans and execution checkpoints");
+    await user.click(screen.getByRole("button", { name: "Create" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("OMX Planner")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("tab", { name: "Tasks" }));
+    await user.type(screen.getByLabelText("New OMX Task"), "Draft release task rollout");
+    await user.click(screen.getByRole("button", { name: "Add Task" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Draft release task rollout")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Assign Skill" }));
+    await user.click(screen.getByRole("menuitem", { name: "OMX Planner" }));
+
+    expect(screen.getByText("OMX Planner")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "Cycle status for Draft release task rollout",
+      }),
+    ).toHaveTextContent("Queued");
   });
 
   it("opens Add Skill dialog and creates a skill assignment from create tab", async () => {

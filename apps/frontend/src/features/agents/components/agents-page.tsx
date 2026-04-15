@@ -19,6 +19,7 @@ import {
   Settings,
   Sparkle,
   Trash2,
+  X,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -85,6 +86,7 @@ const RUNTIME_VALUE_SEPARATOR = "::runtime-source::";
 const DEFAULT_MAX_CONCURRENT_TASKS = 6;
 const MAX_AVATAR_BYTES = 1_000_000;
 const SKILL_ASSIGNMENTS_STORAGE_KEY = "recodee.agent-skills.v1";
+const TASK_QUEUE_STORAGE_KEY = "recodee.agent-tasks.v1";
 
 type AgentAssignedSkill = {
   id: string;
@@ -92,6 +94,27 @@ type AgentAssignedSkill = {
   description: string;
   source: "created" | "imported";
   importUrl?: string;
+};
+type AgentTaskStatus = "queued" | "in_progress" | "blocked" | "done";
+type AgentTask = {
+  id: string;
+  title: string;
+  status: AgentTaskStatus;
+  assignedSkillIds: string[];
+};
+
+const TASK_STATUS_LABELS: Record<AgentTaskStatus, string> = {
+  queued: "Queued",
+  in_progress: "In progress",
+  blocked: "Blocked",
+  done: "Done",
+};
+
+const TASK_STATUS_CLASSES: Record<AgentTaskStatus, string> = {
+  queued: "border-white/[0.12] bg-white/[0.03] text-slate-300",
+  in_progress: "border-cyan-300/25 bg-cyan-500/10 text-cyan-100",
+  blocked: "border-amber-300/25 bg-amber-500/10 text-amber-100",
+  done: "border-emerald-300/25 bg-emerald-500/10 text-emerald-100",
 };
 const AGENT_INSTRUCTIONS_PLACEHOLDER = `Define this agent's role, expertise, and working style.
 
@@ -187,6 +210,74 @@ function writeStoredAgentSkills(skillsByAgentId: Record<string, AgentAssignedSki
     return;
   }
   window.localStorage.setItem(SKILL_ASSIGNMENTS_STORAGE_KEY, JSON.stringify(skillsByAgentId));
+}
+
+function readStoredAgentTasks(): Record<string, AgentTask[]> {
+  if (typeof window === "undefined") {
+    return {};
+  }
+  try {
+    const raw = window.localStorage.getItem(TASK_QUEUE_STORAGE_KEY);
+    if (!raw) {
+      return {};
+    }
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object") {
+      return {};
+    }
+    const records = parsed as Record<string, unknown>;
+    const normalized: Record<string, AgentTask[]> = {};
+    for (const [agentId, tasks] of Object.entries(records)) {
+      if (!Array.isArray(tasks)) {
+        continue;
+      }
+      normalized[agentId] = tasks
+        .map((task): AgentTask | null => {
+          if (!task || typeof task !== "object") {
+            return null;
+          }
+          const candidate = task as Partial<AgentTask>;
+          const title = typeof candidate.title === "string" ? candidate.title.trim() : "";
+          if (!title) {
+            return null;
+          }
+          const status: AgentTaskStatus =
+            candidate.status === "in_progress"
+            || candidate.status === "blocked"
+            || candidate.status === "done"
+              ? candidate.status
+              : "queued";
+          return {
+            id: typeof candidate.id === "string" && candidate.id.trim() ? candidate.id : generateId(),
+            title,
+            status,
+            assignedSkillIds: Array.isArray(candidate.assignedSkillIds)
+              ? candidate.assignedSkillIds.filter((entry): entry is string => typeof entry === "string")
+              : [],
+          };
+        })
+        .filter((task): task is AgentTask => Boolean(task));
+    }
+    return normalized;
+  } catch {
+    return {};
+  }
+}
+
+function writeStoredAgentTasks(tasksByAgentId: Record<string, AgentTask[]>) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.localStorage.setItem(TASK_QUEUE_STORAGE_KEY, JSON.stringify(tasksByAgentId));
+}
+
+function getNextTaskStatus(status: AgentTaskStatus): AgentTaskStatus {
+  const sequence: AgentTaskStatus[] = ["queued", "in_progress", "blocked", "done"];
+  const currentIndex = sequence.indexOf(status);
+  if (currentIndex < 0) {
+    return "queued";
+  }
+  return sequence[(currentIndex + 1) % sequence.length];
 }
 
 function resolveImportedSkillName(url: string): string {
@@ -443,11 +534,15 @@ export function AgentsPage() {
   const [skillsByAgentId, setSkillsByAgentId] = useState<Record<string, AgentAssignedSkill[]>>(
     () => readStoredAgentSkills(),
   );
+  const [tasksByAgentId, setTasksByAgentId] = useState<Record<string, AgentTask[]>>(
+    () => readStoredAgentTasks(),
+  );
   const [addSkillOpen, setAddSkillOpen] = useState(false);
   const [skillDialogTab, setSkillDialogTab] = useState<SkillDialogTab>("create");
   const [skillNameDraft, setSkillNameDraft] = useState("");
   const [skillDescriptionDraft, setSkillDescriptionDraft] = useState("");
   const [skillImportUrlDraft, setSkillImportUrlDraft] = useState("");
+  const [taskTitleDraft, setTaskTitleDraft] = useState("");
   const [revealedEnvironmentValues, setRevealedEnvironmentValues] = useState<Record<string, boolean>>({});
   const [confirmArchiveOpen, setConfirmArchiveOpen] = useState(false);
 
@@ -515,15 +610,21 @@ export function AgentsPage() {
     [runtimeOptions, createRuntimeOption],
   );
   const selectedAgentSkills = selectedAgent ? (skillsByAgentId[selectedAgent.id] ?? []) : [];
+  const selectedAgentTasks = selectedAgent ? (tasksByAgentId[selectedAgent.id] ?? []) : [];
   const selectedAgentEnvironmentVariables = selectedAgent
     ? sanitizeEnvironmentVariables(selectedAgent.environmentVariables)
     : [];
   const canCreateSkill = skillNameDraft.trim().length > 0;
   const canImportSkill = skillImportUrlDraft.trim().length > 0;
+  const canCreateTask = taskTitleDraft.trim().length > 0;
 
   useEffect(() => {
     writeStoredAgentSkills(skillsByAgentId);
   }, [skillsByAgentId]);
+
+  useEffect(() => {
+    writeStoredAgentTasks(tasksByAgentId);
+  }, [tasksByAgentId]);
 
   const updateSelectedAgent = (updater: (agent: AgentEntry) => AgentEntry) => {
     if (!selectedAgent) {
@@ -682,6 +783,80 @@ export function AgentsPage() {
         [selectedAgent.id]: currentSkills.filter((skill) => skill.id !== skillId),
       };
     });
+    setTasksByAgentId((current) => ({
+      ...current,
+      [selectedAgent.id]: (current[selectedAgent.id] ?? []).map((task) => ({
+        ...task,
+        assignedSkillIds: task.assignedSkillIds.filter((entry) => entry !== skillId),
+      })),
+    }));
+  };
+  const handleCreateTask = () => {
+    if (!selectedAgent || !canCreateTask) {
+      return;
+    }
+    const nextTask: AgentTask = {
+      id: generateId(),
+      title: taskTitleDraft.trim(),
+      status: "queued",
+      assignedSkillIds: [],
+    };
+    setTasksByAgentId((current) => ({
+      ...current,
+      [selectedAgent.id]: [nextTask, ...(current[selectedAgent.id] ?? [])],
+    }));
+    setTaskTitleDraft("");
+    toast.success(`Created task: ${nextTask.title}`);
+  };
+  const handleRemoveTask = (taskId: string) => {
+    if (!selectedAgent) {
+      return;
+    }
+    setTasksByAgentId((current) => ({
+      ...current,
+      [selectedAgent.id]: (current[selectedAgent.id] ?? []).filter((task) => task.id !== taskId),
+    }));
+  };
+  const handleCycleTaskStatus = (taskId: string) => {
+    if (!selectedAgent) {
+      return;
+    }
+    setTasksByAgentId((current) => ({
+      ...current,
+      [selectedAgent.id]: (current[selectedAgent.id] ?? []).map((task) =>
+        task.id === taskId ? { ...task, status: getNextTaskStatus(task.status) } : task,
+      ),
+    }));
+  };
+  const handleAssignSkillToTask = (taskId: string, skillId: string) => {
+    if (!selectedAgent) {
+      return;
+    }
+    setTasksByAgentId((current) => ({
+      ...current,
+      [selectedAgent.id]: (current[selectedAgent.id] ?? []).map((task) => {
+        if (task.id !== taskId || task.assignedSkillIds.includes(skillId)) {
+          return task;
+        }
+        return {
+          ...task,
+          assignedSkillIds: [...task.assignedSkillIds, skillId],
+        };
+      }),
+    }));
+  };
+  const handleUnassignSkillFromTask = (taskId: string, skillId: string) => {
+    if (!selectedAgent) {
+      return;
+    }
+    setTasksByAgentId((current) => ({
+      ...current,
+      [selectedAgent.id]: (current[selectedAgent.id] ?? []).map((task) =>
+        task.id === taskId
+          ? { ...task, assignedSkillIds: task.assignedSkillIds.filter((entry) => entry !== skillId) }
+          : task,
+      ),
+    }));
   };
   const getEnvironmentValueVisibilityKey = (agentId: string, index: number) => `${agentId}:${index}`;
   const handleAddEnvironmentVariable = () => {
@@ -991,7 +1166,7 @@ export function AgentsPage() {
                         <div>
                           <p className="text-sm font-semibold text-slate-100">Skills</p>
                           <p className="mt-1 text-xs text-slate-500">
-                            Reusable skills assigned to this agent. Manage skills on the Skills page.
+                            Create/import skills here and assign them to this agent.
                           </p>
                         </div>
                         <Button
@@ -1070,15 +1245,151 @@ export function AgentsPage() {
                       <div>
                         <p className="text-sm font-semibold text-slate-100">Task Queue</p>
                         <p className="mt-1 text-xs text-slate-500">
-                          Issues assigned to this agent and their execution status.
+                          Create OMX tasks and assign skills from this agent to each task.
                         </p>
                       </div>
 
-                      <div className="flex min-h-[190px] flex-col items-center justify-center rounded-lg border border-dashed border-white/[0.12] bg-white/[0.01] px-6 py-10 text-center">
-                        <ListTodo className="h-8 w-8 text-slate-500/70" aria-hidden="true" />
-                        <p className="mt-3 text-sm text-slate-300">No tasks in queue</p>
-                        <p className="mt-1 text-xs text-slate-500">Assign an issue to this agent to get started.</p>
+                      <div className="rounded-lg border border-white/[0.12] bg-white/[0.02] px-3 py-3">
+                        <Label htmlFor="new-agent-task-title" className="text-xs text-slate-400">
+                          New OMX Task
+                        </Label>
+                        <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                          <Input
+                            id="new-agent-task-title"
+                            value={taskTitleDraft}
+                            onChange={(event) => setTaskTitleDraft(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                event.preventDefault();
+                                handleCreateTask();
+                              }
+                            }}
+                            placeholder="e.g. Build release-note summary workflow"
+                            className="border-white/[0.12] bg-white/[0.03] text-slate-100 placeholder:text-slate-500"
+                          />
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="h-9 shrink-0 gap-1.5 px-3 text-xs"
+                            disabled={!canCreateTask}
+                            onClick={handleCreateTask}
+                          >
+                            <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                            Add Task
+                          </Button>
+                        </div>
+                        <p className="mt-2 text-[11px] text-slate-500">
+                          Add skills in the Skills tab, then assign those skills to each task.
+                        </p>
                       </div>
+
+                      {selectedAgentTasks.length === 0 ? (
+                        <div className="flex min-h-[190px] flex-col items-center justify-center rounded-lg border border-dashed border-white/[0.12] bg-white/[0.01] px-6 py-10 text-center">
+                          <ListTodo className="h-8 w-8 text-slate-500/70" aria-hidden="true" />
+                          <p className="mt-3 text-sm text-slate-300">No tasks in queue</p>
+                          <p className="mt-1 text-xs text-slate-500">Create a task to start assigning OMX skills.</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {selectedAgentTasks.map((task) => {
+                            const assignedSkills = task.assignedSkillIds
+                              .map((skillId) => selectedAgentSkills.find((skill) => skill.id === skillId))
+                              .filter((skill): skill is AgentAssignedSkill => Boolean(skill));
+                            const assignableSkills = selectedAgentSkills.filter(
+                              (skill) => !task.assignedSkillIds.includes(skill.id),
+                            );
+
+                            return (
+                              <div
+                                key={task.id}
+                                className="space-y-2 rounded-lg border border-white/[0.12] bg-white/[0.02] px-3 py-3"
+                              >
+                                <div className="flex flex-wrap items-start justify-between gap-2">
+                                  <div>
+                                    <p className="text-sm font-medium text-slate-100">{task.title}</p>
+                                    <p className="mt-0.5 text-xs text-slate-500">OMX task</p>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleCycleTaskStatus(task.id)}
+                                      aria-label={`Cycle status for ${task.title}`}
+                                      className={cn(
+                                        "inline-flex h-7 items-center rounded-md border px-2 text-xs transition-colors",
+                                        TASK_STATUS_CLASSES[task.status],
+                                      )}
+                                    >
+                                      {TASK_STATUS_LABELS[task.status]}
+                                    </button>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7 text-slate-400 hover:bg-white/[0.06] hover:text-red-300"
+                                      onClick={() => handleRemoveTask(task.id)}
+                                      aria-label={`Remove task ${task.title}`}
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                                    </Button>
+                                  </div>
+                                </div>
+
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  {assignedSkills.length === 0 ? (
+                                    <span className="text-[11px] text-slate-500">No skills assigned yet</span>
+                                  ) : (
+                                    assignedSkills.map((skill) => (
+                                      <span
+                                        key={`${task.id}-${skill.id}`}
+                                        className="inline-flex items-center gap-1 rounded-md border border-cyan-300/25 bg-cyan-500/10 px-2 py-0.5 text-[11px] text-cyan-100"
+                                      >
+                                        {skill.name}
+                                        <button
+                                          type="button"
+                                          onClick={() => handleUnassignSkillFromTask(task.id, skill.id)}
+                                          className="rounded-sm p-0.5 text-cyan-200/80 hover:bg-cyan-500/20 hover:text-cyan-100"
+                                          aria-label={`Remove skill ${skill.name} from task ${task.title}`}
+                                        >
+                                          <X className="h-3 w-3" aria-hidden="true" />
+                                        </button>
+                                      </span>
+                                    ))
+                                  )}
+                                </div>
+
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-8 gap-1.5 border-white/[0.12] bg-transparent px-3 text-xs"
+                                      disabled={selectedAgentSkills.length === 0}
+                                    >
+                                      <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                                      Assign Skill
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="start" className="w-56">
+                                    {assignableSkills.length === 0 ? (
+                                      <DropdownMenuItem disabled>No more skills to assign</DropdownMenuItem>
+                                    ) : (
+                                      assignableSkills.map((skill) => (
+                                        <DropdownMenuItem
+                                          key={`${task.id}-assign-${skill.id}`}
+                                          onClick={() => handleAssignSkillToTask(task.id, skill.id)}
+                                        >
+                                          {skill.name}
+                                        </DropdownMenuItem>
+                                      ))
+                                    )}
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   ) : null}
 
@@ -1669,6 +1980,14 @@ export function AgentsPage() {
                   return next;
                 });
                 setSkillsByAgentId((current) => {
+                  if (!current[selectedAgent.id]) {
+                    return current;
+                  }
+                  const next = { ...current };
+                  delete next[selectedAgent.id];
+                  return next;
+                });
+                setTasksByAgentId((current) => {
                   if (!current[selectedAgent.id]) {
                     return current;
                   }
