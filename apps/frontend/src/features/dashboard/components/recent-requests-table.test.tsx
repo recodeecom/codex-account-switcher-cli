@@ -64,6 +64,9 @@ describe("RecentRequestsTable", () => {
     expect(screen.getByText("Requested priority")).toBeInTheDocument();
     expect(screen.getByText("WS")).toBeInTheDocument();
     expect(screen.getByText("Rate limit")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Rate limit reached while processing this request"),
+    ).not.toBeInTheDocument();
 
     const viewButton = screen.getByRole("button", { name: "View" });
     await user.click(viewButton);
@@ -108,5 +111,39 @@ describe("RecentRequestsTable", () => {
     );
 
     expect(screen.getAllByText("--")[0]).toBeInTheDocument();
+  });
+
+  it("renders error status badge with red styling", () => {
+    render(
+      <RecentRequestsTable
+        {...PAGINATION_PROPS}
+        accounts={[]}
+        requests={[
+          {
+            requestedAt: ISO,
+            accountId: "acc-error",
+            apiKeyName: null,
+            requestId: "req-error",
+            model: "gpt-4o",
+            serviceTier: null,
+            requestedServiceTier: null,
+            actualServiceTier: null,
+            transport: "http",
+            status: "error",
+            errorCode: "internal_error",
+            errorMessage: "some internal error",
+            tokens: 3,
+            cachedInputTokens: null,
+            reasoningEffort: null,
+            costUsd: 0,
+            latencyMs: 1,
+          },
+        ]}
+      />,
+    );
+
+    const errorBadge = screen.getByText("Error", { selector: "span" });
+    expect(errorBadge.className).toContain("bg-red-500/15");
+    expect(screen.getByRole("button", { name: "View" })).toBeInTheDocument();
   });
 });

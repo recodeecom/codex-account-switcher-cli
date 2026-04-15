@@ -36,7 +36,7 @@ const STATUS_CLASS_MAP: Record<string, string> = {
   ok: "bg-emerald-500/15 text-emerald-700 border-emerald-500/20 hover:bg-emerald-500/20 dark:text-emerald-400",
   rate_limit: "bg-orange-500/15 text-orange-700 border-orange-500/20 hover:bg-orange-500/20 dark:text-orange-400",
   quota: "bg-red-500/15 text-red-700 border-red-500/20 hover:bg-red-500/20 dark:text-red-400",
-  error: "bg-zinc-500/15 text-zinc-700 border-zinc-500/20 hover:bg-zinc-500/20 dark:text-zinc-400",
+  error: "bg-red-500/15 text-red-700 border-red-500/20 hover:bg-red-500/20 dark:text-red-400",
 };
 
 const TRANSPORT_LABELS: Record<string, string> = {
@@ -127,7 +127,7 @@ export function RecentRequestsTable({
               const accountLabel = request.accountId ? (accountLabelMap.get(request.accountId) ?? request.accountId) : "—";
               const isEmailLabel = !!(request.accountId && emailLabelIds.has(request.accountId));
               const errorMessage = request.errorMessage || request.errorCode || "-";
-              const hasLongError = errorMessage !== "-" && errorMessage.length > 72;
+              const hasError = errorMessage !== "-";
               const visibleServiceTier = request.actualServiceTier ?? request.serviceTier;
               const showRequestedTier =
                 !!request.requestedServiceTier && request.requestedServiceTier !== visibleServiceTier;
@@ -197,10 +197,7 @@ export function RecentRequestsTable({
                   </TableCell>
                   <TableCell className="overflow-hidden pr-4 align-top">
                     <div className="flex items-center gap-1.5">
-                      <p className="min-w-0 truncate text-xs text-muted-foreground">
-                        {errorMessage}
-                      </p>
-                      {hasLongError ? (
+                      {hasError ? (
                         <Button
                           type="button"
                           variant="ghost"
@@ -210,7 +207,9 @@ export function RecentRequestsTable({
                         >
                           View
                         </Button>
-                      ) : null}
+                      ) : (
+                        <span className="text-xs text-muted-foreground">--</span>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
