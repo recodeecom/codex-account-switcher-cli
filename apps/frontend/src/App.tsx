@@ -36,6 +36,7 @@ function AppLayout() {
   const isIssuesRoute = location.pathname.startsWith("/projects/issues") || location.pathname.startsWith("/issues");
   const isAgentsRoute = location.pathname === "/agents";
   const isRuntimesRoute = location.pathname === "/runtimes";
+  const isSessionsRoute = location.pathname === "/sessions";
   const isSkillsRoute = location.pathname === "/skills";
   const isBillingRoute = location.pathname === "/billing";
   const isApisRoute = location.pathname === "/apis";
@@ -57,6 +58,7 @@ function AppLayout() {
           className={cn(
             "w-full flex-1",
             isRuntimesRoute
+            || isSessionsRoute
             || isSkillsRoute
             || isAgentsRoute
             || isIssuesRoute
@@ -69,6 +71,7 @@ function AppLayout() {
                 : "px-4 py-8 sm:px-6 lg:px-8",
             isPlansRoute ||
             isRuntimesRoute ||
+            isSessionsRoute ||
             isSkillsRoute ||
             isAgentsRoute ||
             isApisRoute ||
