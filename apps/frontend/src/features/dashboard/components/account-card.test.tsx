@@ -849,6 +849,55 @@ describe("AccountCard", () => {
     expect(onAction).toHaveBeenCalledWith(account, "sessions");
   });
 
+  it("shows terminate sessions action when live CLI sessions are active", async () => {
+    const user = userEvent.setup({ delay: null });
+    const nowIso = new Date().toISOString();
+    const account = createAccountSummary({
+      codexLiveSessionCount: 2,
+      codexTrackedSessionCount: 2,
+      codexSessionCount: 2,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
+        hasLiveSession: true,
+      },
+      lastUsageRecordedAtPrimary: nowIso,
+      lastUsageRecordedAtSecondary: nowIso,
+    });
+    const onAction = vi.fn();
+
+    render(<AccountCard account={account} onAction={onAction} />);
+
+    await user.click(screen.getByRole("button", { name: "Terminate sessions" }));
+
+    expect(onAction).toHaveBeenCalledWith(account, "terminateCliSessions");
+  });
+
+  it("hides terminate sessions action when there are no live CLI sessions", () => {
+    const account = createAccountSummary({
+      codexLiveSessionCount: 0,
+      codexTrackedSessionCount: 2,
+      codexSessionCount: 2,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "main",
+        activeSnapshotName: "main",
+        isActiveSnapshot: true,
+        hasLiveSession: false,
+      },
+      lastUsageRecordedAtPrimary: null,
+      lastUsageRecordedAtSecondary: null,
+    });
+
+    render(<AccountCard account={account} />);
+
+    expect(
+      screen.queryByRole("button", { name: "Terminate sessions" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("calls delete action when delete button is clicked", async () => {
     const user = userEvent.setup({ delay: null });
     const account = createAccountSummary();
@@ -993,7 +1042,8 @@ describe("AccountCard", () => {
 
     render(<AccountCard account={account} />);
 
-    expect(screen.getByText("Rate limited")).toBeInTheDocument();
+    expect(screen.queryByText("Rate limited")).not.toBeInTheDocument();
+    expect(screen.getByText("Active")).toBeInTheDocument();
     expect(screen.getAllByText("Usage limit hit").length).toBeGreaterThanOrEqual(1);
   });
 
@@ -1243,7 +1293,8 @@ describe("AccountCard", () => {
 
     render(<AccountCard account={account} />);
 
-    expect(screen.getByText("Rate limited")).toBeInTheDocument();
+    expect(screen.queryByText("Rate limited")).not.toBeInTheDocument();
+    expect(screen.getByText("Active")).toBeInTheDocument();
     expect(screen.getAllByText("Usage limit hit").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("0%").length).toBeGreaterThanOrEqual(1);
   });
@@ -3042,7 +3093,7 @@ describe("AccountCard", () => {
     ).toBeGreaterThanOrEqual(1);
   });
 
-  it("keeps current task preview visible after usage-limit grace expires while live CLI signals remain", () => {
+  it("falls back to idle account view after usage-limit grace expires", () => {
     vi.useFakeTimers();
     try {
       const now = new Date("2026-04-05T00:00:00.000Z");
@@ -3081,9 +3132,15 @@ describe("AccountCard", () => {
 
       expect(screen.queryByText("Current task")).not.toBeInTheDocument();
       expect(
-        screen.getAllByText("Investigate codexina rollout session mapping").length,
-      ).toBeGreaterThanOrEqual(1);
+        screen.queryByText("Investigate codexina rollout session mapping"),
+      ).not.toBeInTheDocument();
       expect(screen.queryByText(/leaves in/i)).not.toBeInTheDocument();
+      expect(screen.queryByTestId("codex-active-agent-card")).not.toBeInTheDocument();
+      expect(screen.queryByText("CLI session tasks")).not.toBeInTheDocument();
+      const cliSessionsLabel = screen.getByText("CLI sessions:");
+      expect(
+        within(cliSessionsLabel.parentElement as HTMLElement).getByText(/^0$/),
+      ).toBeInTheDocument();
     } finally {
       vi.useRealTimers();
     }

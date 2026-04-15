@@ -1561,6 +1561,14 @@ export function AccountCard(props: AccountCardProps) {
     usageLimitHitCountdownMs != null &&
     usageLimitHitCountdownMs > 0,
   );
+  const usageLimitHitGraceExpired = Boolean(
+    usageLimitHit &&
+    usageLimitHitCountdownMs != null &&
+    usageLimitHitCountdownMs <= 0,
+  );
+  const suppressUsageLimitRuntimeSignals = usageLimitHitGraceExpired;
+  const displayIsWorkingNow =
+    isWorkingNow && !suppressUsageLimitRuntimeSignals;
   const hasExpiredRefreshToken =
     account.auth?.refresh?.state === "expired" ||
     hasExpiredRefreshTokenReason(account.deactivationReason);
@@ -1568,9 +1576,7 @@ export function AccountCard(props: AccountCardProps) {
     shouldSuppressStaleLimitSignals &&
     (effectiveStatus === "limited" || effectiveStatus === "exceeded")
       ? "active"
-      : usageLimitHit && effectiveStatus === "active"
-        ? "limited"
-        : effectiveStatus;
+      : effectiveStatus;
   const useLocalBlockedByDisconnected =
     status === "deactivated" || hasExpiredRefreshToken;
   const canUseLocally = canUseLocalAccount({
@@ -1706,7 +1712,7 @@ export function AccountCard(props: AccountCardProps) {
     ? hasLiveSession && hasFreshQuotaTelemetryHint
       ? UNKNOWN_TOKENS_SYNC_LABEL
       : "--"
-    : isWorkingNow
+    : displayIsWorkingNow
       ? formatTokenUsagePrecise(tokenMetricValueRaw)
       : formatTokenUsageCompact(tokenMetricValueRaw);
   const hasRuntimeLiveSessionSignal =
@@ -1717,13 +1723,17 @@ export function AccountCard(props: AccountCardProps) {
     account.codexLiveSessionCount ?? 0,
     0,
   );
-  const codexLiveSessionCount = hasActiveCliSession
-    ? hasRuntimeLiveSessionSignal
-      ? Math.max(codexLiveSessionCountRaw, 1)
-      : codexLiveSessionCountRaw
-    : 0;
+  const codexLiveSessionCount = suppressUsageLimitRuntimeSignals
+    ? 0
+    : hasActiveCliSession
+      ? hasRuntimeLiveSessionSignal
+        ? Math.max(codexLiveSessionCountRaw, 1)
+        : codexLiveSessionCountRaw
+      : 0;
   const codexTrackedSessionCount = Math.max(
-    account.codexTrackedSessionCount ?? 0,
+    suppressUsageLimitRuntimeSignals
+      ? 0
+      : (account.codexTrackedSessionCount ?? 0),
     0,
   );
   const codexVisibleSessionCount = Math.max(
@@ -1732,20 +1742,17 @@ export function AccountCard(props: AccountCardProps) {
   );
   const hasSessionInventory =
     codexLiveSessionCount > 0 || codexTrackedSessionCount > 0;
+  const hasTerminableCliSessions = codexLiveSessionCount > 0;
   const showCodexLogsShortcut =
-    isWorkingNow && (hasSessionInventory || liveQuotaDebug != null);
-  const usageLimitHitGraceExpired = Boolean(
-    usageLimitHit &&
-    usageLimitHitCountdownMs != null &&
-    usageLimitHitCountdownMs <= 0,
-  );
-  const rawCodexCurrentTaskPreview = usageLimitHitGraceExpired
-    ? isWorkingNow
-      ? account.codexCurrentTaskPreview?.trim() || null
-      : null
+    displayIsWorkingNow && (hasSessionInventory || liveQuotaDebug != null);
+  const rawCodexCurrentTaskPreview = suppressUsageLimitRuntimeSignals
+    ? null
     : account.codexCurrentTaskPreview?.trim() || null;
   const codexLastTaskPreview = account.codexLastTaskPreview?.trim() || null;
   const sessionTaskPreviews = useMemo(() => {
+    if (suppressUsageLimitRuntimeSignals) {
+      return [];
+    }
     const resolveTimestamp = (
       value: string | null | undefined,
     ): number | null => {
@@ -1838,7 +1845,11 @@ export function AccountCard(props: AccountCardProps) {
         return left.sessionKey.localeCompare(right.sessionKey);
       })
       .slice(0, codexVisibleSessionCount);
-  }, [account.codexSessionTaskPreviews, codexVisibleSessionCount]);
+  }, [
+    account.codexSessionTaskPreviews,
+    codexVisibleSessionCount,
+    suppressUsageLimitRuntimeSignals,
+  ]);
   const codexCurrentTaskPreview = useMemo(() => {
     if (
       rawCodexCurrentTaskPreview == null ||
@@ -1934,7 +1945,7 @@ export function AccountCard(props: AccountCardProps) {
       : "No prompt reported yet");
   const shouldShowRalplanPlanningGraph =
     !hideCurrentTaskPreview &&
-    isWorkingNow &&
+    displayIsWorkingNow &&
     codexLiveSessionCount > 0 &&
     isRalplanTaskContext;
   const promptDrivenOmxPlanningActiveNodeKey = resolveOmxPlanningActiveNodeKey(
@@ -2026,9 +2037,10 @@ export function AccountCard(props: AccountCardProps) {
     (state) => state === "thinking",
   );
   const showWorkingIndicator =
-    forceWorkingIndicator || (isWorkingNow && hasThinkingSessionTaskPreview);
+    forceWorkingIndicator ||
+    (displayIsWorkingNow && hasThinkingSessionTaskPreview);
   const showWaitingForTaskIndicator =
-    !showWorkingIndicator && isWorkingNow && hasLiveCliSessions;
+    !showWorkingIndicator && displayIsWorkingNow && hasLiveCliSessions;
   const sessionTaskSummary = useMemo(() => {
     const waitingCount = sessionTaskStates.filter(
       (state) => state === "waiting",
@@ -2071,7 +2083,7 @@ export function AccountCard(props: AccountCardProps) {
     sessionTaskSummary.waitingCount,
     showWorkingIndicator,
   ]);
-  const codexActiveCardCliRuntimeState: OmxCliRuntimeState = !isWorkingNow
+  const codexActiveCardCliRuntimeState: OmxCliRuntimeState = !displayIsWorkingNow
     ? "waiting"
     : omxPlanningCliRuntimeState === "finished" && hasLiveCliSessions
       ? "waiting"
@@ -2087,7 +2099,9 @@ export function AccountCard(props: AccountCardProps) {
   const canShowIdleCodexStatus = status !== "deactivated";
   const showCodexActiveAgentCard =
     !hideCurrentTaskPreview &&
-    (isWorkingNow || (canShowIdleCodexStatus && showIdleCodexStatusPanel)) &&
+    !suppressUsageLimitRuntimeSignals &&
+    (displayIsWorkingNow ||
+      (canShowIdleCodexStatus && showIdleCodexStatusPanel)) &&
     !showRalplanPlanningGraph;
   const shouldRenderTaskPanel =
     showRalplanPlanningGraph ||
@@ -2727,7 +2741,7 @@ export function AccountCard(props: AccountCardProps) {
                 </p>
                 <p className="mt-0.5 flex items-center gap-1.5 text-xs font-semibold tabular-nums">
                   <span>{accessibleTokenMetricValue}</span>
-                  {isWorkingNow ? (
+                  {displayIsWorkingNow ? (
                     <span className="inline-flex items-center gap-1 rounded-md border border-cyan-500/30 bg-cyan-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-cyan-700 dark:text-cyan-300">
                       live
                     </span>
@@ -2823,6 +2837,19 @@ export function AccountCard(props: AccountCardProps) {
                 <ExternalLink className="h-3 w-3" />
                 Sessions
               </Button>
+              {hasTerminableCliSessions ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 gap-1.5 rounded-lg text-xs text-amber-600 hover:bg-amber-500/10 hover:text-amber-700 disabled:pointer-events-none disabled:text-muted-foreground dark:text-amber-300 dark:hover:text-amber-200"
+                  disabled={disableSecondaryActions}
+                  onClick={() => onAction?.(account, "terminateCliSessions")}
+                >
+                  <Activity className="h-3 w-3" />
+                  Terminate sessions
+                </Button>
+              ) : null}
               {showCodexLogsShortcut ? (
                 <Button
                   type="button"

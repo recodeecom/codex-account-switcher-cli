@@ -199,6 +199,98 @@ describe("runtimes flow integration", () => {
     expect(screen.getByRole("button", { name: "Copy update commands" })).toBeInTheDocument();
   });
 
+  it("shows usage limit hit runtime status instead of live badges", async () => {
+    const nowIso = new Date().toISOString();
+
+    server.use(
+      http.get("/api/dashboard/overview", () =>
+        HttpResponse.json(
+          createDashboardOverview({
+            accounts: [
+              createAccountSummary({
+                accountId: "acc_rate_limited_runtime",
+                email: "limit-hit@example.com",
+                displayName: "limit-hit@example.com",
+                status: "rate_limited",
+                codexLiveSessionCount: 1,
+                codexTrackedSessionCount: 1,
+                codexSessionCount: 1,
+                codexCurrentTaskPreview: "Retry after reset window",
+                codexAuth: {
+                  hasSnapshot: true,
+                  snapshotName: "limit-hit-runtime",
+                  activeSnapshotName: "limit-hit-runtime",
+                  isActiveSnapshot: true,
+                  hasLiveSession: true,
+                },
+              }),
+            ],
+          }),
+        ),
+      ),
+      http.get("/api/sticky-sessions", ({ request }) => {
+        const url = new URL(request.url);
+        if (url.searchParams.get("kind") !== "codex_session") {
+          return HttpResponse.json({ entries: [], stalePromptCacheCount: 0, total: 0, hasMore: false });
+        }
+        return HttpResponse.json({
+          entries: [
+            {
+              key: "session-limit-hit-1",
+              accountId: "acc_rate_limited_runtime",
+              displayName: "limit-hit@example.com",
+              kind: "codex_session",
+              createdAt: nowIso,
+              updatedAt: nowIso,
+              taskPreview: "Retry after reset window",
+              taskUpdatedAt: nowIso,
+              isActive: true,
+              expiresAt: null,
+              isStale: false,
+            },
+          ],
+          unmappedCliSessions: [],
+          stalePromptCacheCount: 0,
+          total: 1,
+          hasMore: false,
+        });
+      }),
+      http.get("/api/accounts/:accountId/trends", ({ params }) =>
+        HttpResponse.json({
+          accountId: String(params.accountId),
+          primary: [{ t: nowIso, v: 0 }],
+          secondary: [{ t: nowIso, v: 0 }],
+        }),
+      ),
+      http.get("/api/request-logs", () =>
+        HttpResponse.json({
+          requests: [],
+          total: 0,
+          hasMore: false,
+        }),
+      ),
+      http.get("/api/source-control/commit-activity", () =>
+        HttpResponse.json({
+          repositoryRoot: "/home/deadpool/Documents/recodee",
+          projectPath: null,
+          commits: [],
+        }),
+      ),
+      http.post("http://localhost:9000/store/customers/me", () => HttpResponse.json({ customer: {} })),
+    );
+
+    window.history.pushState({}, "", "/runtimes");
+    renderWithProviders(<App />);
+
+    const runtimeStatusDot = await screen.findByLabelText("Runtime usage limit hit");
+    const runtimeRow = runtimeStatusDot.closest('[role="button"]');
+    expect(runtimeRow).not.toBeNull();
+    expect(within(runtimeRow as HTMLElement).getByText("Usage limit hit")).toBeInTheDocument();
+    expect(within(runtimeRow as HTMLElement).queryByText(/^Live$/)).not.toBeInTheDocument();
+    expect(within(runtimeRow as HTMLElement).queryByText(/^\d+\s+live$/i)).not.toBeInTheDocument();
+    expect(within(runtimeRow as HTMLElement).getByLabelText("Runtime usage limit hit")).toBeInTheDocument();
+  });
+
   it("deletes a runtime from the list after confirmation", async () => {
     const nowIso = new Date().toISOString();
     const deletedAccountIds = new Set<string>();

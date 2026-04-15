@@ -902,10 +902,7 @@ export function getWorkingNowUsageLimitHitCountdownMs(
   }
 
   const sessionFingerprint = buildWorkingNowSessionFingerprint(account);
-  const startedAtMs =
-    existing && existing.fingerprint === sessionFingerprint
-      ? existing.startedAtMs
-      : nowMs;
+  const startedAtMs = existing ? existing.startedAtMs : nowMs;
   if (!existing || existing.fingerprint !== sessionFingerprint) {
     usageLimitHitByAccount.set(cacheKey, {
       fingerprint: sessionFingerprint,

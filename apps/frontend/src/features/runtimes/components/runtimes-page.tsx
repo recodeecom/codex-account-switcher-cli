@@ -65,6 +65,7 @@ type RuntimeRow = {
   owner: string;
   snapshotName: string;
   status: "online" | "offline";
+  usageLimitHit: boolean;
   mode: "local";
   sessionCount: number;
   trackedSessionCount: number;
@@ -195,6 +196,10 @@ function resolveWindowDays(window: UsageWindow) {
   if (window === "7d") return 7;
   if (window === "30d") return 30;
   return 90;
+}
+
+function isUsageLimitHit(status: string | null | undefined) {
+  return status === "rate_limited" || status === "quota_exceeded";
 }
 
 function startOfDayMs(value: number) {
@@ -415,6 +420,7 @@ function buildRuntimeRows(
       trackedSessionCount,
     );
     const status = sessionCount > 0 ? "online" : "offline";
+    const usageLimitHit = isUsageLimitHit(account.status);
     const snapshotName =
       account.codexAuth?.snapshotName ??
       account.codexAuth?.expectedSnapshotName ??
@@ -479,6 +485,7 @@ function buildRuntimeRows(
       owner: account.displayName || account.email,
       snapshotName,
       status,
+      usageLimitHit,
       mode: "local",
       sessionCount,
       trackedSessionCount,
@@ -536,6 +543,7 @@ function buildRuntimeRows(
       owner: "Unmapped snapshot",
       snapshotName: entry.snapshotName,
       status: entry.totalSessionCount > 0 ? "online" : "offline",
+      usageLimitHit: false,
       mode: "local",
       sessionCount: entry.totalSessionCount,
       trackedSessionCount: entry.totalSessionCount,
@@ -1437,6 +1445,11 @@ function RuntimeListItem({
   onClick: () => void;
 }) {
   const isLive = runtime.status === "online";
+  const usageLimitHit = runtime.usageLimitHit;
+  const statusLabel = usageLimitHit ? "Usage limit hit" : isLive ? "Live" : "Idle";
+  const sessionCountLabel = usageLimitHit
+    ? `${runtime.sessionCount} sessions`
+    : `${runtime.sessionCount} live`;
   const olderSessionPreviewCount = Math.max(
     0,
     runtime.currentTasks.length - runtime.sessionCount,
@@ -1534,11 +1547,19 @@ function RuntimeListItem({
           <span
             className={cn(
               "h-2.5 w-2.5 rounded-full ring-2 ring-offset-0 transition-colors",
-              isLive
+              usageLimitHit
+                ? "bg-red-400 ring-red-500/30 shadow-[0_0_10px_rgba(248,113,113,0.45)]"
+                : isLive
                 ? "bg-emerald-400 ring-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.45)]"
                 : "bg-slate-500 ring-slate-500/25",
             )}
-            aria-label={isLive ? "Runtime live" : "Runtime idle"}
+            aria-label={
+              usageLimitHit
+                ? "Runtime usage limit hit"
+                : isLive
+                ? "Runtime live"
+                : "Runtime idle"
+            }
           />
         </span>
       </div>
@@ -1547,23 +1568,27 @@ function RuntimeListItem({
           variant="secondary"
           className={cn(
             "h-5 px-1.5 py-0 text-[10px]",
-            isLive
+            usageLimitHit
+              ? "border-red-500/35 bg-red-500/12 text-red-200"
+              : isLive
               ? "border-emerald-400/30 bg-emerald-500/12 text-emerald-200"
               : "border-white/10 bg-white/[0.04] text-slate-300",
           )}
         >
-          {runtime.sessionCount} live
+          {sessionCountLabel}
         </Badge>
         <Badge
           variant="secondary"
           className={cn(
             "h-5 px-1.5 py-0 text-[10px] font-semibold",
-            isLive
+            usageLimitHit
+              ? "border-red-500/35 bg-red-500/12 text-red-200"
+              : isLive
               ? "border-emerald-400/30 bg-emerald-500/12 text-emerald-200"
               : "border-slate-500/35 bg-slate-500/12 text-slate-300",
           )}
         >
-          {isLive ? "Live" : "Idle"}
+          {statusLabel}
         </Badge>
         {olderSessionPreviewCount > 0 ? (
           <Badge
@@ -1679,6 +1704,7 @@ export function RuntimesPage() {
       ? `Delete ${selectedRuntime.name}`
       : "This runtime is unmapped and cannot be deleted from here yet."
     : "Delete runtime";
+  const selectedRuntimeUsageLimitHit = Boolean(selectedRuntime?.usageLimitHit);
   const selectedRuntimeOlderTaskCount = selectedRuntime
     ? Math.max(0, selectedRuntime.currentTasks.length - selectedRuntime.sessionCount)
     : 0;
@@ -1941,12 +1967,14 @@ export function RuntimesPage() {
                       variant="secondary"
                       className={cn(
                         "border px-2 py-0.5 text-xs font-medium",
-                        selectedRuntime.status === "online"
+                        selectedRuntimeUsageLimitHit
+                          ? "border-red-500/40 bg-red-500/15 text-red-200"
+                          : selectedRuntime.status === "online"
                           ? "border-emerald-400/40 bg-emerald-500/15 text-emerald-200"
                           : "border-slate-500/40 bg-slate-500/15 text-slate-300",
                       )}
                     >
-                      {selectedRuntime.status}
+                      {selectedRuntimeUsageLimitHit ? "Usage limit hit" : selectedRuntime.status}
                     </Badge>
                     <Button
                       type="button"
