@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   resolveAccountsPollInterval,
+  useAccountMutations,
   useAccounts,
 } from "@/features/accounts/hooks/use-accounts";
 import { createAccountSummary } from "@/test/mocks/factories";
@@ -149,5 +150,63 @@ describe("useAccounts", () => {
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["dashboard", "overview"] });
       expect(resetQuotaFloorSpy).toHaveBeenCalledWith(firstAccountId);
     });
+  });
+
+  it("optimistically patches snapshot names in cache after snapshot repair succeeds", async () => {
+    const queryClient = createTestQueryClient();
+    const { result } = renderHook(() => useAccounts(), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    await waitFor(() => expect(result.current.accountsQuery.isSuccess).toBe(true));
+    const firstAccount = result.current.accountsQuery.data?.[0];
+    expect(firstAccount).toBeTruthy();
+    const accountId = firstAccount?.accountId as string;
+    const expectedSnapshotName = firstAccount?.email.trim().toLowerCase() as string;
+
+    const mismatchAccount = createAccountSummary({
+      accountId,
+      email: firstAccount?.email,
+      codexAuth: {
+        hasSnapshot: true,
+        snapshotName: "stale-mismatch",
+        activeSnapshotName: "stale-mismatch",
+        isActiveSnapshot: true,
+        expectedSnapshotName,
+        snapshotNameMatchesEmail: false,
+      },
+    });
+
+    queryClient.setQueryData(["accounts", "list"], [mismatchAccount]);
+    queryClient.setQueryData(["dashboard", "overview"], {
+      accounts: [mismatchAccount],
+    });
+
+    const mutationHook = renderHook(() => useAccountMutations(), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    const response = await mutationHook.result.current.repairSnapshotMutation.mutateAsync({
+      accountId,
+      mode: "rename",
+    });
+
+    const patchedAccountsList = queryClient.getQueryData(["accounts", "list"]) as
+      | ReturnType<typeof createAccountSummary>[]
+      | undefined;
+    const patchedDashboardOverview = queryClient.getQueryData(["dashboard", "overview"]) as
+      | { accounts: ReturnType<typeof createAccountSummary>[] }
+      | undefined;
+
+    expect(patchedAccountsList?.[0]?.codexAuth?.snapshotName).toBe(response.snapshotName);
+    expect(patchedAccountsList?.[0]?.codexAuth?.expectedSnapshotName).toBe(
+      response.snapshotName,
+    );
+    expect(patchedDashboardOverview?.accounts[0]?.codexAuth?.snapshotName).toBe(
+      response.snapshotName,
+    );
+    expect(
+      patchedDashboardOverview?.accounts[0]?.codexAuth?.expectedSnapshotName,
+    ).toBe(response.snapshotName);
   });
 });

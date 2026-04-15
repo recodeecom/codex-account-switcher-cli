@@ -257,6 +257,10 @@ describe("projects flow integration", () => {
     expect(await screen.findByRole("heading", { name: "Issues" })).toBeInTheDocument();
     expect(window.location.pathname).toBe("/projects/issues");
     expect(window.location.search).toContain("projectId=project_beta");
+    const main = screen.getByRole("main");
+    expect(main).toHaveClass("max-w-none");
+    expect(main).toHaveClass("overflow-hidden");
+    expect(main).toHaveClass("p-0");
     expect(await screen.findByRole("button", { name: "Project issues filter" })).toHaveTextContent("beta");
   });
 });
