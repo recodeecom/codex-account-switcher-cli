@@ -12,9 +12,10 @@ describe("NAV_ITEMS", () => {
     expect(labels).toContain("Settings");
   });
 
-  it("keeps projects plans child route flattened", () => {
+  it("keeps projects child routes flattened", () => {
     const flattened = flattenNavItems(NAV_ITEMS);
 
     expect(flattened.some((item) => item.to === "/projects/plans" && item.depth === 1)).toBe(true);
+    expect(flattened.some((item) => item.to === "/projects/issues" && item.depth === 1)).toBe(true);
   });
 });

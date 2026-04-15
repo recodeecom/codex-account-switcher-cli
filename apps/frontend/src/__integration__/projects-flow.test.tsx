@@ -221,7 +221,7 @@ describe("projects flow integration", () => {
     expect(await screen.findByText("Project folder is already open in VSCode")).toBeInTheDocument();
   });
 
-  it("creates a new issue and allocates it to the selected project", async () => {
+  it("opens project-scoped issues from the projects table", async () => {
     const user = userEvent.setup({ delay: null });
 
     server.use(
@@ -229,18 +229,6 @@ describe("projects flow integration", () => {
       http.get("/api/projects", () =>
         HttpResponse.json({
           entries: [
-            {
-              id: "project_alpha",
-              name: "alpha",
-              description: "alpha project",
-              projectUrl: "https://alpha.example.com",
-              githubRepoUrl: "https://github.com/webu-pro/alpha",
-              projectPath: "/tmp/alpha",
-              sandboxMode: "workspace-write",
-              gitBranch: "dev",
-              createdAt: new Date("2026-04-14T08:00:00Z").toISOString(),
-              updatedAt: new Date("2026-04-14T08:00:00Z").toISOString(),
-            },
             {
               id: "project_beta",
               name: "beta",
@@ -262,19 +250,13 @@ describe("projects flow integration", () => {
     window.history.pushState({}, "", "/projects");
     renderWithProviders(<App />);
 
-    expect(await screen.findByTestId("projects-issues-board")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "New Issue" }));
+    expect(await screen.findByRole("heading", { name: "Projects" })).toBeInTheDocument();
+    expect(await screen.findByText("beta")).toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "Open issues" }));
 
-    const issueDialog = await screen.findByRole("dialog", { name: "New Issue" });
-    await user.type(within(issueDialog).getByPlaceholderText("Issue title"), "Implement user authentication with OAuth");
-    await user.click(within(issueDialog).getByRole("combobox", { name: /project/i }));
-    await user.click(await screen.findByRole("option", { name: "beta" }));
-    await user.click(within(issueDialog).getByRole("combobox", { name: /priority/i }));
-    await user.click(await screen.findByRole("option", { name: "High" }));
-    await user.click(within(issueDialog).getByRole("button", { name: "Create Issue" }));
-
-    expect(await screen.findByText("Implement user authentication with OAuth")).toBeInTheDocument();
-    expect(screen.getByTestId("project-issue-count-project_beta")).toHaveTextContent("1 issue");
-    expect(screen.getByTestId("project-issue-count-project_beta")).toHaveTextContent("1 urgent/high");
+    expect(await screen.findByRole("heading", { name: "Issues" })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/projects/issues");
+    expect(window.location.search).toContain("projectId=project_beta");
+    expect(await screen.findByRole("button", { name: "Project issues filter" })).toHaveTextContent("beta");
   });
 });

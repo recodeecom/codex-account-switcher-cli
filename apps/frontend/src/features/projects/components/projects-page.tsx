@@ -858,6 +858,7 @@ export function ProjectsPage() {
     setIssuesProjectId(projectId);
     setNewIssueDraft(getEmptyIssueDraft(projectId));
   };
+  const showEmbeddedIssuesPanel = false;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -890,7 +891,7 @@ export function ProjectsPage() {
           <AlertMessage variant="error">{displayMutationError}</AlertMessage>
         ) : null}
 
-        <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(420px,48%)_minmax(0,1fr)]">
+        <div className="grid min-h-0 flex-1 gap-4 grid-cols-1">
           <section className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-border/65 bg-card/65">
             {projectsQuery.isLoading && !projectsQuery.data ? (
               <div className="flex flex-1 items-center justify-center py-10">
@@ -1089,6 +1090,18 @@ export function ProjectsPage() {
                               size="sm"
                               variant="ghost"
                               className="h-11 rounded-none px-3 text-xs"
+                              aria-label="Open issues"
+                              onClick={() => navigate(`/projects/issues?projectId=${encodeURIComponent(entry.id)}`)}
+                              disabled={busy}
+                            >
+                              <LayoutGrid className="mr-1 h-4 w-4" />
+                              Issues
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              className="h-11 rounded-none px-3 text-xs"
                               aria-label="Open VSCode"
                               onClick={() => {
                                 void openFolderMutation.mutateAsync({
@@ -1158,7 +1171,8 @@ export function ProjectsPage() {
             )}
           </section>
 
-          <section className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#090d17]">
+          {showEmbeddedIssuesPanel ? (
+            <section className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#090d17]">
             <div className="flex h-11 items-center justify-between border-b border-white/10 px-4">
               <div className="flex items-center gap-2">
                 <LayoutGrid className="h-4 w-4 text-zinc-300" />
@@ -1319,7 +1333,8 @@ export function ProjectsPage() {
                 </div>
               )}
             </div>
-          </section>
+            </section>
+          ) : null}
         </div>
       </div>
 
