@@ -485,6 +485,63 @@ async def test_usage_updater_recovers_deactivated_refresh_token_reused_from_sibl
 
 
 @pytest.mark.asyncio
+async def test_usage_updater_recovers_deactivated_expired_auth_token_from_sibling(monkeypatch) -> None:
+    monkeypatch.setenv("CODEX_LB_USAGE_REFRESH_ENABLED", "true")
+    from app.core.config.settings import get_settings
+
+    get_settings.cache_clear()
+
+    async def stub_fetch_usage(**_: Any) -> UsagePayload:
+        return UsagePayload.model_validate(
+            {
+                "rate_limit": {
+                    "primary_window": {
+                        "used_percent": 10.0,
+                        "reset_at": 1735689600,
+                        "limit_window_seconds": 60,
+                    },
+                    "secondary_window": {
+                        "used_percent": 20.0,
+                        "reset_at": 1735689600,
+                        "limit_window_seconds": 60,
+                    },
+                }
+            }
+        )
+
+    monkeypatch.setattr("app.modules.usage.updater.fetch_usage", stub_fetch_usage)
+
+    usage_repo = StubUsageRepository(return_rows=True)
+    accounts_repo = StubAccountsRepository()
+    updater = UsageUpdater(usage_repo, accounts_repo=accounts_repo)
+
+    donor = _make_account("acc_donor_expired", "workspace_shared_expired", email="donor-expired@example.com")
+    donor.last_refresh = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc).replace(tzinfo=None)
+
+    target = _make_account("acc_target_expired", "workspace_shared_expired", email="target-expired@example.com")
+    target.status = AccountStatus.DEACTIVATED
+    target.deactivation_reason = (
+        "Usage API error: HTTP 401 - Provided authentication token is expired. Please try signing in again."
+    )
+    target.last_refresh = datetime(2025, 1, 1, 12, 0, tzinfo=timezone.utc).replace(tzinfo=None)
+
+    accounts_repo.accounts_by_id[donor.id] = donor
+    accounts_repo.accounts_by_id[target.id] = target
+
+    refreshed = await updater.refresh_accounts([target], latest_usage={})
+
+    assert refreshed is True
+    assert target.status == AccountStatus.ACTIVE
+    assert target.deactivation_reason is None
+    assert len(usage_repo.entries) == 2
+    assert any(update["account_id"] == target.id for update in accounts_repo.token_updates)
+    assert any(
+        update["account_id"] == target.id and update["status"] == AccountStatus.ACTIVE
+        for update in accounts_repo.status_updates
+    )
+
+
+@pytest.mark.asyncio
 async def test_usage_updater_deactivates_on_account_invalid_4xx(monkeypatch) -> None:
     monkeypatch.setenv("CODEX_LB_USAGE_REFRESH_ENABLED", "true")
     monkeypatch.setattr("app.modules.usage.updater._DEACTIVATION_FAILURE_THRESHOLD", 1)
@@ -770,6 +827,48 @@ async def test_usage_updater_deactivates_invalidated_token_immediately_even_with
     assert update["status"] == AccountStatus.DEACTIVATED
     assert "401" in (update["deactivation_reason"] or "")
     assert "invalidated" in (update["deactivation_reason"] or "").lower()
+
+
+@pytest.mark.asyncio
+async def test_usage_updater_treats_expired_token_401_as_invalidated(monkeypatch) -> None:
+    monkeypatch.setenv("CODEX_LB_USAGE_REFRESH_ENABLED", "true")
+    monkeypatch.setattr("app.modules.usage.updater._DEACTIVATION_FAILURE_THRESHOLD", 3)
+    monkeypatch.setattr("app.modules.usage.updater._FAILED_REFRESH_BACKOFF_SECONDS", 0)
+    from app.core.clients.usage import UsageFetchError
+    from app.core.config.settings import get_settings
+
+    get_settings.cache_clear()
+
+    async def stub_fetch_usage_401(**_: Any) -> UsagePayload:
+        raise UsageFetchError(
+            401,
+            "Provided authentication token is expired. Please try signing in again.",
+        )
+
+    monkeypatch.setattr("app.modules.usage.updater.fetch_usage", stub_fetch_usage_401)
+
+    usage_repo = StubUsageRepository()
+    accounts_repo = StubAccountsRepository()
+    updater = UsageUpdater(usage_repo, accounts_repo=accounts_repo)
+    assert updater._auth_manager is not None
+
+    async def stub_ensure_fresh(account: Account, *, force: bool = False) -> Account:
+        assert force is True
+        return account
+
+    monkeypatch.setattr(updater._auth_manager, "ensure_fresh", stub_ensure_fresh)
+
+    acc = _make_account("acc_401_expired_token", "workspace_401_expired_token")
+    accounts_repo.accounts_by_id[acc.id] = acc
+
+    await updater.refresh_accounts([acc], latest_usage={})
+
+    assert len(accounts_repo.status_updates) == 1
+    update = accounts_repo.status_updates[0]
+    assert update["account_id"] == acc.id
+    assert update["status"] == AccountStatus.DEACTIVATED
+    assert "401" in (update["deactivation_reason"] or "")
+    assert "expired" in (update["deactivation_reason"] or "").lower()
 
 
 @pytest.mark.asyncio

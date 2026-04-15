@@ -11,6 +11,19 @@ MergeState = Literal["merged", "ready", "diverged", "behind", "unknown"]
 BotStatus = Literal["idle", "active"]
 PullRequestState = Literal["open", "merged", "closed"]
 ReviewContentKind = Literal["review", "comment", "decision"]
+CheckConclusion = Literal[
+    "failure",
+    "timed_out",
+    "cancelled",
+    "action_required",
+    "startup_failure",
+    "stale",
+    "neutral",
+    "success",
+    "skipped",
+    "pending",
+    "unknown",
+]
 
 
 class SourceControlChangedFile(DashboardModel):
@@ -82,6 +95,32 @@ class SourceControlPullRequestPreview(DashboardModel):
     is_draft: bool = False
 
 
+class SourceControlFailedCheck(DashboardModel):
+    name: str
+    workflow_name: str | None = None
+    conclusion: CheckConclusion = "unknown"
+    details_url: str | None = None
+
+
+class SourceControlReviewFeedbackEntry(DashboardModel):
+    source: Literal["issue_comment", "review", "review_comment"] = "review"
+    content: str
+    state: str | None = None
+    author: str | None = None
+    file_path: str | None = None
+    submitted_at: datetime | None = None
+    url: str | None = None
+
+
+class SourceControlPullRequestDiagnostics(DashboardModel):
+    pull_request: SourceControlPullRequestPreview
+    mergeable: str | None = None
+    merge_state_status: str | None = None
+    has_merge_conflicts: bool = False
+    failed_checks: list[SourceControlFailedCheck] = Field(default_factory=list)
+    feedback: list[SourceControlReviewFeedbackEntry] = Field(default_factory=list)
+
+
 class SourceControlPreviewResponse(DashboardModel):
     repository_root: str
     project_path: str | None = None
@@ -96,6 +135,8 @@ class SourceControlPreviewResponse(DashboardModel):
     worktrees: list[SourceControlWorktreeEntry] = Field(default_factory=list)
     gx_bots: list[SourceControlBotSyncEntry] = Field(default_factory=list)
     pull_requests: list[SourceControlPullRequestPreview] = Field(default_factory=list)
+    conflicted_pull_requests: list[SourceControlPullRequestDiagnostics] = Field(default_factory=list)
+    bot_feedback_pull_requests: list[SourceControlPullRequestDiagnostics] = Field(default_factory=list)
     quick_actions: list[str] = Field(default_factory=list)
 
 

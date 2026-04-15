@@ -94,6 +94,37 @@ function reviewStateLabel(state: string | null | undefined): string | null {
   return state.replace(/_/g, " ").toLowerCase();
 }
 
+function checkConclusionClass(conclusion: string | null | undefined): string {
+  const normalized = (conclusion ?? "").toLowerCase();
+  if (normalized === "failure" || normalized === "timed_out" || normalized === "cancelled") {
+    return "border-rose-400/35 bg-rose-500/15 text-rose-200";
+  }
+  if (normalized === "action_required") {
+    return "border-amber-400/35 bg-amber-500/15 text-amber-200";
+  }
+  return "border-white/20 bg-white/10 text-zinc-300";
+}
+
+function checkConclusionLabel(conclusion: string | null | undefined): string {
+  if (!conclusion) {
+    return "unknown";
+  }
+  return conclusion.replace(/_/g, " ").toLowerCase();
+}
+
+function feedbackSourceLabel(source: string): string {
+  switch (source) {
+    case "issue_comment":
+      return "Issue comment";
+    case "review_comment":
+      return "Review comment";
+    case "review":
+      return "Review";
+    default:
+      return "Feedback";
+  }
+}
+
 function snapshotFromBranch(branch: string | null | undefined): string | null {
   if (!branch) {
     return null;
@@ -267,11 +298,13 @@ export function SourceControlPage() {
                 id="source-control-project-select"
                 value={effectiveProjectId}
                 onChange={(event) => setSelectedProjectId(event.target.value)}
-                className="h-8 min-w-[220px] rounded-lg border border-white/[0.12] bg-white/[0.02] px-3 text-xs text-slate-100 outline-none transition-colors focus:border-emerald-400/45"
+                className="h-8 min-w-[220px] rounded-lg border border-white/[0.12] bg-white/[0.02] px-3 text-xs text-slate-100 outline-none transition-colors focus:border-emerald-400/45 [color-scheme:dark]"
               >
-                <option value="">Current repository</option>
+                <option value="" className="bg-slate-950 text-slate-100">
+                  Current repository
+                </option>
                 {projects.map((project) => (
-                  <option key={project.id} value={project.id}>
+                  <option key={project.id} value={project.id} className="bg-slate-950 text-slate-100">
                     {project.name}
                   </option>
                 ))}
@@ -545,6 +578,159 @@ export function SourceControlPage() {
                           })
                         )}
                       </div>
+                    </article>
+                  </div>
+
+                  <div className="grid gap-3 xl:grid-cols-2">
+                    <article className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3">
+                      <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-slate-300">
+                        <GitPullRequest className="h-3.5 w-3.5 text-rose-300" />
+                        Checks awaiting conflict resolution
+                      </div>
+                      {preview.conflictedPullRequests.length === 0 ? (
+                        <p className="text-xs text-slate-500">No conflicted PRs with failed checks.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {preview.conflictedPullRequests.map((entry) => (
+                            <div
+                              key={`conflict-pr-${entry.pullRequest.number}`}
+                              className="rounded-md border border-rose-400/25 bg-rose-500/10 p-2.5"
+                            >
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <p className="text-xs font-semibold text-slate-100">
+                                  #{entry.pullRequest.number} {entry.pullRequest.title}
+                                </p>
+                                <span className="inline-flex rounded-full border border-rose-400/35 bg-rose-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-rose-200">
+                                  {entry.failedChecks.length} failing checks
+                                </span>
+                              </div>
+                              <p className="mt-1 text-[11px] text-slate-400">
+                                merge conflict: {entry.hasMergeConflicts ? "yes" : "no"} • mergeable: {entry.mergeable ?? "--"}
+                              </p>
+                              <div className="mt-2 flex flex-wrap gap-1.5">
+                                {entry.failedChecks.slice(0, 6).map((check) => (
+                                  <a
+                                    key={`${entry.pullRequest.number}-${check.name}`}
+                                    href={check.detailsUrl ?? entry.pullRequest.url ?? "#"}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className={cn(
+                                      "inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold",
+                                      checkConclusionClass(check.conclusion),
+                                    )}
+                                  >
+                                    {check.name}
+                                    {check.workflowName ? ` (${check.workflowName})` : ""}
+                                  </a>
+                                ))}
+                                {entry.failedChecks.length > 6 ? (
+                                  <span className="inline-flex rounded-full border border-white/15 bg-white/5 px-2 py-0.5 text-[10px] text-slate-300">
+                                    +{entry.failedChecks.length - 6} more
+                                  </span>
+                                ) : null}
+                              </div>
+                              {entry.pullRequest.url ? (
+                                <a
+                                  href={entry.pullRequest.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="mt-2 inline-flex text-[11px] text-cyan-300 underline decoration-cyan-400/50 underline-offset-2 hover:text-cyan-200"
+                                >
+                                  Open PR #{entry.pullRequest.number}
+                                </a>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </article>
+
+                    <article className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3">
+                      <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-slate-300">
+                        <Bot className="h-3.5 w-3.5 text-cyan-300" />
+                        Previous bot review feedback
+                      </div>
+                      {preview.botFeedbackPullRequests.length === 0 ? (
+                        <p className="text-xs text-slate-500">No recent bot feedback found.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {preview.botFeedbackPullRequests.map((entry) => (
+                            <div
+                              key={`feedback-pr-${entry.pullRequest.number}`}
+                              className="rounded-md border border-cyan-400/25 bg-cyan-500/10 p-2.5"
+                            >
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <p className="text-xs font-semibold text-slate-100">
+                                  #{entry.pullRequest.number} {entry.pullRequest.title}
+                                </p>
+                                <span className="inline-flex rounded-full border border-cyan-400/35 bg-cyan-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-cyan-200">
+                                  {entry.pullRequest.state}
+                                </span>
+                              </div>
+                              {entry.pullRequest.url ? (
+                                <a
+                                  href={entry.pullRequest.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="mt-1 inline-flex text-[11px] text-cyan-300 underline decoration-cyan-400/50 underline-offset-2 hover:text-cyan-200"
+                                >
+                                  {entry.pullRequest.url}
+                                </a>
+                              ) : null}
+                              <div className="mt-2 space-y-1.5">
+                                {entry.feedback.slice(0, 3).map((feedback, index) => (
+                                  <div key={`${entry.pullRequest.number}-feedback-${index}`} className="rounded border border-white/10 bg-white/5 p-2">
+                                    <p className="text-[10px] uppercase tracking-[0.1em] text-slate-400">
+                                      {feedbackSourceLabel(feedback.source)}
+                                      {feedback.author ? ` • ${feedback.author}` : ""}
+                                      {feedback.submittedAt ? ` • ${formatIso(feedback.submittedAt)}` : ""}
+                                    </p>
+                                    <p className="mt-1 text-[11px] text-slate-100">{feedback.content}</p>
+                                    {feedback.filePath || feedback.state ? (
+                                      <p className="mt-1 text-[10px] text-slate-400">
+                                        {feedback.filePath ? `file: ${feedback.filePath}` : null}
+                                        {feedback.state
+                                          ? `${feedback.filePath ? " • " : ""}${reviewStateLabel(feedback.state)}`
+                                          : null}
+                                      </p>
+                                    ) : null}
+                                    {feedback.url ? (
+                                      <a
+                                        href={feedback.url}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="mt-1 inline-flex text-[10px] text-cyan-200 underline decoration-cyan-300/60 underline-offset-2 hover:text-cyan-100"
+                                      >
+                                        Open feedback
+                                      </a>
+                                    ) : null}
+                                  </div>
+                                ))}
+                              </div>
+                              {entry.failedChecks.length > 0 ? (
+                                <div className="mt-2 flex flex-wrap gap-1.5">
+                                  {entry.failedChecks.slice(0, 4).map((check) => (
+                                    <span
+                                      key={`${entry.pullRequest.number}-failed-check-${check.name}`}
+                                      className={cn(
+                                        "inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold",
+                                        checkConclusionClass(check.conclusion),
+                                      )}
+                                    >
+                                      {check.name} • {checkConclusionLabel(check.conclusion)}
+                                    </span>
+                                  ))}
+                                  {entry.failedChecks.length > 4 ? (
+                                    <span className="inline-flex rounded-full border border-white/15 bg-white/5 px-2 py-0.5 text-[10px] text-slate-300">
+                                      +{entry.failedChecks.length - 4} more
+                                    </span>
+                                  ) : null}
+                                </div>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </article>
                   </div>
 

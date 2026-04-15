@@ -16,6 +16,8 @@ describe("SourceControlPage", () => {
       expect(screen.getByText("Current codex branches")).toBeInTheDocument();
       expect(screen.getByText("Current GX bot statuses")).toBeInTheDocument();
       expect(screen.getByText("Pull request status")).toBeInTheDocument();
+      expect(screen.getByText("Checks awaiting conflict resolution")).toBeInTheDocument();
+      expect(screen.getByText("Previous bot review feedback")).toBeInTheDocument();
     });
 
     expect(screen.getByText("Master Agent")).toBeInTheDocument();
@@ -27,6 +29,9 @@ describe("SourceControlPage", () => {
     expect(screen.getByText("codex snapshot • live sessions: 1")).toBeInTheDocument();
     expect(screen.getByText("CR review content")).toBeInTheDocument();
     expect(screen.getByText(/Please add guardrails for review-bot branch matching before merge./i)).toBeInTheDocument();
+    expect(screen.getByText(/You have reached your Codex usage limits for code reviews./i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /https:\/\/github.com\/NagyVikt\/recodee\/pull\/78/i })).toBeInTheDocument();
+    expect(screen.getAllByText(/Frontend lint \(eslint\)/i).length).toBeGreaterThan(0);
     expect(screen.queryByText(/Current changes \(/i)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Delete branch" })).toBeDisabled();
 

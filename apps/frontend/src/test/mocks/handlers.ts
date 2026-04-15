@@ -1210,6 +1210,16 @@ const sourceControlChangesByBranch: Record<string, Array<{ path: string; code: s
 
 let sourceControlPullRequests = [
 	{
+		number: 78,
+		title: "feat(agents): auto-ingest GH bot reviews into Codex autofix workflow",
+		state: "open",
+		headBranch: "agent/codex/klara-kozpontihusbolt-hu-gh-review-autofix-flow",
+		baseBranch: "dev",
+		url: "https://github.com/NagyVikt/recodee/pull/78",
+		author: "NagyVikt",
+		isDraft: false,
+	},
+	{
 		number: 128,
 		title: "feat(source-control): simplify preview for bots and branches",
 		state: "open",
@@ -1228,6 +1238,112 @@ let sourceControlPullRequests = [
 		url: "https://github.com/recodeecom/recodee/pull/127",
 		author: "runtime-guardrail-bot",
 		isDraft: true,
+	},
+];
+
+const sourceControlConflictedPullRequests = [
+	{
+		pullRequest: {
+			number: 78,
+			title: "feat(agents): auto-ingest GH bot reviews into Codex autofix workflow",
+			state: "open",
+			headBranch: "agent/codex/klara-kozpontihusbolt-hu-gh-review-autofix-flow",
+			baseBranch: "dev",
+			url: "https://github.com/NagyVikt/recodee/pull/78",
+			author: "NagyVikt",
+			isDraft: false,
+		},
+		mergeable: "CONFLICTING",
+		mergeStateStatus: "DIRTY",
+		hasMergeConflicts: true,
+		failedChecks: [
+			{
+				name: "Frontend lint (eslint)",
+				workflowName: "CI",
+				conclusion: "failure",
+				detailsUrl: "https://github.com/NagyVikt/recodee/actions/runs/24442881537/job/71411926383",
+			},
+			{
+				name: "Frontend type check (tsc)",
+				workflowName: "CI",
+				conclusion: "failure",
+				detailsUrl: "https://github.com/NagyVikt/recodee/actions/runs/24442881537/job/71411926405",
+			},
+			{
+				name: "Frontend tests (vitest + coverage)",
+				workflowName: "CI",
+				conclusion: "failure",
+				detailsUrl: "https://github.com/NagyVikt/recodee/actions/runs/24442881537/job/71411926402",
+			},
+			{
+				name: "Docker build",
+				workflowName: "CI",
+				conclusion: "failure",
+				detailsUrl: "https://github.com/NagyVikt/recodee/actions/runs/24442881537/job/71411926420",
+			},
+		],
+		feedback: [],
+	},
+];
+
+const sourceControlBotFeedbackPullRequests = [
+	{
+		pullRequest: {
+			number: 78,
+			title: "feat(agents): auto-ingest GH bot reviews into Codex autofix workflow",
+			state: "open",
+			headBranch: "agent/codex/klara-kozpontihusbolt-hu-gh-review-autofix-flow",
+			baseBranch: "dev",
+			url: "https://github.com/NagyVikt/recodee/pull/78",
+			author: "NagyVikt",
+			isDraft: false,
+		},
+		mergeable: "CONFLICTING",
+		mergeStateStatus: "DIRTY",
+		hasMergeConflicts: true,
+		failedChecks: [
+			{
+				name: "Frontend lint (eslint)",
+				workflowName: "CI",
+				conclusion: "failure",
+				detailsUrl: "https://github.com/NagyVikt/recodee/actions/runs/24442881537/job/71411926383",
+			},
+			{
+				name: "Frontend type check (tsc)",
+				workflowName: "CI",
+				conclusion: "failure",
+				detailsUrl: "https://github.com/NagyVikt/recodee/actions/runs/24442881537/job/71411926405",
+			},
+		],
+		feedback: [
+			{
+				source: "issue_comment",
+				content: "You have reached your Codex usage limits for code reviews. You can see your limits in the Codex usage dashboard.",
+				state: null,
+				author: "chatgpt-codex-connector",
+				filePath: null,
+				submittedAt: new Date().toISOString(),
+				url: "https://github.com/NagyVikt/recodee/pull/78#issuecomment-4250182193",
+			},
+			{
+				source: "review_comment",
+				content: "Keep output short and operational.",
+				state: "COMMENTED",
+				author: "cr-gpt",
+				filePath: ".agents/commands/guardex.md",
+				submittedAt: new Date().toISOString(),
+				url: "https://github.com/NagyVikt/recodee/pull/78#pullrequestreview-1",
+			},
+			{
+				source: "review_comment",
+				content: "Implement proper error handling for command failures and add testing procedures for the workflow.",
+				state: "COMMENTED",
+				author: "cr-gpt",
+				filePath: ".agents/commands/musafety.md",
+				submittedAt: new Date().toISOString(),
+				url: "https://github.com/NagyVikt/recodee/pull/78#pullrequestreview-2",
+			},
+		],
 	},
 ];
 
@@ -1316,6 +1432,8 @@ export const handlers = [
 			],
 			gxBots: sourceControlBots,
 			pullRequests: sourceControlPullRequests,
+			conflictedPullRequests: sourceControlConflictedPullRequests,
+			botFeedbackPullRequests: sourceControlBotFeedbackPullRequests,
 			quickActions: [
 				"git status --short",
 				"git log --oneline --decorate -n 8",

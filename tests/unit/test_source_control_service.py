@@ -289,3 +289,92 @@ def test_load_pull_request_review_content_prefers_latest_review(tmp_path: Path, 
     assert review.state == "CHANGES_REQUESTED"
     assert review.author == "review-bot"
     assert review.url == "https://example.com/pr/41#review-latest"
+
+
+def test_load_pull_request_diagnostics_extracts_conflicts_checks_and_bot_feedback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _init_repo(tmp_path)
+    service = SourceControlService()
+    pull_request = SourceControlPullRequestPreview(
+        number=78,
+        title="Autofix workflow",
+        state="open",
+        head_branch="agent/codex/autofix",
+        base_branch="dev",
+        url="https://github.com/NagyVikt/recodee/pull/78",
+        author="NagyVikt",
+        is_draft=False,
+    )
+
+    def _run_gh(args: list[str], **_) -> str:
+        joined = " ".join(args)
+        if joined.startswith("pr view 78"):
+            return json.dumps(
+                {
+                    "mergeable": "CONFLICTING",
+                    "mergeStateStatus": "DIRTY",
+                    "statusCheckRollup": [
+                        {
+                            "name": "Frontend lint (eslint)",
+                            "workflowName": "CI",
+                            "conclusion": "FAILURE",
+                            "detailsUrl": "https://example.com/checks/1",
+                        },
+                        {
+                            "name": "GitGuardian Security Checks",
+                            "workflowName": "",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://example.com/checks/2",
+                        },
+                    ],
+                    "comments": [
+                        {
+                            "author": {"login": "chatgpt-codex-connector"},
+                            "body": "You have reached your Codex usage limits for code reviews.",
+                            "createdAt": "2026-04-15T07:46:13Z",
+                            "url": "https://github.com/NagyVikt/recodee/pull/78#issuecomment-1",
+                        }
+                    ],
+                    "reviews": [
+                        {
+                            "author": {"login": "cr-gpt"},
+                            "body": "",
+                            "state": "COMMENTED",
+                            "submittedAt": "2026-04-15T07:46:14Z",
+                            "url": "https://github.com/NagyVikt/recodee/pull/78#pullrequestreview-1",
+                        }
+                    ],
+                    "url": "https://github.com/NagyVikt/recodee/pull/78",
+                }
+            )
+        if joined.startswith("api repos/NagyVikt/recodee/pulls/78/comments?per_page=100"):
+            return json.dumps(
+                [
+                    {
+                        "user": {"login": "cr-gpt"},
+                        "body": "Keep output short and operational.",
+                        "path": ".agents/commands/guardex.md",
+                        "created_at": "2026-04-15T07:46:14Z",
+                        "html_url": "https://github.com/NagyVikt/recodee/pull/78#discussion_r1",
+                    }
+                ]
+            )
+        return ""
+
+    monkeypatch.setattr(service, "_run_gh", _run_gh)
+
+    diagnostics = service._load_pull_request_diagnostics(
+        repo_root=repo,
+        pull_request=pull_request,
+    )
+
+    assert diagnostics is not None
+    assert diagnostics.has_merge_conflicts is True
+    assert diagnostics.mergeable == "CONFLICTING"
+    assert diagnostics.merge_state_status == "DIRTY"
+    assert len(diagnostics.failed_checks) == 1
+    assert diagnostics.failed_checks[0].name == "Frontend lint (eslint)"
+    assert any(item.author == "chatgpt-codex-connector" for item in diagnostics.feedback)
+    assert any(item.file_path == ".agents/commands/guardex.md" for item in diagnostics.feedback)

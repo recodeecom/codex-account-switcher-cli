@@ -68,6 +68,32 @@ export const SourceControlPullRequestSchema = z.object({
   isDraft: z.boolean().default(false),
 });
 
+export const SourceControlFailedCheckSchema = z.object({
+  name: z.string().min(1),
+  workflowName: z.string().nullable().optional(),
+  conclusion: z.string().min(1).default("unknown"),
+  detailsUrl: z.string().url().nullable().optional(),
+});
+
+export const SourceControlReviewFeedbackEntrySchema = z.object({
+  source: z.enum(["issue_comment", "review", "review_comment"]).default("review"),
+  content: z.string().min(1),
+  state: z.string().nullable().optional(),
+  author: z.string().nullable().optional(),
+  filePath: z.string().nullable().optional(),
+  submittedAt: z.string().datetime({ offset: true }).nullable().optional(),
+  url: z.string().url().nullable().optional(),
+});
+
+export const SourceControlPullRequestDiagnosticsSchema = z.object({
+  pullRequest: SourceControlPullRequestSchema,
+  mergeable: z.string().nullable().optional(),
+  mergeStateStatus: z.string().nullable().optional(),
+  hasMergeConflicts: z.boolean().default(false),
+  failedChecks: z.array(SourceControlFailedCheckSchema).default([]),
+  feedback: z.array(SourceControlReviewFeedbackEntrySchema).default([]),
+});
+
 export const SourceControlReviewContentSchema = z.object({
   kind: z.enum(["review", "comment", "decision"]),
   content: z.string().min(1),
@@ -91,6 +117,8 @@ export const SourceControlPreviewResponseSchema = z.object({
   worktrees: z.array(SourceControlWorktreeEntrySchema).default([]),
   gxBots: z.array(SourceControlBotSyncEntrySchema).default([]),
   pullRequests: z.array(SourceControlPullRequestSchema).default([]),
+  conflictedPullRequests: z.array(SourceControlPullRequestDiagnosticsSchema).default([]),
+  botFeedbackPullRequests: z.array(SourceControlPullRequestDiagnosticsSchema).default([]),
   quickActions: z.array(z.string()).default([]),
 });
 

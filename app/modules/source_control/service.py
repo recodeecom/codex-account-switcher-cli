@@ -21,10 +21,13 @@ from app.modules.source_control.schemas import (
     SourceControlCommitPreview,
     SourceControlCreatePullRequestResponse,
     SourceControlDeleteBranchResponse,
+    SourceControlFailedCheck,
     SourceControlMergePullRequestResponse,
     SourceControlMergePreviewEntry,
+    SourceControlPullRequestDiagnostics,
     SourceControlPullRequestPreview,
     SourceControlPreviewResponse,
+    SourceControlReviewFeedbackEntry,
     SourceControlReviewContent,
     SourceControlWorktreeEntry,
 )
@@ -33,6 +36,21 @@ _GIT_TIMEOUT_SECONDS = 4
 _BOT_BRANCH_PATTERN = re.compile(r"^(?:agent[/_-]|gx[/_-]|bot[/_-]|worker[/_-]|subbranch[/_-])", re.IGNORECASE)
 _SLUG_NON_ALNUM_PATTERN = re.compile(r"[^a-z0-9]+")
 _FIRST_URL_PATTERN = re.compile(r"https?://\S+")
+_PR_URL_REPO_PATTERN = re.compile(r"https?://github\.com/([^/]+/[^/]+)/pull/\d+", re.IGNORECASE)
+_BOT_FEEDBACK_LOGINS = {
+    "chatgpt-codex-connector",
+    "chatgpt-codex-connector[bot]",
+    "cr-gpt",
+    "cr-gpt[bot]",
+}
+_FAILED_CHECK_CONCLUSIONS = {
+    "failure",
+    "timed_out",
+    "cancelled",
+    "action_required",
+    "startup_failure",
+    "stale",
+}
 
 
 class SourceControlError(RuntimeError):
@@ -176,7 +194,43 @@ class SourceControlService:
                 )
                 merge_preview_branches.add(matched)
 
-        pull_requests = self._list_pull_requests(repo_root=repo_root, base_branch=base_branch)
+        pull_requests = self._list_pull_requests(
+            repo_root=repo_root,
+            base_branch=base_branch,
+            state="open",
+            limit=20,
+        )
+        diagnostics_cache: dict[int, SourceControlPullRequestDiagnostics] = {}
+        conflicted_pull_requests: list[SourceControlPullRequestDiagnostics] = []
+        for pull_request in pull_requests:
+            diagnostics = self._load_pull_request_diagnostics(
+                repo_root=repo_root,
+                pull_request=pull_request,
+            )
+            if diagnostics is None:
+                continue
+            diagnostics_cache[pull_request.number] = diagnostics
+            if diagnostics.has_merge_conflicts and diagnostics.failed_checks:
+                conflicted_pull_requests.append(diagnostics)
+
+        bot_feedback_pull_requests: list[SourceControlPullRequestDiagnostics] = []
+        feedback_candidates = self._list_pull_requests_with_bot_activity(
+            repo_root=repo_root,
+            base_branch=base_branch,
+            limit=20,
+        )
+        for pull_request in feedback_candidates:
+            diagnostics = diagnostics_cache.get(pull_request.number)
+            if diagnostics is None:
+                diagnostics = self._load_pull_request_diagnostics(
+                    repo_root=repo_root,
+                    pull_request=pull_request,
+                )
+                if diagnostics is None:
+                    continue
+                diagnostics_cache[pull_request.number] = diagnostics
+            if diagnostics.feedback:
+                bot_feedback_pull_requests.append(diagnostics)
 
         quick_actions = [
             "git status --short",
@@ -202,6 +256,8 @@ class SourceControlService:
             worktrees=worktrees,
             gx_bots=gx_bots,
             pull_requests=pull_requests,
+            conflicted_pull_requests=conflicted_pull_requests,
+            bot_feedback_pull_requests=bot_feedback_pull_requests,
             quick_actions=quick_actions,
         )
 
@@ -619,23 +675,32 @@ class SourceControlService:
             merge_state=merge_state,
         )
 
-    def _list_pull_requests(self, *, repo_root: Path, base_branch: str) -> list[SourceControlPullRequestPreview]:
-        raw = self._run_gh(
-            [
-                "pr",
-                "list",
-                "--state",
-                "open",
-                "--base",
-                base_branch,
-                "--json",
-                "number,title,state,headRefName,baseRefName,url,isDraft,author",
-                "--limit",
-                "20",
-            ],
-            cwd=repo_root,
-            allow_failure=True,
-        )
+    def _list_pull_requests(
+        self,
+        *,
+        repo_root: Path,
+        base_branch: str,
+        state: Literal["open", "closed", "merged", "all"] = "open",
+        limit: int = 20,
+        search: str | None = None,
+    ) -> list[SourceControlPullRequestPreview]:
+        args = [
+            "pr",
+            "list",
+            "--state",
+            state,
+            "--json",
+            "number,title,state,headRefName,baseRefName,url,isDraft,author",
+            "--limit",
+            str(max(1, limit)),
+        ]
+        normalized_search = (search or "").strip()
+        if normalized_search:
+            args.extend(["--search", normalized_search])
+        elif state == "open":
+            args.extend(["--base", base_branch])
+
+        raw = self._run_gh(args, cwd=repo_root, allow_failure=True)
         if not raw:
             return []
 
@@ -648,51 +713,310 @@ class SourceControlService:
 
         previews: list[SourceControlPullRequestPreview] = []
         for entry in payload:
-            if not isinstance(entry, dict):
-                continue
-            number = entry.get("number")
-            title = str(entry.get("title") or "").strip()
-            if not isinstance(number, int) or not title:
-                continue
+            preview = self._parse_pull_request_preview(entry=entry, fallback_base_branch=base_branch)
+            if preview is not None:
+                previews.append(preview)
+        return previews
 
-            state_value = str(entry.get("state") or "OPEN").strip().lower()
-            if state_value == "merged":
-                normalized_state: Literal["open", "merged", "closed"] = "merged"
-            elif state_value == "closed":
-                normalized_state = "closed"
-            else:
-                normalized_state = "open"
-
-            head_branch = str(entry.get("headRefName") or "").strip()
-            if not head_branch:
-                continue
-            base_value = str(entry.get("baseRefName") or base_branch).strip()
-            base_value = base_value or base_branch
-
-            author = None
-            author_payload = entry.get("author")
-            if isinstance(author_payload, dict):
-                author_login = author_payload.get("login")
-                if isinstance(author_login, str) and author_login.strip():
-                    author = author_login.strip()
-
-            url = entry.get("url")
-            url_value = str(url).strip() if isinstance(url, str) and url.strip() else None
-            is_draft = bool(entry.get("isDraft"))
-
-            previews.append(
-                SourceControlPullRequestPreview(
-                    number=number,
-                    title=title,
-                    state=normalized_state,
-                    head_branch=head_branch,
-                    base_branch=base_value,
-                    url=url_value,
-                    author=author,
-                    is_draft=is_draft,
+    def _list_pull_requests_with_bot_activity(
+        self,
+        *,
+        repo_root: Path,
+        base_branch: str,
+        limit: int,
+    ) -> list[SourceControlPullRequestPreview]:
+        candidates: list[SourceControlPullRequestPreview] = []
+        search_queries = (
+            "commenter:chatgpt-codex-connector",
+            "reviewed-by:cr-gpt",
+            "commenter:cr-gpt",
+        )
+        for query in search_queries:
+            candidates.extend(
+                self._list_pull_requests(
+                    repo_root=repo_root,
+                    base_branch=base_branch,
+                    state="all",
+                    limit=limit,
+                    search=query,
                 )
             )
-        return previews
+
+        deduplicated: list[SourceControlPullRequestPreview] = []
+        seen_numbers: set[int] = set()
+        for candidate in sorted(candidates, key=lambda entry: entry.number, reverse=True):
+            if candidate.number in seen_numbers:
+                continue
+            seen_numbers.add(candidate.number)
+            deduplicated.append(candidate)
+            if len(deduplicated) >= limit:
+                break
+        return deduplicated
+
+    def _parse_pull_request_preview(
+        self,
+        *,
+        entry: object,
+        fallback_base_branch: str,
+    ) -> SourceControlPullRequestPreview | None:
+        if not isinstance(entry, dict):
+            return None
+        number = entry.get("number")
+        title = str(entry.get("title") or "").strip()
+        if not isinstance(number, int) or not title:
+            return None
+
+        state_value = str(entry.get("state") or "OPEN").strip().lower()
+        normalized_state: Literal["open", "merged", "closed"]
+        if state_value == "merged":
+            normalized_state = "merged"
+        elif state_value == "closed":
+            normalized_state = "closed"
+        else:
+            normalized_state = "open"
+
+        head_branch = str(entry.get("headRefName") or "").strip()
+        if not head_branch:
+            return None
+        base_value = str(entry.get("baseRefName") or fallback_base_branch).strip()
+        base_value = base_value or fallback_base_branch
+
+        author = None
+        author_payload = entry.get("author")
+        if isinstance(author_payload, dict):
+            author_login = author_payload.get("login")
+            if isinstance(author_login, str) and author_login.strip():
+                author = author_login.strip()
+
+        url_payload = entry.get("url")
+        url = str(url_payload).strip() if isinstance(url_payload, str) and url_payload.strip() else None
+        is_draft = bool(entry.get("isDraft"))
+        return SourceControlPullRequestPreview(
+            number=number,
+            title=title,
+            state=normalized_state,
+            head_branch=head_branch,
+            base_branch=base_value,
+            url=url,
+            author=author,
+            is_draft=is_draft,
+        )
+
+    def _load_pull_request_diagnostics(
+        self,
+        *,
+        repo_root: Path,
+        pull_request: SourceControlPullRequestPreview,
+    ) -> SourceControlPullRequestDiagnostics | None:
+        raw = self._run_gh(
+            [
+                "pr",
+                "view",
+                str(pull_request.number),
+                "--json",
+                "mergeStateStatus,mergeable,statusCheckRollup,comments,reviews,url",
+            ],
+            cwd=repo_root,
+            allow_failure=True,
+        )
+        if not raw:
+            return None
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(payload, dict):
+            return None
+
+        mergeable = _extract_string(payload.get("mergeable"))
+        merge_state_status = _extract_string(payload.get("mergeStateStatus"))
+        has_merge_conflicts = (
+            (mergeable or "").upper() == "CONFLICTING"
+            or (merge_state_status or "").upper() in {"DIRTY", "BEHIND"}
+        )
+        failed_checks = self._parse_failed_checks(payload.get("statusCheckRollup"))
+        feedback = self._extract_bot_feedback(
+            repo_root=repo_root,
+            payload=payload,
+            pull_request_number=pull_request.number,
+            pull_request_url=pull_request.url,
+        )
+
+        return SourceControlPullRequestDiagnostics(
+            pull_request=pull_request,
+            mergeable=mergeable,
+            merge_state_status=merge_state_status,
+            has_merge_conflicts=has_merge_conflicts,
+            failed_checks=failed_checks,
+            feedback=feedback,
+        )
+
+    def _parse_failed_checks(self, status_payload: object) -> list[SourceControlFailedCheck]:
+        if not isinstance(status_payload, list):
+            return []
+
+        failed_checks: list[SourceControlFailedCheck] = []
+        for entry in status_payload:
+            if not isinstance(entry, dict):
+                continue
+            conclusion = _extract_string(entry.get("conclusion"))
+            normalized_conclusion = (conclusion or "unknown").strip().lower()
+            if normalized_conclusion not in _FAILED_CHECK_CONCLUSIONS:
+                continue
+            name = _extract_string(entry.get("name"))
+            if not name:
+                continue
+            workflow_name = _extract_string(entry.get("workflowName"))
+            details_url = _extract_string(entry.get("detailsUrl"))
+            failed_checks.append(
+                SourceControlFailedCheck(
+                    name=name,
+                    workflow_name=workflow_name,
+                    conclusion=normalized_conclusion,
+                    details_url=details_url,
+                )
+            )
+        return failed_checks
+
+    def _extract_bot_feedback(
+        self,
+        *,
+        repo_root: Path,
+        payload: dict[str, object],
+        pull_request_number: int,
+        pull_request_url: str | None,
+    ) -> list[SourceControlReviewFeedbackEntry]:
+        feedback: list[SourceControlReviewFeedbackEntry] = []
+        seen_feedback_keys: set[str] = set()
+
+        comments_payload = payload.get("comments")
+        if isinstance(comments_payload, list):
+            for entry in comments_payload:
+                if not isinstance(entry, dict):
+                    continue
+                author = _extract_author_login(entry.get("author"))
+                if not _is_bot_feedback_author(author):
+                    continue
+                content = _extract_string(entry.get("body"))
+                if not content:
+                    continue
+                submitted_at = _extract_datetime(entry, ("updatedAt", "createdAt", "publishedAt"))
+                url = _extract_string(entry.get("url")) or pull_request_url
+                key = f"issue:{author}:{submitted_at}:{content}"
+                if key in seen_feedback_keys:
+                    continue
+                seen_feedback_keys.add(key)
+                feedback.append(
+                    SourceControlReviewFeedbackEntry(
+                        source="issue_comment",
+                        content=content,
+                        author=author,
+                        submitted_at=submitted_at,
+                        url=url,
+                    )
+                )
+
+        reviews_payload = payload.get("reviews")
+        if isinstance(reviews_payload, list):
+            for entry in reviews_payload:
+                if not isinstance(entry, dict):
+                    continue
+                author = _extract_author_login(entry.get("author"))
+                if not _is_bot_feedback_author(author):
+                    continue
+                state = _extract_string(entry.get("state"))
+                body = _extract_string(entry.get("body"))
+                content = body
+                if not content and state:
+                    content = f"Review state: {state.replace('_', ' ').title()}"
+                if not content:
+                    continue
+                submitted_at = _extract_datetime(entry, ("submittedAt", "updatedAt", "createdAt"))
+                url = _extract_string(entry.get("url")) or pull_request_url
+                key = f"review:{author}:{submitted_at}:{content}:{state}"
+                if key in seen_feedback_keys:
+                    continue
+                seen_feedback_keys.add(key)
+                feedback.append(
+                    SourceControlReviewFeedbackEntry(
+                        source="review",
+                        content=content,
+                        state=state,
+                        author=author,
+                        submitted_at=submitted_at,
+                        url=url,
+                    )
+                )
+
+        feedback.extend(
+            self._load_pull_request_review_feedback(
+                repo_root=repo_root,
+                pull_request_number=pull_request_number,
+                pull_request_url=pull_request_url,
+                seen_feedback_keys=seen_feedback_keys,
+            )
+        )
+        feedback.sort(key=lambda entry: entry.submitted_at or utcnow(), reverse=True)
+        return feedback[:8]
+
+    def _load_pull_request_review_feedback(
+        self,
+        *,
+        repo_root: Path,
+        pull_request_number: int,
+        pull_request_url: str | None,
+        seen_feedback_keys: set[str],
+    ) -> list[SourceControlReviewFeedbackEntry]:
+        repo_name_with_owner = _extract_repo_name_from_pull_request_url(pull_request_url)
+        if not repo_name_with_owner:
+            return []
+
+        raw = self._run_gh(
+            [
+                "api",
+                f"repos/{repo_name_with_owner}/pulls/{pull_request_number}/comments?per_page=100",
+            ],
+            cwd=repo_root,
+            allow_failure=True,
+        )
+        if not raw:
+            return []
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            return []
+        if not isinstance(payload, list):
+            return []
+
+        feedback: list[SourceControlReviewFeedbackEntry] = []
+        for entry in payload:
+            if not isinstance(entry, dict):
+                continue
+            user_payload = entry.get("user")
+            author = _extract_string(user_payload.get("login")) if isinstance(user_payload, dict) else None
+            if not _is_bot_feedback_author(author):
+                continue
+            content = _extract_string(entry.get("body"))
+            if not content:
+                continue
+            file_path = _extract_string(entry.get("path"))
+            submitted_at = _extract_datetime(entry, ("updated_at", "created_at"))
+            url = _extract_string(entry.get("html_url")) or pull_request_url
+            key = f"review_comment:{author}:{submitted_at}:{file_path}:{content}"
+            if key in seen_feedback_keys:
+                continue
+            seen_feedback_keys.add(key)
+            feedback.append(
+                SourceControlReviewFeedbackEntry(
+                    source="review_comment",
+                    content=content,
+                    author=author,
+                    file_path=file_path,
+                    submitted_at=submitted_at,
+                    url=url,
+                )
+            )
+        return feedback
 
     def _list_branch_changes(
         self,
@@ -1207,6 +1531,21 @@ def _extract_datetime(payload: dict[str, object], keys: Sequence[str]):
 
 def _is_review_bot_name(name: str) -> bool:
     return "review" in name.lower()
+
+
+def _is_bot_feedback_author(author: str | None) -> bool:
+    if not author:
+        return False
+    return author.strip().lower() in _BOT_FEEDBACK_LOGINS
+
+
+def _extract_repo_name_from_pull_request_url(url: str | None) -> str | None:
+    if not url:
+        return None
+    match = _PR_URL_REPO_PATTERN.search(url)
+    if not match:
+        return None
+    return match.group(1)
 
 
 def _parse_iso_datetime(value: str):

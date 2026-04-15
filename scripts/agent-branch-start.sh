@@ -30,10 +30,6 @@ while [[ $# -gt 0 ]]; do
       echo "[agent-branch-start] This command always creates an isolated worktree to keep your active checkout unchanged." >&2
       exit 1
       ;;
-    --allow-in-place)
-      ALLOW_IN_PLACE=1
-      shift
-      ;;
     --worktree-root)
       WORKTREE_ROOT_REL="${2:-.omx/agent-worktrees}"
       shift 2

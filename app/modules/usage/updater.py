@@ -132,6 +132,10 @@ _deactivation_failure_streak: dict[str, int] = {}
 _TOKEN_INVALIDATION_ERROR_MARKERS = (
     "authentication token has been invalidated",
     "token has been invalidated",
+    "provided authentication token is expired",
+    "authentication token is expired",
+    "token is expired",
+    "token expired",
     "invalid refresh token",
     "refresh token expired",
     "refresh token has expired",
@@ -640,6 +644,10 @@ class UsageUpdater:
             "already been used",
             "token has been invalidated",
             "authentication token has been invalidated",
+            "provided authentication token is expired",
+            "authentication token is expired",
+            "token is expired",
+            "token expired",
         )
         if not any(marker in reason for marker in donor_reason_markers):
             return False
