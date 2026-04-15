@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ChevronRight, CircleDot, ExternalLink, Filter, Folder, FolderOpen, FolderTree, Github, Globe, LayoutGrid, Maximize2, Minimize2, Minus, Pencil, Plus, Trash2, UserCircle2, X } from "lucide-react";
+import { ChevronRight, CircleDot, ExternalLink, Filter, Folder, FolderOpen, FolderTree, Github, Globe, ListTodo, Maximize2, Minimize2, Minus, Pencil, Plus, Trash2, UserCircle2, X } from "lucide-react";
 
 import { AlertMessage } from "@/components/alert-message";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -1094,7 +1094,7 @@ export function ProjectsPage() {
                               onClick={() => navigate(`/projects/issues?projectId=${encodeURIComponent(entry.id)}`)}
                               disabled={busy}
                             >
-                              <LayoutGrid className="mr-1 h-4 w-4" />
+                              <ListTodo className="mr-1 h-4 w-4" />
                               Issues
                             </Button>
                             <Button
@@ -1175,7 +1175,7 @@ export function ProjectsPage() {
             <section className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#090d17]">
             <div className="flex h-11 items-center justify-between border-b border-white/10 px-4">
               <div className="flex items-center gap-2">
-                <LayoutGrid className="h-4 w-4 text-zinc-300" />
+                <ListTodo className="h-4 w-4 text-zinc-300" />
                 <h2 className="text-sm font-medium text-zinc-100">Issues</h2>
                 <Select
                   value={effectiveIssuesProjectId ?? "__none__"}
@@ -1235,7 +1235,7 @@ export function ProjectsPage() {
                   size="sm"
                   className="h-7 rounded-md border border-white/15 bg-white/10 px-2 text-[11px] text-zinc-100 hover:bg-white/15"
                 >
-                  <LayoutGrid className="mr-1 h-3.5 w-3.5" />
+                  <ListTodo className="mr-1 h-3.5 w-3.5" />
                   Board
                 </Button>
                 <Button

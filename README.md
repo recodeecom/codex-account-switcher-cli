@@ -22,6 +22,10 @@ Load balancer for ChatGPT accounts. Pool multiple accounts, track usage, manage 
 | :----------------------------------------: | :----------------------------------: |
 | ![settings](docs/screenshots/settings.jpg) | ![login](docs/screenshots/login.jpg) |
 
+|                   Projects                    |
+| :-------------------------------------------: |
+| ![projects](docs/screenshots/projects.png) |
+
 |                    Dashboard (dark)                    |                   Accounts (dark)                    |                   Settings (dark)                    |
 | :----------------------------------------------------: | :--------------------------------------------------: | :--------------------------------------------------: |
 | ![dashboard-dark](docs/screenshots/dashboard-dark.jpg) | ![accounts-dark](docs/screenshots/accounts-dark.jpg) | ![settings-dark](docs/screenshots/settings-dark.jpg) |
