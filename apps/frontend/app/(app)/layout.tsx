@@ -18,7 +18,10 @@ export default function AuthenticatedLayout({ children }: { children: ReactNode 
   const isProjectsRoute = pathname === "/projects";
   const isAccountsRoute = pathname === "/accounts";
   const isAgentsRoute = pathname === "/agents";
-  const isIssuesRoute = pathname === "/issues";
+  const isIssuesRoute =
+    pathname === "/issues"
+    || pathname === "/projects/issues"
+    || pathname.startsWith("/projects/issues/");
   const isRuntimesRoute = pathname === "/runtimes";
   const isSourceControlRoute = pathname === "/source-control";
   const isSkillsRoute = pathname === "/skills";

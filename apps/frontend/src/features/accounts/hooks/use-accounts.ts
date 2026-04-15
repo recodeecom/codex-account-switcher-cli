@@ -107,6 +107,51 @@ function applyOptimisticTerminationToQueryData(data: unknown, accountId: string)
   return data;
 }
 
+function applyOptimisticSnapshotRepairToQueryData(
+  data: unknown,
+  params: { accountId: string; snapshotName: string },
+): unknown {
+  const patchEntry = (entry: unknown): unknown => {
+    if (!entry || typeof entry !== "object") {
+      return entry;
+    }
+    const maybeAccount = entry as Partial<AccountSummary>;
+    if (maybeAccount.accountId !== params.accountId) {
+      return entry;
+    }
+    const account = entry as AccountSummary;
+    return {
+      ...account,
+      codexAuth: {
+        ...(account.codexAuth ?? { hasSnapshot: true }),
+        hasSnapshot: true,
+        snapshotName: params.snapshotName,
+        expectedSnapshotName: params.snapshotName,
+        snapshotNameMatchesEmail: true,
+      },
+    };
+  };
+
+  if (Array.isArray(data)) {
+    return data.map((entry) => patchEntry(entry));
+  }
+
+  if (
+    data &&
+    typeof data === "object" &&
+    "accounts" in data &&
+    Array.isArray((data as { accounts?: unknown }).accounts)
+  ) {
+    const payload = data as { accounts: unknown[] };
+    return {
+      ...data,
+      accounts: payload.accounts.map((entry) => patchEntry(entry)),
+    };
+  }
+
+  return data;
+}
+
 /**
  * Account mutation actions without the polling query.
  * Use this when you need account actions but already have account data
@@ -245,6 +290,20 @@ export function useAccountMutations() {
         ? `${response.previousSnapshotName} → ${response.snapshotName}`
         : response.snapshotName;
       toast.success(`${verb} snapshot ${detail}`);
+
+      queryClient.setQueryData(["accounts", "list"], (current) =>
+        applyOptimisticSnapshotRepairToQueryData(current, {
+          accountId: response.accountId,
+          snapshotName: response.snapshotName,
+        }),
+      );
+      queryClient.setQueryData(["dashboard", "overview"], (current) =>
+        applyOptimisticSnapshotRepairToQueryData(current, {
+          accountId: response.accountId,
+          snapshotName: response.snapshotName,
+        }),
+      );
+
       void invalidateAccountRelatedQueries(queryClient);
     },
     onError: (error: Error) => {
