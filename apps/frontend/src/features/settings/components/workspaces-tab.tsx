@@ -1,4 +1,4 @@
-import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type ChangeEvent, useMemo, useRef, useState } from "react";
 import { CheckCircle2, ImagePlus, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -34,6 +34,8 @@ type WorkspaceDraft = {
   avatarDataUrl: string | null;
 };
 
+const EMPTY_WORKSPACES: WorkspaceEntry[] = [];
+
 function toWorkspaceDraft(workspace: WorkspaceEntry): WorkspaceDraft {
   const localProfile = readWorkspaceLocalProfile(workspace.id);
   return {
@@ -59,22 +61,12 @@ function getInitials(name: string): string {
 
 export function WorkspacesTab() {
   const { workspacesQuery, selectMutation, deleteMutation } = useWorkspaces();
-  const workspaces = workspacesQuery.data?.entries ?? [];
+  const workspaces = workspacesQuery.data?.entries ?? EMPTY_WORKSPACES;
   const activeWorkspaceId = workspaces.find((workspace) => workspace.isActive)?.id ?? workspaces[0]?.id ?? null;
 
   const [draftsByWorkspace, setDraftsByWorkspace] = useState<Record<string, WorkspaceDraft>>({});
   const [workspacePendingDelete, setWorkspacePendingDelete] = useState<WorkspaceEntry | null>(null);
   const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
-
-  useEffect(() => {
-    setDraftsByWorkspace((previous) => {
-      const next: Record<string, WorkspaceDraft> = {};
-      for (const workspace of workspaces) {
-        next[workspace.id] = previous[workspace.id] ?? toWorkspaceDraft(workspace);
-      }
-      return next;
-    });
-  }, [workspaces]);
 
   const canDeleteWorkspace = workspaces.length > 1;
   const deletingWorkspaceId = workspacePendingDelete?.id ?? null;

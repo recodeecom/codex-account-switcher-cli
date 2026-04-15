@@ -29,6 +29,21 @@ describe("WorkspacesTab", () => {
     window.localStorage.clear();
   });
 
+  it("renders empty state when workspaces are not loaded yet", () => {
+    vi.mocked(useWorkspaces).mockReturnValue({
+      workspacesQuery: {
+        data: undefined,
+      },
+      createMutation: { isPending: false, mutateAsync: vi.fn() },
+      selectMutation: { isPending: false, mutate: vi.fn() },
+      deleteMutation: { isPending: false, mutateAsync: vi.fn() },
+    } as unknown as ReturnType<typeof useWorkspaces>);
+
+    renderWithProviders(<WorkspacesTab />);
+
+    expect(screen.getByText("No workspaces found.")).toBeInTheDocument();
+  });
+
   it("renders every workspace and lets users switch inactive workspaces", async () => {
     const user = userEvent.setup();
     const selectMutate = vi.fn();
