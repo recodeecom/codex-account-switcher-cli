@@ -69,6 +69,7 @@ openspec/plan/*
 !openspec/plan/PLANS.md
 
 # multiagent-safety:START
+multiagent-safety/
 .omx/
 scripts/agent-branch-start.sh
 scripts/agent-branch-finish.sh
