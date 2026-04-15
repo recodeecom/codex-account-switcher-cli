@@ -289,6 +289,7 @@ describe("runtimes flow integration", () => {
     expect(within(runtimeRow as HTMLElement).queryByText(/^Live$/)).not.toBeInTheDocument();
     expect(within(runtimeRow as HTMLElement).queryByText(/^\d+\s+live$/i)).not.toBeInTheDocument();
     expect(within(runtimeRow as HTMLElement).getByLabelText("Runtime usage limit hit")).toBeInTheDocument();
+    expect(screen.getAllByText("Usage limit hit").length).toBeGreaterThanOrEqual(2);
   });
 
   it("deletes a runtime from the list after confirmation", async () => {
