@@ -174,6 +174,8 @@ describe("runtimes flow integration", () => {
     expect((await screen.findAllByText(hasExactTextContent("Codex (runtime-live)"))).length).toBeGreaterThan(0);
     expect((await screen.findAllByText(hasExactTextContent("Openclaw (openclaw-recodee)"))).length).toBeGreaterThan(0);
     expect((await screen.findAllByText("runtime-live@example.com")).length).toBeGreaterThan(0);
+    expect(screen.getByText(/^2 running$/i)).toBeInTheDocument();
+    expect(screen.getByText(/^0 usage limit hit$/i)).toBeInTheDocument();
     expect(screen.getByText("Live sessions")).toBeInTheDocument();
     expect(screen.getByText("Ship runtimes view from multica design")).toBeInTheDocument();
     expect(screen.getByText("Update available")).toBeInTheDocument();
@@ -197,7 +199,7 @@ describe("runtimes flow integration", () => {
     await user.unhover(activeActivityCell);
     const idleActivityCell = screen.getAllByRole("button", { name: /0 requests · 0 commits/i })[0];
     await user.hover(idleActivityCell);
-    expect(await screen.findByText("No GitHub commits created in this hour.")).toBeInTheDocument();
+    expect((await screen.findAllByText("No GitHub commits created in this hour.")).length).toBeGreaterThan(0);
     await user.click(screen.getByRole("tab", { name: "pnpm" }));
     expect(screen.getByText(/pnpm add -g @openai\/codex@latest/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Copy update commands" })).toBeInTheDocument();
@@ -293,6 +295,8 @@ describe("runtimes flow integration", () => {
     expect(within(runtimeRow as HTMLElement).queryByText(/^Live$/)).not.toBeInTheDocument();
     expect(within(runtimeRow as HTMLElement).queryByText(/^\d+\s+live$/i)).not.toBeInTheDocument();
     expect(within(runtimeRow as HTMLElement).getByLabelText("Runtime usage limit hit")).toBeInTheDocument();
+    expect(screen.getByText(/^0 running$/i)).toBeInTheDocument();
+    expect(screen.getByText(/^1 usage limit hit$/i)).toBeInTheDocument();
     expect(screen.getAllByText("Usage limit hit").length).toBeGreaterThanOrEqual(2);
   });
 

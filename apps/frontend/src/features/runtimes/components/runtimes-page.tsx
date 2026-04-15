@@ -1796,7 +1796,10 @@ export function RuntimesPage() {
   const tokenStats = selectedRuntime
     ? buildTokenStats(selectedRuntime, usageWindow, selectedAccountRequestLogs)
     : null;
-  const onlineCount = runtimeRows.filter((runtime) => runtime.status === "online").length;
+  const runningCount = scopedRows.filter(
+    (runtime) => runtime.status === "online" && !runtime.usageLimitHit,
+  ).length;
+  const usageLimitHitCount = scopedRows.filter((runtime) => runtime.usageLimitHit).length;
   const panelSurfaceClass =
     "overflow-hidden border-white/[0.08] bg-[linear-gradient(180deg,rgba(7,10,18,0.97)_0%,rgba(3,5,12,1)_100%)] py-0 text-slate-100";
 
@@ -1858,9 +1861,15 @@ export function RuntimesPage() {
         <Card className={cn(panelSurfaceClass, "h-full rounded-none border-0 xl:border-r xl:border-white/[0.08]")}>
           <CardContent className="flex h-full flex-col space-y-3 p-3">
             <div className="flex items-center justify-between px-1 text-xs text-slate-400">
-              <span>
-                {onlineCount}/{runtimeRows.length} online
-              </span>
+              <span>{scopedRows.length} runtimes</span>
+              <div className="flex items-center gap-1.5">
+                <span className="rounded-full border border-emerald-500/35 bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-300">
+                  {runningCount} running
+                </span>
+                <span className="rounded-full border border-red-500/35 bg-red-500/12 px-2 py-0.5 text-[11px] font-medium text-red-300">
+                  {usageLimitHitCount} usage limit hit
+                </span>
+              </div>
             </div>
 
             <Tabs value={scope} onValueChange={(value) => setScope((value as RuntimeScope) ?? "mine")}>
