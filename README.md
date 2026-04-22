@@ -1,4 +1,48 @@
-# codex-auth
+<p align="center">
+  <img src="./logo.png" alt="codex-auth logo" width="220" />
+</p>
+
+<h1 align="center">codex-auth</h1>
+
+<p align="center">
+  multi-account Codex auth switching for local CLI workflows
+</p>
+
+<p align="center">
+  save named auth snapshots, switch accounts instantly, and keep each terminal pinned to the right login
+</p>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/@imdeadpool/codex-account-switcher">
+    <img alt="npm version" src="https://img.shields.io/npm/v/%40imdeadpool%2Fcodex-account-switcher?color=cb3837&label=npm" />
+  </a>
+  <a href="https://www.npmjs.com/package/@imdeadpool/codex-account-switcher">
+    <img alt="npm downloads" src="https://img.shields.io/npm/dm/%40imdeadpool%2Fcodex-account-switcher?color=0b7285&label=downloads%2Fmonth" />
+  </a>
+  <a href="https://github.com/recodeee/codex-account-switcher-cli">
+    <img alt="node version" src="https://img.shields.io/node/v/%40imdeadpool%2Fcodex-account-switcher?color=3c873a&label=node" />
+  </a>
+  <a href="https://github.com/recodeee/codex-account-switcher-cli/commits/main">
+    <img alt="last commit" src="https://img.shields.io/github/last-commit/recodeee/codex-account-switcher-cli?color=5865f2&label=last%20commit" />
+  </a>
+  <a href="https://github.com/recodeee/codex-account-switcher-cli/blob/main/LICENSE">
+    <img alt="license" src="https://img.shields.io/github/license/recodeee/codex-account-switcher-cli?color=9acd32&label=license" />
+  </a>
+</p>
+
+<p align="center">
+  <a href="#how-it-works">About</a>
+  ·
+  <a href="#install-npm">Install</a>
+  ·
+  <a href="#usage">Usage</a>
+  ·
+  <a href="#command-reference">Commands</a>
+  ·
+  <a href="#auto-switch-behavior">Auto-switch</a>
+  ·
+  <a href="#managed-background-service">Service</a>
+</p>
 
 A command-line tool that lets you manage and switch between multiple Codex accounts instantly, no more constant logins and logouts.
 
