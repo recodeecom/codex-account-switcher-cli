@@ -37,6 +37,8 @@ export default class SaveCommand extends BaseCommand {
           ? ""
           : resolvedName.source === "active"
             ? " (reused active account name)"
+            : resolvedName.source === "existing"
+              ? " (reused saved account name)"
             : " (inferred from auth email)";
       this.log(`Saved current Codex auth tokens as "${savedName}"${suffix}.`);
     });
