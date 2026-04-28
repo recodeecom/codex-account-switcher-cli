@@ -84,15 +84,17 @@ export interface SaveAccountOptions {
   force?: boolean;
 }
 
+type ResolvedAccountNameSource = "active" | "existing" | "inferred";
+
 export interface ResolvedDefaultAccountName {
   name: string;
-  source: "active" | "inferred";
+  source: ResolvedAccountNameSource;
   forceOverwrite?: boolean;
 }
 
 export interface ResolvedLoginAccountName {
   name: string;
-  source: "active" | "inferred";
+  source: ResolvedAccountNameSource;
   forceOverwrite?: boolean;
 }
 
@@ -158,33 +160,23 @@ export class AccountService {
       }
     }
 
-    const resolvedName = await this.resolveLoginAccountNameFromCurrentAuth();
     const activeName = await this.getCurrentAccountName();
-    if (activeName) {
-      const activeSnapshotPath = this.accountFilePath(activeName);
-      if (await this.pathExists(activeSnapshotPath)) {
-        const activeSnapshot = await parseAuthSnapshotFile(activeSnapshotPath);
-        if (this.snapshotsShareIdentity(activeSnapshot, incomingSnapshot)) {
-          if (activeName === resolvedName.name) {
-            return rememberAuthState({
-              synchronized: false,
-              autoSwitchDisabled: false,
-            });
-          }
-
-          const authMatchesActiveSnapshot = await this.filesMatch(authPath, activeSnapshotPath);
-          if (authMatchesActiveSnapshot) {
-            return rememberAuthState({
-              synchronized: false,
-              autoSwitchDisabled: false,
-            });
-          }
-        }
-      }
+    const resolvedName = await this.resolveLoginAccountNameForSnapshot(incomingSnapshot, activeName);
+    const resolvedSnapshotPath = this.accountFilePath(resolvedName.name);
+    if (
+      activeName === resolvedName.name &&
+      (await this.pathExists(resolvedSnapshotPath)) &&
+      (await this.filesMatch(authPath, resolvedSnapshotPath))
+    ) {
+      return rememberAuthState({
+        synchronized: false,
+        autoSwitchDisabled: false,
+      });
     }
 
     const status = await this.getStatus();
-    const autoSwitchDisabled = status.autoSwitchEnabled;
+    const sameActiveAccountRefresh = activeName === resolvedName.name && resolvedName.source === "active";
+    const autoSwitchDisabled = status.autoSwitchEnabled && !sameActiveAccountRefresh;
     if (autoSwitchDisabled) {
       await this.setAutoSwitchEnabled(false);
     }
@@ -416,32 +408,12 @@ export class AccountService {
     const authPath = resolveAuthPath();
     await this.ensureAuthFileExists(authPath);
     const incomingSnapshot = await parseAuthSnapshotFile(authPath);
-
     const activeName = await this.getCurrentAccountName();
-    if (activeName) {
-      const activeSnapshotPath = this.accountFilePath(activeName);
-      if (await this.pathExists(activeSnapshotPath)) {
-        const activeSnapshot = await parseAuthSnapshotFile(activeSnapshotPath);
-
-        if (this.snapshotsShareIdentity(activeSnapshot, incomingSnapshot)) {
-          return {
-            name: activeName,
-            source: "active",
-          };
-        }
-
-        if (this.canRefreshActiveCanonicalEmailSnapshot(activeName, activeSnapshot, incomingSnapshot)) {
-          return {
-            name: activeName,
-            source: "active",
-            forceOverwrite: true,
-          };
-        }
-      }
-    }
+    const existing = await this.resolveExistingAccountNameForIncomingSnapshot(incomingSnapshot, activeName);
+    if (existing) return existing;
 
     return {
-      name: await this.inferAccountNameFromCurrentAuth(),
+      name: await this.inferAccountNameFromSnapshot(incomingSnapshot),
       source: "inferred",
     };
   }
@@ -451,41 +423,17 @@ export class AccountService {
     await this.ensureAuthFileExists(authPath);
     const incomingSnapshot = await parseAuthSnapshotFile(authPath);
     const activeName = await this.getCurrentAccountName();
-
-    if (activeName) {
-      const activeSnapshotPath = this.accountFilePath(activeName);
-      if (await this.pathExists(activeSnapshotPath)) {
-        const activeSnapshot = await parseAuthSnapshotFile(activeSnapshotPath);
-
-        if (this.canRefreshActiveCanonicalEmailSnapshot(activeName, activeSnapshot, incomingSnapshot)) {
-          return this.snapshotsShareIdentity(activeSnapshot, incomingSnapshot)
-            ? {
-                name: activeName,
-                source: "active",
-              }
-            : {
-                name: activeName,
-                source: "active",
-                forceOverwrite: true,
-              };
-        }
-      }
-    }
-
-    return {
-      name: await this.inferAccountNameFromCurrentAuth(),
-      source: "inferred",
-    };
+    return this.resolveLoginAccountNameForSnapshot(incomingSnapshot, activeName);
   }
 
   public async useAccount(rawName: string): Promise<string> {
     const name = this.normalizeAccountName(rawName);
     await this.activateSnapshot(name);
 
-    const registry = await this.loadReconciledRegistry();
-    await this.hydrateSnapshotMetadata(registry, name);
+    const registry = await loadRegistry();
+    await this.hydrateSnapshotMetadataIfMissing(registry, name);
     registry.activeAccountName = name;
-    await this.persistRegistry(registry);
+    await saveRegistry(registry);
 
     return name;
   }
@@ -1035,6 +983,89 @@ export class AccountService {
     registry.accounts[accountName] = entry;
   }
 
+  private async hydrateSnapshotMetadataIfMissing(registry: RegistryData, accountName: string): Promise<void> {
+    const entry = registry.accounts[accountName];
+    if (entry?.email && entry.accountId && entry.userId && entry.planType) {
+      return;
+    }
+
+    await this.hydrateSnapshotMetadata(registry, accountName);
+  }
+
+  private async resolveLoginAccountNameForSnapshot(
+    incomingSnapshot: ParsedAuthSnapshot,
+    activeName: string | null,
+  ): Promise<ResolvedLoginAccountName> {
+    const existing = await this.resolveExistingAccountNameForIncomingSnapshot(incomingSnapshot, activeName);
+    if (existing) return existing;
+
+    return {
+      name: await this.inferAccountNameFromSnapshot(incomingSnapshot),
+      source: "inferred",
+    };
+  }
+
+  private async resolveExistingAccountNameForIncomingSnapshot(
+    incomingSnapshot: ParsedAuthSnapshot,
+    activeName: string | null,
+  ): Promise<ResolvedDefaultAccountName | null> {
+    let emailMatch: ResolvedDefaultAccountName | null = null;
+    const accountNames = await this.listAccountNames();
+    const candidates = this.orderReloginSnapshotCandidates(accountNames, incomingSnapshot, activeName);
+
+    for (const name of candidates) {
+      const snapshotPath = this.accountFilePath(name);
+      if (!(await this.pathExists(snapshotPath))) continue;
+
+      const existingSnapshot = await parseAuthSnapshotFile(snapshotPath);
+      if (this.snapshotsShareIdentity(existingSnapshot, incomingSnapshot)) {
+        return {
+          name,
+          source: activeName === name ? "active" : "existing",
+        };
+      }
+
+      if (!emailMatch && activeName === name && this.snapshotsShareEmail(existingSnapshot, incomingSnapshot)) {
+        emailMatch = {
+          name,
+          source: "active",
+          forceOverwrite: true,
+        };
+      }
+    }
+
+    return emailMatch;
+  }
+
+  private orderReloginSnapshotCandidates(
+    accountNames: string[],
+    incomingSnapshot: ParsedAuthSnapshot,
+    activeName: string | null,
+  ): string[] {
+    const ordered: string[] = [];
+    const add = (name: string | null | undefined): void => {
+      if (!name || !accountNames.includes(name) || ordered.includes(name)) return;
+      ordered.push(name);
+    };
+
+    add(activeName);
+
+    const incomingEmail = incomingSnapshot.email?.trim().toLowerCase();
+    if (incomingEmail) {
+      try {
+        add(this.normalizeAccountName(incomingEmail));
+      } catch {
+        // Invalid email-shaped snapshot names fall through to identity scan.
+      }
+    }
+
+    for (const name of accountNames) {
+      add(name);
+    }
+
+    return ordered;
+  }
+
   private async resolveUniqueInferredName(
     baseName: string,
     incomingSnapshot: ParsedAuthSnapshot,
@@ -1067,6 +1098,16 @@ export class AccountService {
     throw new AccountNameInferenceError();
   }
 
+  private async inferAccountNameFromSnapshot(incomingSnapshot: ParsedAuthSnapshot): Promise<string> {
+    const email = incomingSnapshot.email?.trim().toLowerCase();
+    if (!email || !email.includes("@")) {
+      throw new AccountNameInferenceError();
+    }
+
+    const baseCandidate = this.normalizeAccountName(email);
+    return this.resolveUniqueInferredName(baseCandidate, incomingSnapshot);
+  }
+
   private async loadReconciledRegistry(): Promise<RegistryData> {
     const accountNames = await this.listAccountNames();
     const loaded = await loadRegistry();
@@ -1092,6 +1133,7 @@ export class AccountService {
     await fsp.copyFile(source, authPath);
 
     await this.writeCurrentName(name);
+    await this.rememberSessionAuthFingerprint(authPath);
   }
 
   private async clearActivePointers(): Promise<void> {
@@ -1351,23 +1393,10 @@ export class AccountService {
     return false;
   }
 
-  private canRefreshActiveCanonicalEmailSnapshot(
-    activeName: string,
-    activeSnapshot: ParsedAuthSnapshot,
-    incomingSnapshot: ParsedAuthSnapshot,
-  ): boolean {
-    const activeEmail = activeSnapshot.email?.trim().toLowerCase();
-    const incomingEmail = incomingSnapshot.email?.trim().toLowerCase();
-
-    if (!activeEmail || !incomingEmail || activeEmail !== incomingEmail) {
-      return false;
-    }
-
-    try {
-      return activeName === this.normalizeAccountName(incomingEmail);
-    } catch {
-      return false;
-    }
+  private snapshotsShareEmail(a: ParsedAuthSnapshot, b: ParsedAuthSnapshot): boolean {
+    const aEmail = a.email?.trim().toLowerCase();
+    const bEmail = b.email?.trim().toLowerCase();
+    return Boolean(aEmail && bEmail && aEmail === bEmail);
   }
 
   private renderSnapshotIdentity(snapshot: ParsedAuthSnapshot, fallbackEmail: string): string {

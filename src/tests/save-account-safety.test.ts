@@ -283,7 +283,7 @@ test("resolveLoginAccountNameFromCurrentAuth reuses active canonical email snaps
   });
 });
 
-test("resolveLoginAccountNameFromCurrentAuth ignores active alias and infers canonical email snapshot", async (t) => {
+test("resolveLoginAccountNameFromCurrentAuth reuses active alias for same-email relogin", async (t) => {
   await withIsolatedCodexDir(t, async ({ codexDir, accountsDir, authPath }) => {
     const service = new AccountService();
     const activeName = "team-primary";
@@ -309,8 +309,9 @@ test("resolveLoginAccountNameFromCurrentAuth ignores active alias and infers can
 
     const resolved = await service.resolveLoginAccountNameFromCurrentAuth();
     assert.deepEqual(resolved, {
-      name: email,
-      source: "inferred",
+      name: activeName,
+      source: "active",
+      forceOverwrite: true,
     });
   });
 });
@@ -688,7 +689,7 @@ test("syncExternalAuthSnapshotIfNeeded disables auto-switch and snapshots extern
   });
 });
 
-test("syncExternalAuthSnapshotIfNeeded re-keys active alias to inferred email name when external login identity matches", async (t) => {
+test("syncExternalAuthSnapshotIfNeeded refreshes active alias instead of re-keying to email name", async (t) => {
   await withIsolatedCodexDir(t, async ({ codexDir, accountsDir, authPath }) => {
     const service = new AccountService();
     const activeAlias = "team-primary";
@@ -718,13 +719,139 @@ test("syncExternalAuthSnapshotIfNeeded re-keys active alias to inferred email na
     const result = await service.syncExternalAuthSnapshotIfNeeded();
     assert.deepEqual(result, {
       synchronized: true,
-      savedName: incomingEmail,
+      savedName: activeAlias,
       autoSwitchDisabled: false,
     });
 
-    assert.equal((await fsp.readFile(currentPath, "utf8")).trim(), incomingEmail);
-    const inferredSnapshot = await parseAuthSnapshotFile(path.join(accountsDir, `${incomingEmail}.json`));
-    assert.equal(inferredSnapshot.email, incomingEmail);
+    assert.equal((await fsp.readFile(currentPath, "utf8")).trim(), activeAlias);
+    const aliasSnapshotRaw = await fsp.readFile(path.join(accountsDir, `${activeAlias}.json`), "utf8");
+    assert.match(aliasSnapshotRaw, /token-post-login/);
+    await assert.rejects(() => fsp.access(path.join(accountsDir, `${incomingEmail}.json`)));
+  });
+});
+
+test("syncExternalAuthSnapshotIfNeeded refreshes active same-identity snapshot after relogin", async (t) => {
+  await withIsolatedCodexDir(t, async ({ codexDir, accountsDir, authPath }) => {
+    const service = new AccountService();
+    const activeName = "admin@mite.hu";
+    const currentPath = path.join(codexDir, "current");
+    const registryPath = path.join(accountsDir, "registry.json");
+
+    await fsp.writeFile(
+      path.join(accountsDir, `${activeName}.json`),
+      buildAuthPayload(activeName, {
+        accountId: "acct-admin",
+        userId: "user-admin",
+        tokenSeed: "pre-login",
+      }),
+      "utf8",
+    );
+    await fsp.writeFile(currentPath, `${activeName}\n`, "utf8");
+    await fsp.writeFile(
+      registryPath,
+      `${JSON.stringify(
+        {
+          version: 1,
+          autoSwitch: {
+            enabled: true,
+            threshold5hPercent: 10,
+            thresholdWeeklyPercent: 5,
+          },
+          api: {
+            usage: true,
+          },
+          activeAccountName: activeName,
+          accounts: {
+            [activeName]: {
+              name: activeName,
+              createdAt: new Date().toISOString(),
+              email: activeName,
+              accountId: "acct-admin",
+              userId: "user-admin",
+              planType: "team",
+            },
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await fsp.writeFile(
+      authPath,
+      buildAuthPayload(activeName, {
+        accountId: "acct-admin",
+        userId: "user-admin",
+        tokenSeed: "post-login",
+      }),
+      "utf8",
+    );
+
+    const result = await service.syncExternalAuthSnapshotIfNeeded();
+    assert.deepEqual(result, {
+      synchronized: true,
+      savedName: activeName,
+      autoSwitchDisabled: false,
+    });
+
+    const refreshedSnapshotRaw = await fsp.readFile(path.join(accountsDir, `${activeName}.json`), "utf8");
+    assert.match(refreshedSnapshotRaw, /token-post-login/);
+    assert.equal((await fsp.readFile(currentPath, "utf8")).trim(), activeName);
+
+    const registry = JSON.parse(await fsp.readFile(registryPath, "utf8")) as {
+      autoSwitch: { enabled: boolean };
+    };
+    assert.equal(registry.autoSwitch.enabled, true);
+  });
+});
+
+test("syncExternalAuthSnapshotIfNeeded reuses a saved alias that matches relogin identity", async (t) => {
+  await withIsolatedCodexDir(t, async ({ codexDir, accountsDir, authPath }) => {
+    const service = new AccountService();
+    const activeName = "primary@edixai.com";
+    const savedAlias = "team-primary";
+    const incomingEmail = "admin@kozpontihusbolt.hu";
+    const currentPath = path.join(codexDir, "current");
+
+    await fsp.writeFile(
+      path.join(accountsDir, `${activeName}.json`),
+      buildAuthPayload(activeName, {
+        accountId: "acct-primary",
+        userId: "user-primary",
+      }),
+      "utf8",
+    );
+    await fsp.writeFile(
+      path.join(accountsDir, `${savedAlias}.json`),
+      buildAuthPayload(incomingEmail, {
+        accountId: "acct-team",
+        userId: "user-team",
+        tokenSeed: "pre-login",
+      }),
+      "utf8",
+    );
+    await fsp.writeFile(currentPath, `${activeName}\n`, "utf8");
+    await fsp.writeFile(
+      authPath,
+      buildAuthPayload(incomingEmail, {
+        accountId: "acct-team",
+        userId: "user-team",
+        tokenSeed: "post-login",
+      }),
+      "utf8",
+    );
+
+    const result = await service.syncExternalAuthSnapshotIfNeeded();
+    assert.deepEqual(result, {
+      synchronized: true,
+      savedName: savedAlias,
+      autoSwitchDisabled: false,
+    });
+
+    assert.equal((await fsp.readFile(currentPath, "utf8")).trim(), savedAlias);
+    const aliasSnapshotRaw = await fsp.readFile(path.join(accountsDir, `${savedAlias}.json`), "utf8");
+    assert.match(aliasSnapshotRaw, /token-post-login/);
+    await assert.rejects(() => fsp.access(path.join(accountsDir, `${incomingEmail}.json`)));
   });
 });
 
@@ -811,6 +938,35 @@ test("useAccount writes auth.json as a regular file (never symlink)", async (t) 
 
     const authStat = await fsp.lstat(path.join(process.env.CODEX_AUTH_CODEX_DIR as string, "auth.json"));
     assert.equal(authStat.isSymbolicLink(), false);
+  });
+});
+
+test("useAccount records session auth fingerprint for the switch fast path", async (t) => {
+  await withIsolatedCodexDir(t, async ({ accountsDir }) => {
+    const service = new AccountService();
+    const accountName = "fast-switch";
+    const sessionMapPath = path.join(accountsDir, "sessions.json");
+    const sessionKey = `ppid:${process.ppid}`;
+
+    await fsp.writeFile(
+      path.join(accountsDir, `${accountName}.json`),
+      buildAuthPayload("fast-switch@edixai.com"),
+      "utf8",
+    );
+
+    await service.useAccount(accountName);
+
+    const sessionMap = JSON.parse(await fsp.readFile(sessionMapPath, "utf8")) as {
+      sessions: Record<string, { accountName?: string; authFingerprint?: string }>;
+    };
+    assert.equal(sessionMap.sessions[sessionKey]?.accountName, accountName);
+    assert.equal(typeof sessionMap.sessions[sessionKey]?.authFingerprint, "string");
+
+    const result = await service.syncExternalAuthSnapshotIfNeeded();
+    assert.deepEqual(result, {
+      synchronized: false,
+      autoSwitchDisabled: false,
+    });
   });
 });
 

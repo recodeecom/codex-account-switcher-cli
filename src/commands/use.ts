@@ -4,6 +4,8 @@ import { BaseCommand } from "../lib/base-command";
 import { NoAccountsSavedError, PromptCancelledError } from "../lib/accounts";
 
 export default class UseCommand extends BaseCommand {
+  protected readonly syncExternalAuthBeforeRun = false;
+
   static description = "Switch ~/.codex/auth.json to the selected account";
 
   static args = {
