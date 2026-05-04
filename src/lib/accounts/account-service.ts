@@ -121,7 +121,8 @@ export class AccountService {
       initialAuthState &&
       !initialAuthState.isSymbolicLink &&
       !externalSyncForced &&
-      (await this.getSessionAuthFingerprint()) === initialAuthState.fingerprint
+      (await this.getSessionAuthFingerprint()) === initialAuthState.fingerprint &&
+      (await this.sessionSnapshotExists())
     ) {
       return {
         synchronized: false,
@@ -429,14 +430,15 @@ export class AccountService {
 
   public async useAccount(rawName: string): Promise<string> {
     const name = this.normalizeAccountName(rawName);
-    await this.activateSnapshot(name);
+    const resolvedName = await this.resolveUsableAccountName(name);
+    await this.activateSnapshot(resolvedName);
 
     const registry = await loadRegistry();
-    await this.hydrateSnapshotMetadataIfMissing(registry, name);
-    registry.activeAccountName = name;
+    await this.hydrateSnapshotMetadataIfMissing(registry, resolvedName);
+    registry.activeAccountName = resolvedName;
     await saveRegistry(registry);
 
-    return name;
+    return resolvedName;
   }
 
   public async removeAccounts(accountNames: string[]): Promise<RemoveResult> {
@@ -1180,6 +1182,59 @@ export class AccountService {
     await this.writeCurrentName(name, {
       authFingerprint: authState && !authState.isSymbolicLink ? authState.fingerprint : undefined,
     });
+  }
+
+  private async resolveUsableAccountName(accountName: string): Promise<string> {
+    if (await this.pathExists(this.accountFilePath(accountName))) {
+      return accountName;
+    }
+
+    await this.syncExternalAuthSnapshotIfNeeded();
+
+    if (await this.pathExists(this.accountFilePath(accountName))) {
+      return accountName;
+    }
+
+    const emailMatches = await this.findSnapshotNamesByExactEmail(accountName);
+    if (emailMatches.length === 1) {
+      return emailMatches[0];
+    }
+    if (emailMatches.length > 1) {
+      throw new AmbiguousAccountQueryError(accountName);
+    }
+
+    throw new AccountNotFoundError(accountName);
+  }
+
+  private async findSnapshotNamesByExactEmail(rawEmail: string): Promise<string[]> {
+    const normalizedEmail = rawEmail.trim().toLowerCase();
+    if (!normalizedEmail.includes("@")) {
+      return [];
+    }
+
+    const accountNames = await this.listAccountNames();
+    const matches: string[] = [];
+    for (const name of accountNames) {
+      const snapshotPath = this.accountFilePath(name);
+      try {
+        const snapshot = await parseAuthSnapshotFile(snapshotPath);
+        if (snapshot.email?.trim().toLowerCase() === normalizedEmail) {
+          matches.push(name);
+        }
+      } catch {
+        // Ignore unreadable snapshots here so the existing not-found path
+        // remains actionable for the requested email.
+      }
+    }
+    return matches.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+  }
+
+  private async sessionSnapshotExists(): Promise<boolean> {
+    const sessionAccountName = await this.getSessionAccountName();
+    if (!sessionAccountName) {
+      return true;
+    }
+    return this.pathExists(this.accountFilePath(sessionAccountName));
   }
 
   private async clearActivePointers(): Promise<void> {
