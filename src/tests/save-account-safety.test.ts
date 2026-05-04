@@ -63,6 +63,7 @@ async function withIsolatedCodexDir(
     CODEX_AUTH_ACCOUNTS_DIR: process.env.CODEX_AUTH_ACCOUNTS_DIR,
     CODEX_AUTH_JSON_PATH: process.env.CODEX_AUTH_JSON_PATH,
     CODEX_AUTH_CURRENT_PATH: process.env.CODEX_AUTH_CURRENT_PATH,
+    CODEX_AUTH_SESSION_KEY: process.env.CODEX_AUTH_SESSION_KEY,
     CODEX_AUTH_SESSION_ACTIVE_OVERRIDE: process.env.CODEX_AUTH_SESSION_ACTIVE_OVERRIDE,
   };
 
@@ -72,11 +73,13 @@ async function withIsolatedCodexDir(
   delete process.env.CODEX_AUTH_CURRENT_PATH;
 
   t.after(async () => {
-    process.env.CODEX_AUTH_CODEX_DIR = previousEnv.CODEX_AUTH_CODEX_DIR;
-    process.env.CODEX_AUTH_ACCOUNTS_DIR = previousEnv.CODEX_AUTH_ACCOUNTS_DIR;
-    process.env.CODEX_AUTH_JSON_PATH = previousEnv.CODEX_AUTH_JSON_PATH;
-    process.env.CODEX_AUTH_CURRENT_PATH = previousEnv.CODEX_AUTH_CURRENT_PATH;
-    process.env.CODEX_AUTH_SESSION_ACTIVE_OVERRIDE = previousEnv.CODEX_AUTH_SESSION_ACTIVE_OVERRIDE;
+    for (const [key, value] of Object.entries(previousEnv)) {
+      if (typeof value === "string") {
+        process.env[key] = value;
+      } else {
+        delete process.env[key];
+      }
+    }
     await fsp.rm(codexDir, { recursive: true, force: true });
   });
 
@@ -802,6 +805,70 @@ test("syncExternalAuthSnapshotIfNeeded refreshes active same-identity snapshot a
       autoSwitch: { enabled: boolean };
     };
     assert.equal(registry.autoSwitch.enabled, true);
+  });
+});
+
+test("syncExternalAuthSnapshotIfNeeded recreates a missing snapshot even when auth fingerprint is unchanged", async (t) => {
+  await withIsolatedCodexDir(t, async ({ accountsDir, authPath }) => {
+    const service = new AccountService();
+    const email = "moncsi@gitguardex.com";
+    process.env.CODEX_AUTH_SESSION_KEY = "terminal-moncsi";
+    process.env.CODEX_AUTH_SESSION_ACTIVE_OVERRIDE = "1";
+
+    await fsp.writeFile(
+      authPath,
+      buildAuthPayload(email, {
+        accountId: "acct-moncsi",
+        userId: "user-moncsi",
+      }),
+      "utf8",
+    );
+
+    const firstSync = await service.syncExternalAuthSnapshotIfNeeded();
+    assert.equal(firstSync.savedName, email);
+
+    const snapshotPath = path.join(accountsDir, `${email}.json`);
+    await fsp.rm(snapshotPath, { force: true });
+
+    const secondSync = await service.syncExternalAuthSnapshotIfNeeded();
+    assert.deepEqual(secondSync, {
+      synchronized: true,
+      savedName: email,
+      autoSwitchDisabled: false,
+    });
+
+    const restored = await parseAuthSnapshotFile(snapshotPath);
+    assert.equal(restored.email, email);
+  });
+});
+
+test("useAccount resolves an exact email to its saved duplicate snapshot", async (t) => {
+  await withIsolatedCodexDir(t, async ({ codexDir, accountsDir, authPath }) => {
+    const service = new AccountService();
+    const email = "moncsi@gitguardex.com";
+    const duplicateName = `${email}--dup-2`;
+
+    await fsp.writeFile(
+      path.join(accountsDir, `${duplicateName}.json`),
+      buildAuthPayload(email, {
+        accountId: "acct-moncsi",
+        userId: "user-moncsi",
+      }),
+      "utf8",
+    );
+    await fsp.writeFile(
+      authPath,
+      buildAuthPayload(email, {
+        accountId: "acct-moncsi",
+        userId: "user-moncsi",
+      }),
+      "utf8",
+    );
+
+    const activated = await service.useAccount(email);
+
+    assert.equal(activated, duplicateName);
+    assert.equal((await fsp.readFile(path.join(codexDir, "current"), "utf8")).trim(), duplicateName);
   });
 });
 
