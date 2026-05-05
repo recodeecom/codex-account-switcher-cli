@@ -208,6 +208,7 @@ export class AccountService {
 
     const authPath = resolveAuthPath();
     if (await this.pathExists(authPath)) {
+      await this.materializeAuthSymlink(authPath);
       const [sessionSnapshot, activeSnapshot] = await Promise.all([
         parseAuthSnapshotFile(snapshotPath),
         parseAuthSnapshotFile(authPath),

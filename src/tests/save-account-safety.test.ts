@@ -1073,6 +1073,76 @@ test("syncExternalAuthSnapshotIfNeeded materializes auth symlink so external cod
   });
 });
 
+test("restoreSessionSnapshotIfNeeded materializes matching auth symlink before codex can overwrite the snapshot", async (t) => {
+  if (process.platform === "win32") {
+    t.skip("symlink conversion behavior is Unix-specific in this test");
+    return;
+  }
+
+  await withIsolatedCodexDir(t, async ({ codexDir, accountsDir, authPath }) => {
+    const service = new AccountService();
+    const activeName = "admin@megkapja.hu";
+    const snapshotPath = path.join(accountsDir, `${activeName}.json`);
+    const currentPath = path.join(codexDir, "current");
+    const sessionMapPath = path.join(accountsDir, "sessions.json");
+    const sessionKey = `ppid:${process.ppid}`;
+
+    process.env.CODEX_AUTH_SESSION_ACTIVE_OVERRIDE = "1";
+
+    await fsp.writeFile(
+      snapshotPath,
+      buildAuthPayload(activeName, {
+        accountId: "acct-admin",
+        userId: "user-admin",
+        tokenSeed: "admin-snapshot",
+      }),
+      "utf8",
+    );
+    await fsp.writeFile(currentPath, `${activeName}\n`, "utf8");
+    await fsp.writeFile(
+      sessionMapPath,
+      `${JSON.stringify(
+        {
+          version: 1,
+          sessions: {
+            [sessionKey]: {
+              accountName: activeName,
+              updatedAt: new Date().toISOString(),
+            },
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await fsp.symlink(snapshotPath, authPath);
+
+    const restored = await service.restoreSessionSnapshotIfNeeded();
+    assert.deepEqual(restored, {
+      restored: false,
+      accountName: activeName,
+    });
+
+    const authStat = await fsp.lstat(authPath);
+    assert.equal(authStat.isSymbolicLink(), false);
+
+    await fsp.writeFile(
+      authPath,
+      buildAuthPayload("odin@megkapja.hu", {
+        accountId: "acct-odin",
+        userId: "user-odin",
+        tokenSeed: "official-login",
+      }),
+      "utf8",
+    );
+
+    const snapshotAfterLogin = await parseAuthSnapshotFile(snapshotPath);
+    assert.equal(snapshotAfterLogin.email, activeName);
+    assert.equal(snapshotAfterLogin.accountId, "acct-admin");
+  });
+});
+
 test("useAccount writes auth.json as a regular file (never symlink)", async (t) => {
   await withIsolatedCodexDir(t, async ({ accountsDir }) => {
     const service = new AccountService();
